@@ -720,22 +720,59 @@ Useskills = function(weapon, skill)
 end
 local gg = getrawmetatable(game)
 local old = gg.__namecall
+
 setreadonly(gg, false)
+
 gg.__namecall = newcclosure(function(...)
-  local method = getnamecallmethod()
-  local args = {...}    
-    if tostring(method) == "FireServer" then
-      if tostring(args[1]) == "RemoteEvent" then
-        if tostring(args[2]) ~= "true" and tostring(args[2]) ~= "false" then
-          if (_G.FarmMastery_G and not SoulGuitar) or (_G.FarmMastery_Dev) or (_G.FarmBlazeEM) or (_G.Prehis_Skills) or (_G.SeaBeast1 or _G.FishBoat or _G.PGB or _G.Leviathan1 or _G.Complete_Trials) or (_G.AimMethod and ABmethod == "Aim Player") or (_G.AimMethod and ABmethod == "Nearest Aim") then
-            args[2] = MousePos
-            return old(unpack(args))
-          end
-        end
-      end
+    local method = getnamecallmethod()
+
+    -- Fast exit: không phải FireServer
+    if method ~= "FireServer" then
+        return old(...)
     end
-  return old(...)
+
+    local args = {...}
+    local remote = args[1]
+
+    -- Chỉ xử lý RemoteEvent
+    if tostring(remote) ~= "RemoteEvent" then
+        return old(...)
+    end
+
+    local arg2 = args[2]
+
+    -- Giữ nguyên behavior cũ: bỏ qua true/false
+    if arg2 == true or arg2 == false
+        or arg2 == "true"
+        or arg2 == "false" then
+        return old(...)
+    end
+
+    -- Feature gate
+    if not (
+        (_G.FarmMastery_G and not SoulGuitar)
+        or _G.FarmMastery_Dev
+        or _G.FarmBlazeEM
+        or _G.Prehis_Skills
+        or _G.SeaBeast1
+        or _G.FishBoat
+        or _G.PGB
+        or _G.Leviathan1
+        or _G.Complete_Trials
+        or (_G.AimMethod and (
+            ABmethod == "Aim Player"
+            or ABmethod == "Nearest Aim"
+        ))
+    ) then
+        return old(...)
+    end
+
+    args[2] = MousePos
+
+    return old(unpack(args))
 end)
+
+setreadonly(gg, true)
 GetConnectionEnemies = function(a)
   for i,v in pairs(replicated:GetChildren()) do
     if v:IsA("Model") and  ((typeof(a) == "table" and table.find(a, v.Name)) or v.Name == a) and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
