@@ -4721,15 +4721,15 @@ Tabs.Settings:AddToggle({
 	Description = "", 
 	Default = false, 
 	Callback = function(Value) 
-	  Config["Bypass Teleport"] = Value
+	   Settings["Bypass Teleport"] = Value
 end
 }) 
 Tabs.Settings:AddToggle({
 	Name = "Up Y When Low Health", 
-	Description = ""
+	Description = "", 
 	Default = false, 
 	Callback = function(Value) 
-     Config["Up Y When Low Health"] = Value
+     Settings["Up Y When Low Health"] = Value
 end 
 }) 
 -- [FIX LAG] slider chỉnh độ trễ Fast Attack (giây) - thay cho Rate 0.000000002 cũ
