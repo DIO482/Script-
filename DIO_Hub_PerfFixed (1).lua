@@ -1,4 +1,3 @@
-loadstring(game:HttpGet("https://raw.githubusercontent.com/DIO862/Gayyyyyyyyyyyyyy/refs/heads/main/notifynew.lua"))()
 local RunService = game:GetService("RunService")
 local Stats = game:GetService("Stats")
 
@@ -149,7 +148,18 @@ end
 
 LoadSettings() -- nạp cài đặt đã lưu từ lần chạy trước
 
-repeat local start = plr.PlayerGui:WaitForChild("Main"):WaitForChild("Loading") and game:IsLoaded() wait() until start
+repeat 
+    task.wait() 
+until game:IsLoaded()
+
+local main = plr.PlayerGui:WaitForChild("Main", 10)
+local loading = main and main:WaitForChild("Loading", 10)
+
+if loading then
+    repeat 
+        task.wait() 
+    until not loading.Visible
+end
 World1 = game.PlaceId == 2753915549 or game.PlaceId == 85211729168715
 World2 = game.PlaceId == 4442272183 or game.PlaceId == 79091703265657
 World3 = game.PlaceId == 7449423635 or game.PlaceId == 100117331123089
@@ -4691,8 +4701,7 @@ spawn(function()
   end
 end)
 
-Tabs.Settings:AddSection("Settings / Configure")
-
+Tabs.Settings:AddSection("Settings Farm")
 Initialize = Tabs.Settings:AddToggle({
 Name = "Fast Attack", 
 Description = "", 
@@ -4700,21 +4709,30 @@ Default = true,
 Callback = function(Value)
   _G.Seriality = Value
 end})
-
+Bringmob = Tabs.Settings:AddToggle({
+Name = "Bring Mobs", 
+Description = "", 
+Default = true,
+Callback = function(Value)
+  _B = Value
+end})
+Tabs.Settings:AddToggle({
+	Name = "Bypass Teleport", 
+	Description = "", 
+	Default = false, 
+	Callback = function(Value) 
+	  Config["Bypass Teleport"] = Value
+end
+}) 
+Tabs.Settings:AddToggle({
+	Name = "Up Y When Low Health", 
+	Description = ""
+	Default = false, 
+	Callback = function(Value) 
+     Config["Up Y When Low Health"] = Value
+end 
+}) 
 -- [FIX LAG] slider chỉnh độ trễ Fast Attack (giây) - thay cho Rate 0.000000002 cũ
-Tabs.Settings:AddSlider({
-    Name = "Fast Attack Delay",
-    Min = 1,
-    Max = 30,
-    Default = 10,
-    Increment = 1,
-    Callback = function(Value)
-        -- 1..30 -> 0.01s..0.30s (Default 10 = 0.1s)
-        FastAttackModule.Rate = math.clamp(Value, 1, 30) / 100
-    end
-})
--- [FIX MODEFARM 2/2] UI dieu khien farm theo sketch cua user (da sua syntax + dien Min/Max/Default
--- cho "Farm Distance" bi de trong: 10..100 mac dinh 20 = dung cao do farm hien tai cua hub)
 Tabs.Settings:AddDropdown({
     Name = "Mode Farm",
     Options = {"Obrit", "Normal"},
@@ -4723,12 +4741,23 @@ Tabs.Settings:AddDropdown({
         _G.ModeFarm = Value -- Normal: dung tai cao do "Farm Distance"; Obrit: quay vong quanh mob ban kinh "Farm Distance"
     end
 })
-
+Tabs.Settings:AddSlider({
+    Name = "Fast Attack Delay",
+    Min = 1,
+    Max = 30,
+    Default = 1,
+    Increment = 1,
+    Callback = function(Value)
+        -- 1..30 -> 0.01s..0.30s (Default 10 = 0.1s)
+        FastAttackModule.Rate = math.clamp(Value, 1, 30) / 100
+    end
+})
+-- [FIX MODEFARM 2/2] 
 Tabs.Settings:AddSlider({
     Name = "mobs Bring",
     Min = 1,
     Max = 20, -- [USER-EDIT] mang tu ban user: 6 -> 20
-    Default = 7, -- [USER-EDIT] 3 -> 7
+    Default = 3,-- [USER-EDIT] 3 -> 7
     Increment = 1,
     Callback = function(Value)
         _G.MaxBringMobs = math.clamp(Value, 1, 20) -- [USER-EDIT] clamp theo Max moi (20) de slider 7..20 co tac dung that
@@ -4757,13 +4786,6 @@ Tabs.Settings:AddSlider({
     end
 })
 
-Bringmob = Tabs.Settings:AddToggle({
-Name = "Bring Mobs", 
-Description = "", 
-Default = true,
-Callback = function(Value)
-  _B = Value
-end})
 Tabs.Settings:AddSlider({
     Name = "Speed Tween",
     Min = 1,
@@ -4776,6 +4798,8 @@ Tabs.Settings:AddSlider({
         _G.TweenSpeed = math.clamp(math.floor(Value + 0.5), 1, 500)
     end
 }) -- [FIXED] function đã thêm
+Tabs.Settings:AddSection("Settings / Configure")
+
 Tabs.Settings:AddToggle({
     Name = "Auto Hop Server with time",
     Default = false,
@@ -4957,7 +4981,7 @@ end)
 RmvVFX = Tabs.Settings:AddToggle({
 Name = "Remove Death & Respawned VFX", 
 Description = "", 
-Default = false,
+Default = true,
 Callback = function(Value)
   RDeath = Value
 end})
