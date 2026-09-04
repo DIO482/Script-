@@ -4702,45 +4702,53 @@ spawn(function()
 end)
 
 Tabs.Settings:AddSection("Settings Farm")
+
 Initialize = Tabs.Settings:AddToggle({
-Name = "Fast Attack", 
-Description = "", 
-Default = true,
-Callback = function(Value)
-  _G.Seriality = Value
-end})
+    Name = "Fast Attack",
+    Description = "",
+    Default = true,
+    Callback = function(Value)
+        _G.Seriality = Value
+    end
+})
+
 Bringmob = Tabs.Settings:AddToggle({
-Name = "Bring Mobs", 
-Description = "", 
-Default = true,
-Callback = function(Value)
-  _B = Value
-end})
+    Name = "Bring Mobs",
+    Description = "",
+    Default = true,
+    Callback = function(Value)
+        _B = Value
+    end
+})
+
 Tabs.Settings:AddToggle({
-	Name = "Bypass Teleport", 
-	Description = "", 
-	Default = false, 
-	Callback = function(Value) 
-	   Settings["Bypass Teleport"] = Value
-end
-}) 
+    Name = "Bypass Teleport",
+    Description = "",
+    Default = false,
+    Callback = function(Value)
+        Settings["Bypass Teleport"] = Value
+    end
+})
+
 Tabs.Settings:AddToggle({
-	Name = "Up Y When Low Health", 
-	Description = "", 
-	Default = false, 
-	Callback = function(Value) 
-     Settings["Up Y When Low Health"] = Value
-end 
-}) 
--- [FIX LAG] slider chỉnh độ trễ Fast Attack (giây) - thay cho Rate 0.000000002 cũ
+    Name = "Up Y When Low Health",
+    Description = "",
+    Default = false,
+    Callback = function(Value)
+        Settings["Up Y When Low Health"] = Value
+    end
+})
+
+-- [FIX LAG] Fast Attack Delay
 Tabs.Settings:AddDropdown({
     Name = "Mode Farm",
     Options = {"Obrit", "Normal"},
     Default = "Normal",
     Callback = function(Value)
-        _G.ModeFarm = Value -- Normal: dung tai cao do "Farm Distance"; Obrit: quay vong quanh mob ban kinh "Farm Distance"
+        _G.ModeFarm = Value
     end
 })
+
 Tabs.Settings:AddSlider({
     Name = "Fast Attack Delay",
     Min = 1,
@@ -4748,30 +4756,29 @@ Tabs.Settings:AddSlider({
     Default = 1,
     Increment = 1,
     Callback = function(Value)
-        -- 1..30 -> 0.01s..0.30s (Default 10 = 0.1s)
         FastAttackModule.Rate = math.clamp(Value, 1, 30) / 100
     end
 })
--- [FIX MODEFARM 2/2] 
+
 Tabs.Settings:AddSlider({
     Name = "mobs Bring",
     Min = 1,
-    Max = 20, -- [USER-EDIT] mang tu ban user: 6 -> 20
-    Default = 3,-- [USER-EDIT] 3 -> 7
+    Max = 20,
+    Default = 3,
     Increment = 1,
     Callback = function(Value)
-        _G.MaxBringMobs = math.clamp(Value, 1, 20) -- [USER-EDIT] clamp theo Max moi (20) de slider 7..20 co tac dung that
+        _G.MaxBringMobs = math.clamp(Value, 1, 20)
     end
 })
 
 Tabs.Settings:AddSlider({
     Name = "Bring Distance",
     Min = 1,
-    Max = 1000, -- [USER-EDIT] 400 -> 1000
-    Default = 300, -- [USER-EDIT] 240 -> 300
+    Max = 1000,
+    Default = 300,
     Increment = 1,
     Callback = function(Value)
-        _G.BringRange = math.clamp(Value, 1, 1000) -- [USER-EDIT] clamp theo Max moi (1000)
+        _G.BringRange = math.clamp(Value, 1, 1000)
     end
 })
 
@@ -4782,7 +4789,7 @@ Tabs.Settings:AddSlider({
     Default = 15,
     Increment = 1,
     Callback = function(Value)
-        _G.FarmDistance = math.clamp(Value, 10, 100) -- Normal = do cao danh; Obrit = ban kinh quay quanh mob
+        _G.FarmDistance = math.clamp(Value, 10, 100)
     end
 })
 
@@ -4793,12 +4800,11 @@ Tabs.Settings:AddSlider({
     Default = 190,
     Increment = 1,
     Callback = function(Value)
-        -- [FIXED] đã nối function: điều khiển tốc độ tween của player (_tp đọc _G.TweenSpeed)
-        -- [FIX PERF 7] Max 300 -> 500 theo yêu cầu (clamp theo đúng Max của slider)
         _G.TweenSpeed = math.clamp(math.floor(Value + 0.5), 1, 500)
     end
-}) -- [FIXED] function đã thêm
-Tabs.Settings:AddSection("Settings / Configure")
+})
+
+Tabs.Settings:AddSection("Settings / Configure") 
 
 Tabs.Settings:AddToggle({
     Name = "Auto Hop Server with time",
