@@ -2267,21 +2267,6 @@ spawn(function()
     end
 end)
 
-local BoneCount = Tabs.Status:AddParagraph("Bone", "")
-
-spawn(function()
-    -- [FIX BUG-6 MEDIUM] Ban cu: InvokeServer + SetDesc MO 1s du so luong bone khong doi.
-    -- Fix: (a) 1s -> 5s (so xuong khong can cap nhat nhanh); (b) prev check chi SetDesc khi doi;
-    --      (c) pcall bao ve khoi nil error khi InvokeServer tra ve nil.
-    local __prevBone = nil
-    while __DIO_wait(5) do
-        pcall(function()
-            local bones = game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("Bones", "Check")
-            local desc = "You Have: " .. tostring(bones) .. " Bones"
-            if desc ~= __prevBone then __prevBone = desc BoneCount:SetDesc(desc) end
-        end)
-    end
-end)
 local RFSubmarineWorkerSpeak = replicated.Modules.Net["RF/SubmarineWorkerSpeak"]
 WeaponDropdown = Tabs.Main:AddDropdown({
     Name = "Select Weapon",
@@ -4014,17 +3999,6 @@ end)
 
 Tabs.Main:AddSection("Farming Bone")
 
-local CheckingBone = Tabs.Main:AddParagraph("Bones", "")
-spawn(function()
-    local __prevBone = nil -- [FIX PERF 31] SetDesc chi khi gia tri DOI (ui khong ve lai voi cung chuoi)
-    while __DIO_wait(1) do -- [FIX FPS 2] 0.2s -> 1s (GetM da co cache 2s nen khong con spam remote)
-        pcall(function()
-            local __v = "Bones : " .. GetM("Bones")
-            if __v ~= __prevBone then __prevBone = __v CheckingBone:SetDesc(__v) end
-        end)
-    end
-end)
-
 -- [FARM BONE - GHÉP LOGIC BANANA] đã rà: khối farm dưới đây GIỮ LOGIC BANANA
 -- (GetClosestMob TÌM quái gần nhất -> đánh XONG con đó mới chuyển, chỉ khi VỠ HẾT quái
 -- mới bay về điểm chờ spawn - KHÔNG bay trước như DIO cũ) + AntiFall giữ người lơ lửng.
@@ -5738,26 +5712,6 @@ spawn(function()
 end)
 
 Tabs.Quests:AddSection("Skull Guitars / Misc")
-local CheckSoul = Tabs.Quests:AddParagraph("Skull Guitar Quests", "")
-spawn(function()
-    while __DIO_wait(1) do -- [FIX PERF 62] 0.2 -> 1 (yeu cau user: uu tien FPS; vong poll gated nen logic khong time-out)
-        pcall(function()
-            if Quest1 == true then 
-                CheckSoul:SetDesc("Quest Number : Quest1")
-            elseif Quest2 == true then 
-                CheckSoul:SetDesc("Quest Number : Quest2")
-            elseif Quest3 == true then 
-                CheckSoul:SetDesc("Quest Number : Quest3")
-            elseif Quest4 == true then 
-                CheckSoul:SetDesc("Quest Number : Quest4")
-            elseif GetWP("Skull Guitar") then 
-                CheckSoul:SetDesc("Quest Number : Collect!!")
-            else 
-                CheckSoul:SetDesc("Quest Number : No Quest!!")
-            end
-        end)
-    end
-end)
 Tabs.Quests:AddToggle({
 Name = "Auto Skull Guitar", 
 Description = "", 
@@ -5985,24 +5939,6 @@ spawn(function()
 end)
 
 Tabs.Quests:AddSection("Cursed Dual Katana")
-local CheckCDK = Tabs.Quests:AddParagraph("Number Cursed dual katana quests", "Quest Numbers :")
-spawn(function()  
-    while __DIO_wait(1) do -- [FIX PERF 62] 0.2 -> 1 (yeu cau user: uu tien FPS; vong poll gated nen logic khong time-out)
-        if QuestYama_1 == true then 
-            CheckCDK:SetDesc("Quest Numbers : yama quest 1") 
-        elseif QuestYama_2 == true then
-            CheckCDK:SetDesc("Quest Numbers : yama quest 2") 
-        elseif QuestYama_3 == true then
-            CheckCDK:SetDesc("Quest Numbers : yama quest 3") 
-        elseif QuestTushita_1 == true then
-            CheckCDK:SetDesc("Quest Numbers : tushita quest 1") 
-        elseif QuestTushita_2 == true then
-            CheckCDK:SetDesc("Quest Numbers : tushita quest 2") 
-        elseif GetWP("Cursed Dual Katana") then
-            CheckCDK:SetDesc("Quest Numbers : CDK done!!")
-        end 
-    end
-end)
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Get CDK [ Last Quest ]", 
 Description = "", 
@@ -11613,53 +11549,6 @@ end)
 
 
 Tabs.Combat:AddSection("Combat / AimBot")
-
-local __indexPlayer = Tabs.Combat:AddParagraph("All Players On Server", "")
-
-spawn(function()
-    local __prevP = nil -- [FIX PERF 31] SetDesc chi khi gia tri DOI (ui khong ve lai voi cung chuoi)
-        while __DIO_wait(1) do -- [FIX FPS 2] 0.1s -> 1s: dem player khong can 10 lan/s
-        pcall(function()
-            local playerCount = #game:GetService("Players"):GetPlayers()
-            local __v = "All Players : " .. playerCount .. (playerCount == 12 and " / 12 [Max]" or " / 12")
-            if __v ~= __prevP then __prevP = __v __indexPlayer:SetDesc(__v) end
-            if false then
-                __indexPlayer:SetDesc("All Players : " .. playerCount .. " / 12 [Max]")
-            else
-                __indexPlayer:SetDesc("All Players : " .. playerCount .. " / 12")
-            end
-        end)
-    end
-end)
-
-local __AimBotTurn = Tabs.Combat:AddParagraph("Aimbot Status", "")
-
-Checking_AimStatus = function()
-    if _G.AimCam then
-        return "Aimbot Camera"
-    elseif _G.AimbotGun then
-        return "Aimbot Guns"
-    else
-        return ""
-    end
-end
-
-spawn(function()
-    while __DIO_wait(1) do -- [FIX PERF 62] 0.2 -> 1 (yeu cau user: uu tien FPS; vong poll gated nen logic khong time-out)
-        pcall(function()
-            if _G.AimMethod then
-                if (_G.AimCam or _G.AimbotGun) then
-                    __AimBotTurn:SetDesc("Aimbot - " .. Checking_AimStatus() .. " : True")
-                else
-                    __AimBotTurn:SetDesc("Aimbot - Skills : True")
-                end
-            else
-                __AimBotTurn:SetDesc("Aimbot - Skills : False")
-            end
-        end)
-    end
-end)
-
 
 local PlrList = {}   
 for _, v in pairs(game:GetService("Players"):GetChildren()) do
