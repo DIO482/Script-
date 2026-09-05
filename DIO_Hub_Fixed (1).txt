@@ -31,19 +31,28 @@ end)
 do
   ply = game.Players
   plr = ply.LocalPlayer 
-  Root = plr.Character.HumanoidRootPart
+  -- [FIX UI-DEAD 4/4] MIN NO SOM NHAT (dong ~34, truoc ca hookfunction):
+  -- plr.Character.HumanoidRootPart va plr.Data.Level.Value doc TRUC TIEP khong cho doi.
+  -- Neu inject luc nhan vat CHUA load xong (rat hay gap sau update vi game load cham hon),
+  -- ca 2 dong nay nem "attempt to index nil" -> script chet ngay truoc khi ve UI.
+  -- Cho tu te thay vi gia dinh da co san.
+  if not plr.Character then plr.CharacterAdded:Wait() end
+  Root = plr.Character:WaitForChild("HumanoidRootPart", 30)
   replicated = game:GetService("ReplicatedStorage")
-  Lv = game.Players.LocalPlayer.Data.Level.Value
+  local __data = plr:WaitForChild("Data", 30)
+  local __lvl = __data and __data:FindFirstChild("Level")
+  Lv = __lvl and __lvl.Value or 0
   TeleportService = game:GetService("TeleportService")
   TW = game:GetService("TweenService")
   Lighting = game:GetService("Lighting")
-  Enemies = workspace.Enemies
+  Enemies = workspace:WaitForChild("Enemies", 30) -- [FIX UI-DEAD] khong gia dinh Enemies da co
   vim1 = game:GetService("VirtualInputManager")
   vim2 = game:GetService("VirtualUser")
   TeamSelf = plr.Team
   RunSer = game:GetService("RunService")
   Stats = game:GetService("Stats")
-  Energy = plr.Character.Energy.Value
+  local __en = plr.Character:FindFirstChild("Energy") -- [FIX UI-DEAD] cung loai min: Energy co the chua ton tai
+  Energy = __en and __en.Value or 0
   BringConnections = {}
   BossList = {}
   MaterialList = {}
@@ -350,14 +359,51 @@ local PosMsList = {
     ["Candy Rebel"] = CFrame.new(47, 61, -12889),
     ["Ghost"] = CFrame.new(5251, 5, 1111)
 }
-hookfunction(require((game:GetService("ReplicatedStorage")).Effect.Container.Death), function()
-end);
-hookfunction((require((game:GetService("ReplicatedStorage")):WaitForChild("GuideModule"))).ChangeDisplayedNPC, function()
-end);
-hookfunction(error, function()
-end);
-hookfunction(warn, function()
-end);
+-- ==========================================================================
+-- [FIX UI-DEAD 1/3] NGUYEN NHAN CHINH "SCRIPT KHONG HIEN UI, KHONG BAO LOI":
+-- 4 hookfunction nay chay TRAN (khong pcall) o dong 353, TRUOC khi tao UI (dong 1904).
+--  (a) ReplicatedStorage.Effect.Container.Death va GuideModule.ChangeDisplayedNPC
+--      la NOI BO CUA GAME. Update 30 doi ten/xoa/doi cau truc -> require() nem loi
+--      NGAY -> script chet tai dong 353, KHONG BAO GIO chay den dong tao UI.
+--  (b) TE HON: hookfunction(error) va hookfunction(warn) BOP MIENG toan bo bao loi.
+--      Vi vay ban khong thay error nao ca - chi thay "khong hien gi". Neu 2 dong nay
+--      chay truoc roi mot loi khac xay ra sau, loi do cung bi nuot im lang.
+--      Day dung la ly do "fast attack tach rieng thi van bat duoc": file rieng cua ban
+--      KHONG co 4 dong nay nen no chay binh thuong.
+-- FIX: boc pcall tung cai + kiem tra ton tai truoc khi require. Mat 1 tinh nang phu
+-- (an hieu ung Death) con hon chet ca hub. KHONG hook error/warn nua de con thay loi.
+-- ==========================================================================
+pcall(function()
+    if not hookfunction then return end
+    local rs = game:GetService("ReplicatedStorage")
+    local eff = rs:FindFirstChild("Effect")
+    local cont = eff and eff:FindFirstChild("Container")
+    local death = cont and cont:FindFirstChild("Death")
+    if death and death:IsA("ModuleScript") then
+        local ok, mod = pcall(require, death)
+        if ok and type(mod) == "function" then
+            hookfunction(mod, function() end)
+        end
+    end
+end)
+
+pcall(function()
+    if not hookfunction then return end
+    local rs = game:GetService("ReplicatedStorage")
+    local gm = rs:FindFirstChild("GuideModule")   -- FindFirstChild: khong treo neu Update 30 da xoa
+    if gm and gm:IsA("ModuleScript") then
+        local ok, mod = pcall(require, gm)
+        if ok and type(mod) == "table" and type(mod.ChangeDisplayedNPC) == "function" then
+            hookfunction(mod.ChangeDisplayedNPC, function() end)
+        end
+    end
+end)
+
+-- [FIX UI-DEAD 2/3] KHONG hook error/warn nua. Hai dong do lam moi loi ve sau tro nen
+-- VO HINH -> ban gap "khong hien gi" ma khong co manh moi nao de sua. Muon tat notify
+-- thi dung toggle "Disable Notify" san co trong tab Settings.
+-- hookfunction(error, function() end)   -- DA TAT CO Y
+-- hookfunction(warn,  function() end)   -- DA TAT CO Y
 local Remotes = {
     RFJobsRemoteFunction = replicated.Modules.Net["RF/JobsRemoteFunction"], 
     RFCraft = replicated:WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RF/Craft")
@@ -1811,8 +1857,30 @@ QuestB = function()
 				}  
 			end
 
-local Quests = require(game:GetService("ReplicatedStorage"):WaitForChild("Quests"))
-local GuideModule = require(game:GetService("ReplicatedStorage"):WaitForChild("GuideModule"))
+-- [FIX UI-DEAD 3/3] 2 dong nay cung chay TRAN va cung dung WaitForChild KHONG TIMEOUT,
+-- ngay truoc doan tao UI. Neu Update 30 doi ten "Quests"/"GuideModule" thi WaitForChild
+-- TREO VO HAN (khong loi, khong UI - dung trieu chung cua ban), con require() loi thi
+-- chet ngang. Them timeout 10s + pcall: thieu module thi hub van len UI, chi rieng
+-- tinh nang quest tu dong bao thieu.
+local Quests, GuideModule
+do
+    local rs = game:GetService("ReplicatedStorage")
+    local okQ, resQ = pcall(function()
+        local m = rs:WaitForChild("Quests", 10)
+        return m and require(m)
+    end)
+    Quests = okQ and resQ or nil
+
+    local okG, resG = pcall(function()
+        local m = rs:WaitForChild("GuideModule", 10)
+        return m and require(m)
+    end)
+    GuideModule = okG and resG or nil
+
+    if not Quests or not GuideModule then
+        warn("[DIO] Thieu module game (Quests/GuideModule) - co the do Blox Fruits Update 30 doi cau truc. UI van chay, rieng phan Quest tu dong co the khong hoat dong.")
+    end
+end
 
 local blacklistquest = {
     "MarineQuest",
