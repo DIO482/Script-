@@ -4731,7 +4731,7 @@ Tabs.Settings:AddToggle({
 	Description = "", 
 	Default = false, 
 	Callback = function(Value) 
-	  Config["Bypass Teleport"] = Value
+	  Settings["Bypass Teleport"] = Value
 end
 }) 
 Tabs.Settings:AddToggle({
@@ -4739,7 +4739,7 @@ Tabs.Settings:AddToggle({
 	Description = "", -- [FIX-SYNTAX] thieu phau, loi san co trong ban user gui (chua compile qua)
 	Default = false, 
 	Callback = function(Value) 
-     Config["Up Y When Low Health"] = Value
+      Settings["Up Y When Low Health"] = Value
 end 
 }) 
 -- [FIX LAG] slider chỉnh độ trễ Fast Attack (giây) - thay cho Rate 0.000000002 cũ
