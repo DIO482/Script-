@@ -58,6 +58,52 @@ do
   Sec = 0.25 -- [FIX PERF 14] 0.1 -> 0.25 (doi chieu Bear Hub: da phan loop cua ho 1-5s, chi 12 loop 0.1s): 96 loop dung Sec giam 2.5x churn; farm re-target 4 lan/s la du (Bear Hub re-target tung frame van smooth)
   ClickState = 0
   Num_self = 25
+-- [BOOT-STAGE 1/2] Phan tich yeu cau user (LAN 29): vao game, 262 diem khoi loop (208 spawn +
+-- 54 task.spawn) chay DUNG LUOT -> gai lag dau game, allocation don sanh. user chot: nap 2 giai doan,
+-- ~1.5s dau nap 50%, them 2-3s nap not 100%. Cach lam: trong gio boot, spawn/task.spawn dua ham vao
+-- hang doi; driver phong theo lo (10 moi frame) de frame doan load van muot; sau 100% tra nguyen ban
+-- => toggle bat SAU khi load xong khong bi tre. Khong sua 262 diem goi, chi bac 1 tang.
+local __BS_q = {}
+local __BS_done = false
+local __BS_unpack = unpack or table.unpack
+local __BS_rawTaskSpawn, __BS_rawSpawn = task.spawn, spawn
+local function __BS_take(n)
+  __BS_rawTaskSpawn(function()
+    local sent = 0
+    while sent < n and #__BS_q > 0 do
+      local f = table.remove(__BS_q, 1)
+      __BS_rawTaskSpawn(f)
+      sent = sent + 1
+      if sent % 10 == 0 then task.wait() end
+    end
+  end)
+end
+task.spawn = function(f, ...)
+  if __BS_done then return __BS_rawTaskSpawn(f, ...) end
+  local args = table.pack and table.pack(...) or { ... }
+  local cnt = args.n or #args
+  table.insert(__BS_q, function() __BS_rawTaskSpawn(f, __BS_unpack(args, 1, cnt)) end)
+end
+spawn = function(f, ...)
+  if __BS_done then return __BS_rawSpawn(f, ...) end
+  local args = table.pack and table.pack(...) or { ... }
+  local cnt = args.n or #args
+  table.insert(__BS_q, function() __BS_rawSpawn(f, __BS_unpack(args, 1, cnt)) end)
+end
+__BS_rawTaskSpawn(function()
+  task.wait(1.5)
+  print("[DIO] Hub load: 50% (" .. math.ceil(#__BS_q / 2) .. "/" .. #__BS_q .. " loop) ...")
+  __BS_take(math.ceil(#__BS_q / 2))
+  task.wait(2.7)
+  print("[DIO] Hub load: 100%")
+  __BS_take(#__BS_q)
+  task.wait(0.1)
+  __BS_done = true
+  task.spawn = __BS_rawTaskSpawn
+  spawn = __BS_rawSpawn
+end)
+-- [BOOT-STAGE 2/2]
+
 end
 
 -- [FIX BOOT-RAMP 1/2] PHAN TICH (suy luan cua user + census 312 loop): hub load xong thi hang tram spawn-loop
@@ -3663,7 +3709,7 @@ spawn(function()
                     ["Baking Staff"] = true,
                     ["Head Baker"] = true
                 }  
-                if _G.AcceptQuest and not plr.PlayerGui.Main.Quest.Visible then  
+                if _G.AcceptQuestC and not plr.PlayerGui.Main.Quest.Visible then   -- [FIX WIRE-1] truoc doc _G.AcceptQuest (khong ai gan => nil, nhan nhiem vu khong bao gio chay); dung toggle that "Accept Quests" (_G.AcceptQuestC)
                     local questPos = CFrame.new(-1927.92, 37.80, -12842.54)  
                     TeleportConditional(hrp, questPos, TELEPORT_DISTANCE_THRESHOLD)  
                     if (hrp.Position - questPos.Position).Magnitude <= 40 then  
@@ -4731,7 +4777,7 @@ Tabs.Settings:AddToggle({
 	Description = "", 
 	Default = false, 
 	Callback = function(Value) 
-	  Settings["Bypass Teleport"] = Value
+	  Settings["Bypass Teleport"] = Value -- [FIX WIRE-2] hop nhat chinh tay user (bang that ten Settings, Config=nil index-loi)
 end
 }) 
 Tabs.Settings:AddToggle({
@@ -4739,7 +4785,7 @@ Tabs.Settings:AddToggle({
 	Description = "", -- [FIX-SYNTAX] thieu phau, loi san co trong ban user gui (chua compile qua)
 	Default = false, 
 	Callback = function(Value) 
-      Settings["Up Y When Low Health"] = Value
+     Settings["Up Y When Low Health"] = Value -- [FIX WIRE-2] hop nhat chinh tay user (bang that ten Settings, Config=nil index-loi)
 end 
 }) 
 -- [FIX LAG] slider chỉnh độ trễ Fast Attack (giây) - thay cho Rate 0.000000002 cũ
@@ -11627,7 +11673,7 @@ spawn(function()
             if _G.AimMethod and ABmethod == "Aim Player" then
                 local target = Players:FindFirstChild(getgenv().PlayersList)
                 if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-                    if target.Team ~= plr.Team then
+                    if (not _G.NoAimTeam or target.Team ~= plr.Team) then -- [FIX WIRE-4] truoc camdong luon bo dong doi => toggle "Ignore Same Teams" vo nghia; gio theo toggle
                         MousePos = target.Character.HumanoidRootPart.Position
                     end
                 end
@@ -11641,7 +11687,7 @@ spawn(function()
             if _G.AimMethod and ABmethod == "Nearest Aim" then
                 local MaxDistance = math.huge
                 for _, v in pairs(Players:GetPlayers()) do
-                    if v ~= plr and v.Team ~= plr.Team and v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
+                    if v ~= plr and (not _G.NoAimTeam or v.Team ~= plr.Team) and v.Character:FindFirstChild("HumanoidRootPart") then -- [FIX WIRE-4] truoc camdong luon bo dong doi => toggle vo nghia
                         local Distance = (v.Character.HumanoidRootPart.Position - plr.Character.HumanoidRootPart.Position).Magnitude
                         if Distance < MaxDistance then
                             MaxDistance = Distance
@@ -12861,7 +12907,7 @@ Callback = function(Value)
   if  _G.Rechat == true then
     local StarterGui = game:GetService('StarterGui')
     StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Chat, false)    
-  elseif _G.chat == false then
+  elseif _G.Rechat == false then -- [FIX WIRE-3] truoc doc _G.chat (khong ai gan) => tat toggle khong tra lai chat; doc dung flag cua chinh toggle
     local StarterGui = game:GetService('StarterGui')
     StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Chat, true)    
   end
