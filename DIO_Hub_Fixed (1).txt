@@ -549,23 +549,144 @@ weaponSc = function(weapon)
     end
   end 
 end
--- [FIX MODEFARM 1/2] Helper vi tri danh quai dung chung cho Attack.Kill/Kill2/KillSea (moi toggle farm di qua day).
--- Mode "Normal": cao do = slider "Farm Distance" (mac dinh 20; Fruit 10 / vu khi khac 30).
--- Mode "Obrit": quay vong tron QUANH MOB ban kinh = FarmDistance, cao 12, mat LUON huong ve mob;
--- goc quay theo tick() (0.8 rad/s ~ 1 vong/8s) nen on dinh bat ke tan so loop goi Kill.
-_G.ModeFarm = _G.ModeFarm or "Normal"
+-- ==========================================================================
+-- [MODEFARM v2] 3 MODE: Normal / Obrit / Dodge
+--
+-- PHAN BIET 2 KHAI NIEM TOC DO (dung nhu user noi, va truoc day BI GOP LAM MOT):
+--   * "Speed Tween"  (_G.TweenSpeed)  = toc do TWEEN NGUOI DI TU A -> B (di chuyen
+--                                       giua cac dao / den cho quai). Do la _tp().
+--   * "Orbit Speed"  (_G.OrbitSpeed)  = toc do BAY VONG TRON QUANH MOB. Hoan toan
+--                                       KHONG lien quan den tween.
+--
+-- LOI CU CUA OBRIT (ly do no cham va giat):
+--   __DIO_FarmPos tra ve 1 CFrame roi dua vao _tp() -> _tp TAO TWEEN. Nghia la:
+--     1) Vong tron bi gioi han boi TweenSpeed chu khong phai toc do quay.
+--     2) Ham Kill chi duoc goi 4 lan/giay (Sec=0.25) -> chi 4 diem moc/vong ->
+--        duong bay thanh hinh DA GIAC giat cuc, khong phai vong tron.
+--     3) Moi diem moc lai Cancel tween cu -> khong bao gio di het cung duong.
+--   => Goc quay 0.8 rad/s = 1 vong/7.8s, lai con bi tween keo lai. Rat cham.
+--
+-- CACH SUA: tach hE DIEU KHIEN VI TRI ra thanh MOT VONG RIENG chay MOI FRAME,
+-- ghi thang CFrame (khong tween). Ham Kill chi con nhiem vu DANG KY MUC TIEU.
+-- Nho vay Obrit/Dodge chay 60Hz muot, va toc do do chinh slider rieng quyet dinh.
+-- ==========================================================================
+-- Khai bao SOM: driver (ngay ben duoi) doc co nay, ma he DODGE Sea Beast lai
+-- dinh nghia mai dong ~1220. Doc bien global chua gan = nil (falsy) nen KHONG loi,
+-- nhung khai bao truoc cho ro rang va tranh nham lan khi doc code.
+__DIO_Dodging   = __DIO_Dodging or false
+_G.ModeFarm     = _G.ModeFarm or "Normal"
 _G.FarmDistance = _G.FarmDistance or 20
-__DIO_OrbitA = 0
-__DIO_FarmPos = function(modelCF, h, zOff, yawDeg)
-    if _G.ModeFarm == "Obrit" then
-        local r = math.max(tonumber(_G.FarmDistance) or 20, 10)
-        __DIO_OrbitA = (tick() * 0.8) % (math.pi * 2)
-        local px = modelCF.Position + Vector3.new(math.cos(__DIO_OrbitA) * r, 12, math.sin(__DIO_OrbitA) * r)
-        return CFrame.new(px, modelCF.Position)
+_G.OrbitSpeed   = _G.OrbitSpeed or 170   -- studs/giay tren duong tron (dat 170 theo y user)
+_G.OrbitHeight  = _G.OrbitHeight or 12   -- cao do khi bay vong
+
+__DIO_OrbitA   = 0      -- goc hien tai (radian) - tich luy theo dt, khong theo tick()
+__DIO_CurTarget = nil   -- model dang danh
+__DIO_TargetT  = 0      -- lan cuoi muc tieu duoc lam moi
+
+-- Kill/Kill2/KillSea goi ham nay moi nhip -> dang ky muc tieu cho driver.
+-- Tra ve:
+--   * Normal -> CFrame de _tp() tween nhu cu (giu nguyen hanh vi cu)
+--   * Obrit/Dodge -> nil  => _tp(nil) tu thoat ngay, KHONG tao tween.
+--     Driver ben duoi lo phan di chuyen. Day la mau chot lam Obrit muot.
+__DIO_FarmPos = function(model, h, zOff, yawDeg)
+    -- chap nhan ca model lan CFrame (an toan nguoc voi cho goi cu)
+    local mdl, modelCF
+    if typeof(model) == "CFrame" then
+        modelCF = model
+    else
+        mdl = model
+        local root = mdl and mdl:FindFirstChild("HumanoidRootPart")
+        if not root then return nil end
+        modelCF = root.CFrame
     end
+
+    local mode = _G.ModeFarm
+    if mode == "Obrit" or mode == "Dodge" then
+        if mdl then
+            __DIO_CurTarget = mdl
+            __DIO_TargetT = tick()
+        end
+        return nil -- driver xu ly, khong tween
+    end
+
+    -- Normal: giu nguyen cach cu
     local h2 = tonumber(_G.FarmDistance) or h
     return modelCF * CFrame.new(0, h2, zOff or 0) * CFrame.Angles(0, math.rad(yawDeg or 0), 0)
 end
+
+-- ==========================================================================
+-- [MODEFARM v2] DRIVER: vong DUY NHAT dieu khien vi tri cho Obrit + Dodge.
+-- Chay moi frame, ghi thang CFrame -> khong phu thuoc TweenSpeed.
+--
+--  * Obrit : bay vong tron quanh mob, ban kinh = Farm Distance, cao = Orbit Height.
+--            Van toc goc omega = OrbitSpeed / r  (doi studs/s -> rad/s) nen khi ban
+--            tang ban kinh, toc do dai giu nguyen dung nhu cam giac "bay nhanh".
+--  * Dodge : LUON dam sau lung quai. Sau lung = huong NGUOC LookVector cua mob.
+--            Khoang cach sau lung = Farm Distance. Bam moi frame nen quai xoay
+--            di dau nguoi bam theo do, KHONG co diem khoa co dinh.
+-- ==========================================================================
+task.spawn(function()
+    local lastT = tick()
+    while task.wait() do
+        local now = tick()
+        local dt = now - lastT
+        lastT = now
+
+        local mode = _G.ModeFarm
+        if (mode ~= "Obrit" and mode ~= "Dodge") or __DIO_Dodging then
+            -- khong o mode dieu khien, hoac dang ne don Sea Beast -> nhuong quyen
+        else
+            pcall(function()
+                local mdl = __DIO_CurTarget
+                -- muc tieu het han (Kill khong con lam moi trong 1.5s) hoac da chet
+                if not mdl or not mdl.Parent or (now - __DIO_TargetT) > 1.5 then
+                    __DIO_CurTarget = nil
+                    return
+                end
+                local hum = mdl:FindFirstChild("Humanoid")
+                local mroot = mdl:FindFirstChild("HumanoidRootPart")
+                if not mroot or (hum and hum.Health <= 0) then
+                    __DIO_CurTarget = nil
+                    return
+                end
+
+                local char = plr.Character
+                local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                if not hrp then return end
+
+                local mcf = mroot.CFrame
+                local dist = (mcf.Position - hrp.Position).Magnitude
+                -- O QUA XA: dung tween de tiep can (an toan hon ghi CFrame nhay 3000 studs),
+                -- driver chi tiep quan khi da vao vung gan.
+                if dist > 250 then
+                    _tp(mcf * CFrame.new(0, 20, 0))
+                    return
+                end
+
+                local goal
+                if mode == "Obrit" then
+                    local r = math.max(tonumber(_G.FarmDistance) or 20, 8)
+                    local spd = math.max(tonumber(_G.OrbitSpeed) or 170, 1)
+                    -- omega = v / r : giu TOC DO DAI = OrbitSpeed bat ke ban kinh
+                    __DIO_OrbitA = (__DIO_OrbitA + (spd / r) * dt) % (math.pi * 2)
+                    local hgt = tonumber(_G.OrbitHeight) or 12
+                    local px = mcf.Position + Vector3.new(
+                        math.cos(__DIO_OrbitA) * r, hgt, math.sin(__DIO_OrbitA) * r)
+                    goal = CFrame.new(px, mcf.Position) -- luon quay mat vao mob
+                else -- "Dodge": dam sau lung quai
+                    local d = math.max(tonumber(_G.FarmDistance) or 20, 3)
+                    -- Trong Roblox, mat quay theo -Z (LookVector). Sau lung = +Z noi bo.
+                    -- Dung toa do noi bo cua mob nen mob xoay -> diem nay xoay theo.
+                    goal = mcf * CFrame.new(0, 0, d)
+                    -- huong mat nguoi choi vao gay quai
+                    goal = CFrame.new(goal.Position, mcf.Position)
+                end
+
+                hrp.CFrame = goal
+            end)
+        end
+    end
+end)
 local Attack = {}
 	Attack.__index = Attack
 	Attack.Alive = function(model)
@@ -595,9 +716,9 @@ local Attack = {}
 			local Equipped = game.Players.LocalPlayer.Character:FindFirstChildOfClass("Tool")
 			local ToolTip = Equipped.ToolTip
 			if ToolTip == "Blox Fruit" then
-				_tp(__DIO_FarmPos(model.HumanoidRootPart.CFrame, 10, 0, 90)) -- [FIX MODEFARM] cao do/obrit theo slider
+				_tp(__DIO_FarmPos(model, 10, 0, 90)) -- [FIX MODEFARM] cao do/obrit theo slider
 			else
-				_tp(__DIO_FarmPos(model.HumanoidRootPart.CFrame, 30, 0, 180)) -- [FIX MODEFARM]
+				_tp(__DIO_FarmPos(model, 30, 0, 180)) -- [FIX MODEFARM]
 			end
 			if RandomCFrame then
 				wait(.5)
@@ -624,9 +745,9 @@ local Attack = {}
 			local Equipped = game.Players.LocalPlayer.Character:FindFirstChildOfClass("Tool")
 			local ToolTip = Equipped.ToolTip
 			if ToolTip == "Blox Fruit" then
-				_tp(__DIO_FarmPos(model.HumanoidRootPart.CFrame, 10, 0, 90)) -- [FIX MODEFARM] cao do/obrit theo slider
+				_tp(__DIO_FarmPos(model, 10, 0, 90)) -- [FIX MODEFARM] cao do/obrit theo slider
 			else
-				_tp(__DIO_FarmPos(model.HumanoidRootPart.CFrame, 30, 8, 180)) -- [FIX MODEFARM]
+				_tp(__DIO_FarmPos(model, 30, 8, 180)) -- [FIX MODEFARM]
 			end
 			if RandomCFrame then
 				wait(0.1)
@@ -653,7 +774,7 @@ local Attack = {}
 			local Equipped = game.Players.LocalPlayer.Character:FindFirstChildOfClass("Tool")
 			local ToolTip = Equipped.ToolTip
 			if ToolTip == "Blox Fruit" then
-				_tp(__DIO_FarmPos(model.HumanoidRootPart.CFrame, 10, 0, 90)) -- [FIX MODEFARM] cao do/obrit theo slider
+				_tp(__DIO_FarmPos(model, 10, 0, 90)) -- [FIX MODEFARM] cao do/obrit theo slider
 			else
 				notween(model.HumanoidRootPart.CFrame * CFrame.new(0, 50, 8))
 				wait(.85)
@@ -1038,6 +1159,113 @@ CheckLeviathan = function()
 end;
   return false
 end;
+
+-- ==========================================================================
+-- [DODGE] NE DON SEA BEAST + TERROR SHARK
+--
+-- NGUYEN LY: cac don danh cua Sea Beast / Terror Shark deu sinh ra PART tam thoi
+-- ngay duoi workspace._WorldOrigin (khong phai trong model quai). Phat hien part do
+-- xuat hien = don dang bay toi -> bay len 200Y de tranh -> don tan -> tween xuong danh tiep.
+--
+-- 2 ham detect duoi day dua tren logic user cung cap, co gia co them:
+--   (a) WorldOrigin lay MOT lan va cache (goc: bien toan cuc co the nil -> loi moi lan goi)
+--   (b) bo qua part khong con Parent (part vua bi Destroy giua chung vong lap)
+--   (c) GetChildren() thay vi GetDescendants() -> chi quet 1 cap, re, dung nhu ban goc
+-- ==========================================================================
+__DIO_WO = nil
+function __DIO_GetWorldOrigin()
+    if __DIO_WO and __DIO_WO.Parent then return __DIO_WO end
+    __DIO_WO = workspace:FindFirstChild("_WorldOrigin")
+    return __DIO_WO
+end
+
+-- Sea Beast: don cua no la part mau "Toothpaste" / "Institutional white", hoac dan "LightBullet"
+function __DIO_DodgeSeabeast()
+    local WorldOrigin = __DIO_GetWorldOrigin()
+    if not WorldOrigin then return false end
+    for _, v in ipairs(WorldOrigin:GetChildren()) do
+        if v:IsA("Part") then
+            local bc = v.BrickColor
+            if bc == BrickColor.new("Toothpaste")
+               or bc == BrickColor.new("Institutional white")
+               or v.Name:find("LightBullet") then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- Terror Shark: don la model ten chua "sharkslam" / "spin" / "chargemodel"
+function __DIO_TerrorDodge()
+    local WorldOrigin = __DIO_GetWorldOrigin()
+    if not WorldOrigin then return false end
+    for _, v in ipairs(WorldOrigin:GetChildren()) do
+        local name = v.Name:lower()
+        if name:find("sharkslam") or name:find("spin") or name:find("chargemodel") then
+            return true
+        end
+    end
+    return false
+end
+
+-- ==========================================================================
+-- [DODGE] VONG XU LY: phat hien -> bay 200Y -> cho don tan -> tra quyen dieu khien
+--
+-- THIET KE (quan trong, tranh 2 loi kinh dien):
+--  1) KHONG dung _tp() de bay len. _tp tao tween theo khoang cach; luc dang bi danh
+--     ta can THOAT NGAY. Dung ghi thang CFrame (notween/old_tp) = tuc thoi.
+--  2) Dung co __DIO_Dodging de vong farm bien BIET dang ne ma NGUNG tween xuong,
+--     neu khong 2 ben se giang co nhau: farm keo xuong / dodge keo len -> giat lien tuc.
+--  3) Giu do cao bang cach ghi lai CFrame moi frame trong luc ne (dan hoi do bi don
+--     day hoac trong luc keo xuong), thay vi bay 1 lan roi roi tu do.
+--  4) Sau khi don tan: cho them GRACE 0.35s (don co hitbox tre) roi moi tra quyen.
+-- ==========================================================================
+__DIO_Dodging = __DIO_Dodging or false
+_G.DodgeSeaBeast = true   -- co the tat qua toggle o tab Sea Event
+
+function __DIO_DoDodge(height)
+    height = height or 200
+    if __DIO_Dodging then return end
+    local char = plr.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    __DIO_Dodging = true
+
+    -- huy tween dang chay de farm khong keo nguoc xuong giua luc ne
+    pcall(function()
+        if __DIO_LastTween then __DIO_LastTween:Cancel() __DIO_LastTween = nil end
+    end)
+
+    local baseY = hrp.Position.Y + height
+    local t0 = tick()
+    -- giu tren cao chung nao con don, toi da 6s de khong ket vinh vien
+    repeat
+        local c = plr.Character
+        local h = c and c:FindFirstChild("HumanoidRootPart")
+        if not h then break end
+        h.CFrame = CFrame.new(h.Position.X, baseY, h.Position.Z)
+        task.wait()
+    until (not __DIO_DodgeSeabeast() and not __DIO_TerrorDodge()) or (tick() - t0) > 6
+
+    task.wait(0.35) -- grace: hitbox don con song them chut sau khi part bien mat
+    __DIO_Dodging = false
+end
+
+-- Watcher: chi chay khi dang bat mot trong cac toggle bien
+task.spawn(function()
+    while task.wait(0.05) do   -- 20Hz: du nhanh de bat don, re hon per-frame
+        if _G.DodgeSeaBeast and not __DIO_Dodging
+           and (_G.SeaBeast1 or _G.TerrorShark or _G.Leviathan1 or _G.Shark or _G.Piranha) then
+            pcall(function()
+                if __DIO_DodgeSeabeast() or __DIO_TerrorDodge() then
+                    __DIO_DoDodge(tonumber(_G.DodgeHeight) or 200)
+                end
+            end)
+        end
+    end
+end)
 UpdStFruit = function()
   for z,x in next, plr.Backpack:GetChildren() do
   StoreFruit = x:FindFirstChild("EatRemote", true)
@@ -1558,6 +1786,9 @@ function requestentrance(pos)
 end
 
 _tp = function(target)
+    -- [DODGE] Dang ne don thi KHONG cho bat ky vong farm nao keo nhan vat xuong.
+    -- Thieu chan nay: dodge keo len / farm keo xuong moi frame -> nhan vat giat va van an don.
+    if __DIO_Dodging then return end
     local gg
     if typeof(target) == "Vector3" then
         gg = CFrame.new(target)
@@ -1716,7 +1947,15 @@ AutoHaki = function()
 end
 
 TeleportToTarget = function(targetCFrame) if (targetCFrame.Position - plr.Character.HumanoidRootPart.Position).Magnitude > 1000 then _tp(targetCFrame)else _tp(targetCFrame)end end
-notween = function(p) plr.Character.HumanoidRootPart.CFrame = p end
+-- [DODGE] notween ghi thang CFrame nen KHONG di qua chot cua _tp.
+-- Attack.KillSea (Terror Shark) dung notween de lao xuong quai -> phai chan rieng,
+-- neu khong se keo nhan vat xuong dung luc dang ne. Them nil-guard luon.
+notween = function(p)
+    if __DIO_Dodging then return end
+    local c = plr.Character
+    local h = c and c:FindFirstChild("HumanoidRootPart")
+    if h then h.CFrame = p end
+end
 function BTP(p)
     local player = game.Players.LocalPlayer
     local humanoidRootPart = player.Character.HumanoidRootPart
@@ -5080,10 +5319,41 @@ end
 -- [FIX LAG] slider chỉnh độ trễ Fast Attack (giây) - thay cho Rate 0.000000002 cũ
 Tabs.Settings:AddDropdown({
     Name = "Mode Farm",
-    Options = {"Obrit", "Normal"},
+    Options = {"Normal", "Obrit", "Dodge"},
     Default = "Normal",
     Callback = function(Value)
-        _G.ModeFarm = Value -- Normal: dung tai cao do "Farm Distance"; Obrit: quay vong quanh mob ban kinh "Farm Distance"
+        _G.ModeFarm = Value
+        -- Normal : dung yen tren dau quai, cao do = "Farm Distance"  (di qua tween)
+        -- Obrit  : bay vong tron quanh quai, ban kinh = "Farm Distance",
+        --          toc do = "Orbit Speed" (KHONG lien quan "Speed Tween")
+        -- Dodge  : luon dam SAU LUNG quai, khoang cach = "Farm Distance";
+        --          quai xoay huong nao thi bam theo huong do, khong co diem khoa
+        __DIO_CurTarget = nil -- doi mode -> bo muc tieu cu de driver khong keo nham
+    end
+})
+
+-- [MODEFARM v2] Slider RIENG cho toc do bay vong - KHONG phai "Speed Tween".
+-- "Speed Tween"  = toc do di chuyen A->B (tween nguoi).
+-- "Orbit Speed"  = toc do chay tren duong tron quanh mob (studs/giay).
+Tabs.Settings:AddSlider({
+    Name = "Orbit Speed",
+    Min = 20,
+    Max = 600,
+    Default = 170,
+    Increment = 5,
+    Callback = function(Value)
+        _G.OrbitSpeed = math.clamp(math.floor(Value + 0.5), 20, 600)
+    end
+})
+
+Tabs.Settings:AddSlider({
+    Name = "Orbit Height",
+    Min = 0,
+    Max = 60,
+    Default = 12,
+    Increment = 1,
+    Callback = function(Value)
+        _G.OrbitHeight = math.clamp(math.floor(Value + 0.5), 0, 60)
     end
 })
 Tabs.Settings:AddSlider({
@@ -9693,6 +9963,26 @@ Default = false,
 Callback = function(Value)
   _G.Piranha = Value
 end})
+
+-- [DODGE] Toggle bat/tat + slider do cao ne don
+Tabs.SeaEvent:AddToggle({
+Name = "Dodge Sea Beast / Terror Shark",
+Description = "Bay len khi phat hien don, ha xuong danh tiep",
+Default = true,
+Callback = function(Value)
+  _G.DodgeSeaBeast = Value
+  if not Value then __DIO_Dodging = false end -- tat giua chung thi tra quyen dieu khien ngay
+end})
+
+Tabs.SeaEvent:AddSlider({
+    Name = "Dodge Height (Y)",
+    Min = 100,
+    Max = 400,
+    Default = 200,
+    Callback = function(Value)
+        _G.DodgeHeight = tonumber(Value) or 200
+    end
+})
 
 Tabs.SeaEvent:AddToggle({
 Name = "Auto Terror Shark", 
