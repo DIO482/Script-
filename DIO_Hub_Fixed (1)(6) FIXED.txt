@@ -592,11 +592,31 @@ task.spawn(function()
                     goal = CFrame.new(goal.Position, mcf.Position)
                 end
 
+                -- [FIX DODGE] Dong bo "block" (part ao nhan vat di theo qua OnFarm) ve dung
+                -- vi tri HRP moi frame khi driver dang dieu khien. Neu khong, vong OnFarm
+                -- thay HRP cach block cu <=200 stud la KEO nhan vat ve block cu = "dung im"
+                -- khong dung sau lung mob duoc o mode Dodge/Obrít.
                 hrp.CFrame = goal
+                if __DIO_Block and __DIO_Block.Parent == workspace then
+                    __DIO_Block.CFrame = goal
+                end
             end)
         end
     end
 end)
+
+-- [FIX DODGE/Obrít] Helper di chuyen den chan mob dung chung cho MOI farm loop.
+--   * Normal      : _tp() binh thuong (tween nhu cu).
+--   * Dodge/Obrít : KHONG tao tween - chi DANG KY muc tieu cho FRAME DRIVER o tren
+--                   (driver tu tiep can + dung sau lung / bay vong). Neu farm loop cung
+--                   goi _tp truc tiep toi tren dau mob thi driver va tween gianh nhau
+--                   moi frame = lai dung im / giat. Di chuyen "xuyen dao" (doi cho / den
+--                   khu xa) van dung _tp thuong vi khong lien quan vi tri quanh mob.
+__DIO_MobMove = function(mobCF)
+    local __m = _G.ModeFarm
+    if __m == "Dodge" or __m == "Obrit" then return end
+    _tp(mobCF)
+end
 local Attack = {}
 	Attack.__index = Attack
 	Attack.Alive = function(model)
@@ -1313,6 +1333,9 @@ block.Anchored = true
 block.CanCollide = false
 block.CanTouch = false
 block.Transparency = 1
+__DIO_Block = block  -- [FIX DODGE] alias global: driver (khai bao phia TREN noi nay)
+                     -- khong the doc local block, nen dung alias nay de dong bo block
+                     -- theo HRP o mode Dodge/Obrít.
 local blockfind = workspace:FindFirstChild(block.Name)
 -- [SPAM-1 KEEP] watcher per-frame chu dao (phan xa OnFarm ngay) - giu nguyen
 -- [FIX FPS-C] Vong nay chay MOI FRAME (60/s) vinh vien chi de copy 1 boolean sang OnFarm.
@@ -2803,6 +2826,7 @@ end)
 local alreadyTeleported = false
 local teleporting       = false
 local __DIO_LvlTryT     = 0   -- mốc thời gian lần thử travel Submerged gần nhất
+local __DIO_LvlQTryT    = 0   -- [FIX QUEST-STUCK] mốc lần StartQuest gần nhất (cooldown 8s)
 
 FarmLevel = Tabs.Main:AddToggle({
     Name = "Auto Farm Level",
@@ -2921,8 +2945,10 @@ task.spawn(function()
                 end
 
                 -- ====== C2) chưa có quest -> tới NPC nhận quest đúng cách ======
+
                 if not qGUI.Visible then
                     local PosQ = questData[6]  -- CFrame NPC giao quest (từ GetQuestPoint)
+                    local __qBlock = false  -- có chặn nhánh farm không (đang phải bay tới NPC)
                     if PosQ then
                         local far = (PosQ.Position - RootF.Position).Magnitude
                         -- [GHÉP BANANA] 4 cửa requestEntrance: tween băng biển/quá xa
@@ -2965,22 +2991,32 @@ task.spawn(function()
                             __DIO_wait(0.25)
                             _tp(PosQ)
                         end
-                        if (RootF.Position - PosQ.Position).Magnitude <= 50 then
-                            __DIO_wait(1)
+                        if (RootF.Position - PosQ.Position).Magnitude > 50 then
+                            -- đang bay tới NPC mà chưa kịp -> vòng sau tiếp tục tiếp cận
+                            __qBlock = true
+                        end
+                    end
+
+                    -- [FIX QUEST-STUCK - Update 30]
+                    -- Đã tới NPC (hoặc PosQ không có) -> StartQuest có COOLDOWN 8s (tránh spam
+                    -- remote khi Quest.Visible không bật). Xong KHÔNG return nữa: rơi xuống
+                    -- nhánh D để farm mob quest NGAY (nếu quest lỡ không hiện UI, vẫn farm +
+                    -- sẽ thử StartQuest lại sau 8s ở vòng sau — không bao giờ đứng im chỗ NPC).
+                    if not __qBlock then
+                        if tick() - __DIO_LvlQTryT > 8 then
+                            __DIO_LvlQTryT = tick()
                             pcall(function()
                                 replicated.Remotes.CommF_:InvokeServer("StartQuest", questData[3], questData[2])
                             end)
+                            __DIO_wait(1)
                         end
-                    else
-                        -- Không có toạ độ NPC (Guide chưa cập nhật): StartQuest trực tiếp
-                        -- như DIO cũ (hợp lệ khi đang đứng gần NPC sẵn).
-                        pcall(function()
-                            replicated.Remotes.CommF_:InvokeServer("StartQuest", questData[3], questData[2])
-                        end)
                     end
-                    return
+                    if __qBlock then
+                        return
+                    end
+                    -- chưa có quest rõ ràng -> farm trước; vòng sau nếu UI vẫn chưa hiện
+                    -- và đang ở gần NPC thì sẽ StartQuest lại (sau cooldown) hoặc nhận quest mới.
                 end
-
                 -- ====== D) có quest -> đánh quái GẦN NHẤT đúng loại ======
                 -- Dọn ghost list đầu mỗi iteration (xoá mob đã chết) để skip-list không phình.
                 pcall(__DIO_GhostClean)
@@ -2999,7 +3035,9 @@ task.spawn(function()
                         local tr = target:FindFirstChild("HumanoidRootPart")
                         if not th or not tr then break end
                         if th.Health <= 0 then break end
-                        _tp(tr.CFrame * CFrame.new(0, 20, 0))
+                        -- [FIX DODGE] Normal = tween nhu cu; Dodge/Obrít = chi dang ky DRIVER
+                        -- (dung __DIO_MobMove thay _tp truc tiep de khong gianh CFrame voi driver)
+                        __DIO_MobMove(tr.CFrame * CFrame.new(0, 20, 0))
                         Attack.Kill(target, _G.Level)
                         if not qGUI.Visible then break end  -- đủ số kill -> quest tự tắt
                         -- [GHOST 3s skill / 6s chuyển bãi] __DIO_GhostCheck tự lo bắn skill
@@ -4156,6 +4194,7 @@ local __DIO_CAKE_MOBS = {  -- lookup O(1), không dựng bảng mới mỗi vòn
     ["Head Baker"] = true
 }
 __DIO_CakeBoss = nil
+__DIO_CakeQuestT = 0   -- [FIX QUEST-STUCK] moc lan StartQuest banh gan nhat (cooldown)
 
 task.spawn(function()
     while __DIO_wait(1) do  -- vòng ngoài poll 1s: lúc rảnh (không mob) chỉ quét 1 lần/s
@@ -4204,9 +4243,11 @@ task.spawn(function()
                                 __DIO_CakeBoss = nil
                                 break
                             end
-                            -- [FPS] chỉ _tp khi boss xa > 40 studs; gần rồi FastAttack lo dame
+                            -- [FPS] chỉ di chuyen khi boss xa > 40 studs; gần rồi FastAttack lo dame
                             if (bro2.Position - hr2.Position).Magnitude > 40 then
-                                _tp(bro2.CFrame * CFrame.new(0, 25, 0))
+                                -- [FIX DODGE] Normal = tween; Dodge/Obrít = chi dang ky DRIVER
+                                -- (Kill2 ben duoi cung dang ky -> driver tu bay den + dung sau lung)
+                                __DIO_MobMove(bro2.CFrame * CFrame.new(0, 25, 0))
                             end
                             Attack.Kill2(boss, true)
                             -- [GHOST 3s skill / 6s bỏ] boss ghost cũng bị check như mob thường
@@ -4233,25 +4274,10 @@ task.spawn(function()
                     return
                 end
 
-                -- ====== Nhận quest bánh (nếu bật "Accept Quests") ======
-                -- [FIX XUNG ĐỘT] dùng đúng _G.AcceptQuestC (toggle dưới set biến này)
-                if _G.AcceptQuestC and not plr.PlayerGui.Main.Quest.Visible then
-                    if (__DIO_CakeQuestCF.Position - hrp.Position).Magnitude > 40 then
-                        TeleportConditional(hrp, __DIO_CakeQuestCF, TELEPORT_DISTANCE_THRESHOLD)
-                        return
-                    end
-                    local q = {
-                        { "StartQuest", "CakeQuest2", 2 },
-                        { "StartQuest", "CakeQuest2", 1 },
-                        { "StartQuest", "CakeQuest1", 1 },
-                        { "StartQuest", "CakeQuest1", 2 }
-                    }
-                    replicated.Remotes.CommF_:InvokeServer(unpack(q[math.random(1, 4)]))
-                    __DIO_wait(1)
-                    return
-                end
-
                 -- ====== Farm mob bánh GẦN NHẤT (bỏ qua ghost) ======
+                -- [FIX QUEST-STUCK] nhan quest KHONG nam o day (o day chi farm): neu dat truoc
+                -- ma return, Blox Fruits Update 30 lam Quest.Visible khong bat -> DUNG IM tai NPC.
+                -- Viec xin quest chuyen xuong nhánh RẢNH phia duoi (chỉ khi khong co mob/boss).
                 local bestMob, bestD = nil, math.huge
                 for _, mob in ipairs(enemies:GetChildren()) do
                     if __DIO_CAKE_MOBS[mob.Name] and not __DIO_IsGhost(mob) then
@@ -4288,8 +4314,40 @@ task.spawn(function()
                     return
                 end
 
-                -- ====== Không còn mob: đứng gần khu chờ mob respawn ======
-                TeleportConditional(hrp, __DIO_CakeQuestCF, TELEPORT_DISTANCE_THRESHOLD)
+                -- ============================================================
+                -- Không còn mob / boss / cổng -> RẢNH: xin quest (nếu bật) + chờ spawn
+                -- [FIX QUEST-STUCK] nhận quest đặt ở nhánh RẢNH NÀY, không bao giờ chặn farm:
+                --   * boss / portal / mob luôn được ưu tiên xử lý ở các nhánh phía trên.
+                --   * Sau StartQuest KHÔNG return ngu tại NPC (chỉ nhích đi + đứng chờ).
+                --   * Cooldown 6s/lần: nếu Update 30 làm Quest.Visible không bật lên thì
+                --     không spam remote StartQuest, và farm mob vẫn chạy bình thường.
+                -- ============================================================
+                if _G.AcceptQuestC then
+                    -- [nil-safe] không giả định PlayerGui.Main.Quest có sẵn (Update 30 có thể đổi UI)
+                    local __qm = plr.PlayerGui:FindFirstChild("Main")
+                    __qm = __qm and __qm:FindFirstChild("Quest")
+                    if not (__qm and __qm.Visible) then
+                        -- chưa thấy quest -> xin quest khi đang đứng gần NPC (chỉ khi rảnh)
+                        if (__DIO_CakeQuestCF.Position - hrp.Position).Magnitude > 40 then
+                            TeleportConditional(hrp, __DIO_CakeQuestCF, TELEPORT_DISTANCE_THRESHOLD)
+                            return
+                        end
+                        if tick() - __DIO_CakeQuestT > 6 then
+                            __DIO_CakeQuestT = tick()
+                            local q = {
+                                { "StartQuest", "CakeQuest2", 2 },
+                                { "StartQuest", "CakeQuest2", 1 },
+                                { "StartQuest", "CakeQuest1", 1 },
+                                { "StartQuest", "CakeQuest1", 2 }
+                            }
+                            replicated.Remotes.CommF_:InvokeServer(unpack(q[math.random(1, 4)]))
+                            __DIO_wait(1)
+                        end
+                        -- không return: rơi xuống chờ spawn (tránh đứng chụm ngay chân NPC)
+                    end
+                end
+                -- đứng gần khu chờ mob respawn (lé 12 studs, không đứng ngay chân NPC)
+                TeleportConditional(hrp, __DIO_CakeQuestCF * CFrame.new(0, 0, 12), TELEPORT_DISTANCE_THRESHOLD)
             end)
         end
     end
@@ -4487,22 +4545,25 @@ Tabs.Main:AddSection("Farming Bone")
 -- ============================================================================
 -- Logic giữ từ Banana: GetClosestMob chọn quái GẦN NHẤT trong 4 loại bone mob,
 -- đánh TRỌN con đó tới chết rồi mới chuyển; chỉ khi "vỡ hết quái" mới bay về bãi
--- chờ respawn (không bay lung tung như bản DIO đầu). AntiFall giữ nhân vật không
--- lơ lửng rơi xuống (khu Haunted Castle trên cao).
+-- chờ respawn (không bay lung tung). AntiFall giữ nhân vật không rơi khỏi khu
+-- Haunted Castle trên cao.
 --
 -- CƠ CHẾ GHOST MOB (chi tiết ở khối __DIO_Ghost* phía trên):
 --   __DIO_GhostCheck được gọi sau mỗi Attack.Kill:
 --     * >= 3s không gây được sát thương -> tự bắn SKILL Z/X/C phá ghost;
---     * >= 6s vẫn không đổi HP -> đánh dấu SKIP VĨNH VIỄN + break; loop CHUYỂN BÃI:
---       bay về điểm chờ cao (-9495, 453, 5977) để khu vực reset, vòng sau tìm quái
---       khác (quái ở khu cũ bị skip vẫn nằm trong __DIO_GhostSkip nên không trúng lại).
+--     * >= 6s vẫn không đổi HP -> đánh dấu SKIP VĨNH VIỄN + break; loop CHUYỂN BÃI
+--       (bay về điểm chờ cao -9495,453,5977 cho khu reset; vòng sau GetClosestBoneMob
+--       bỏ qua con đã skip -> không dính ghost cũ).
 --
--- FIX XUNG ĐỘT FILE: đổi tên toggle "Accept Quests" của bone thành "Accept Bone
--- Quests" (trước đây trùng key save-settings với 2 toggle cùng tên khác -> bật cái
--- này sau khi hop tự bật cả cái kia).
+-- [FIX QUEST-STUCK - Update 30] Blox Fruits Update 30 làm Quest.Visible đôi khi
+-- không bật lên sau StartQuest. Sắp xếp LẠI thứ tự để KHÔNG BAO GIỜ đứng im chỗ NPC:
+--   A) CÓ MOB  -> FARM NGAY (quest là chuyện phụ, làm lúc rảnh).
+--   B) KHÔNG MOB -> mới xin quest: xuống NPC 1 lần -> StartQuest (cooldown 6s)
+--      -> lập tức quay lên bãi chờ. Giữa 2 lần thử KHÔNG bay xuống lại (hết flapping).
+--
+-- FIX XUNG ĐỘT FILE: toggle đổi tên thành "Accept Bone Quests" (trước đây trùng tên
+-- "Accept Quests" với 2 toggle khác -> trùng key save-settings, bật cái này kéo cái kia).
 -- ============================================================================
--- [FIX FARM BONE - GHÉP LOGIC BANANA] khối dưới GIỮ LOGIC BANANA: quái gần nhất,
--- đánh xong mới chuyển, anti-fall giữ người trên không, ghost 3s skill / 6s bỏ.
 Tabs.Main:AddToggle({
     Name = "Auto Farm Bone",
     Description = "",
@@ -4522,9 +4583,10 @@ local __DIO_BoneMobs = {
 }
 local __DIO_BoneNpcCF = CFrame.new(-9516.99, 172.01, 6078.46)    -- NPC nhận quest bone
 local __DIO_BoneSpawn = CFrame.new(-9495.68, 453.58, 5977.34)    -- bãi chờ / chuyển bãi
+__DIO_BoneQuestT = 0   -- [FIX QUEST-STUCK] mốc lần StartQuest bone gần nhất (cooldown 6s)
 
 spawn(function()
-    while __DIO_wait(1) do  -- poll 1s (DIO): rảnh thì rất nhẹ; lúc đánh có vòng trong 0.25s
+    while __DIO_wait(1) do  -- poll 1s: rảnh thì rất nhẹ; lúc đánh có vòng trong 0.25s
         if _G.AutoFarm_Bone then
             pcall(function()
                 local char = plr.Character
@@ -4543,25 +4605,6 @@ spawn(function()
                 local mainGui = plr.PlayerGui:FindFirstChild("Main")
                 local QuestUI = mainGui and mainGui:FindFirstChild("Quest")
 
-                -- ====== BƯỚC 1: cần quest & chưa có -> tới NPC nhận quest ======
-                if _G.AcceptQuestB and QuestUI and not QuestUI.Visible then
-                    if (__DIO_BoneNpcCF.Position - hrp.Position).Magnitude > 5 then
-                        _tp(__DIO_BoneNpcCF)
-                    else
-                        __DIO_wait(0.5)
-                        local quests = {
-                            { "StartQuest", "HauntedQuest1", 1 },
-                            { "StartQuest", "HauntedQuest1", 2 },
-                            { "StartQuest", "HauntedQuest2", 1 },
-                            { "StartQuest", "HauntedQuest2", 2 }
-                        }
-                        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(quests[math.random(1, #quests)]))
-                        __DIO_wait(1)
-                    end
-                    return
-                end
-
-                -- ====== BƯỚC 2: đã có quest (hoặc không muốn quest) -> farm ======
                 -- [GHOST] dọn ref chết mỗi vòng để skip-list không phình
                 pcall(__DIO_GhostClean)
 
@@ -4587,12 +4630,18 @@ spawn(function()
                 end
 
                 local mob = GetClosestBoneMob(hrp.Position)
+
+                -- ============================================================
+                -- A) CÓ MOB -> FARM NGAY (KHÔNG chờ quest)
+                -- [FIX QUEST-STUCK] ưu tiên farm trước. Bản cũ: nhánh "xin quest" đứng
+                -- trước rồi return -> nếu Quest.Visible không bật (Update 30) nhân vật
+                -- ĐỨNG IM chỗ NPC mãi không farm. Giờ mob có là farm trước, quest làm lúc rảnh.
+                -- ============================================================
                 if mob then
-                    -- [FIX BONE] DIO cũ: đánh 1 nhát rồi thoát ra vòng ngoài (1/s).
-                    -- Fix: vòng trong bám sát tới khi mob chết + ghost fix 3s skill/6s bỏ.
+                    -- vòng trong bám sát tới khi mob chết + ghost fix 3s skill / 6s bỏ.
                     EquipWeapon(_G.SelectWeapon)
-                    local mr = mob:FindFirstChild("HumanoidRootPart")
-                    if mr then _tp(mr.CFrame * CFrame.new(0, 5, 0)) end
+                    local mr0 = mob:FindFirstChild("HumanoidRootPart")
+                    if mr0 then __DIO_MobMove(mr0.CFrame * CFrame.new(0, 5, 0)) end
                     repeat
                         __DIO_wait(Sec)
                         if not _G.AutoFarm_Bone then break end
@@ -4600,18 +4649,49 @@ spawn(function()
                         local th = mob:FindFirstChild("Humanoid")
                         local tr = mob:FindFirstChild("HumanoidRootPart")
                         if not th or not tr or th.Health <= 0 then break end
-                        _tp(tr.CFrame * CFrame.new(0, 5, 0))
+                        -- [FIX DODGE] Normal = tween nhu cu; Dodge/Obrít = chi dang ky DRIVER
+                        __DIO_MobMove(tr.CFrame * CFrame.new(0, 5, 0))
                         Attack.Kill(mob, _G.AutoFarm_Bone)
                         -- [GHOST 3s skill / 6s chuyển bãi]
                         if __DIO_GhostCheck(mob) then
-                            -- mob ghost 6s: bay về bãi chờ cao cho khu reset, vòng sau
-                            -- GetClosestBoneMob sẽ bỏ qua con này (skip) -> bãi khác
-                            _tp(__DIO_BoneSpawn)
+                            _tp(__DIO_BoneSpawn)   -- đổi bãi chờ cao, vòng sau bỏ qua con ghost
                             break
                         end
                     until not _G.AutoFarm_Bone or not mob.Parent
                        or (mob:FindFirstChild("Humanoid") and mob.Humanoid.Health <= 0)
                     return
+                end
+
+                -- ============================================================
+                -- B) KHÔNG CÒN MOB -> RẢNH: xin quest (nếu bật) rồi về bãi chờ
+                -- Cooldown chung 6s cho CẢ bước xuống NPC lẫn StartQuest: giữa 2 lần thử
+                -- nhân vật đứng yên tại bãi, không bay xuống/xuống nữa = hết flapping.
+                -- ============================================================
+                if _G.AcceptQuestB and QuestUI and not QuestUI.Visible then
+                    local npcD = (__DIO_BoneNpcCF.Position - hrp.Position).Magnitude
+                    if npcD <= 10 then
+                        -- đang đứng cạnh NPC -> thử xin quest nếu hết cooldown
+                        if tick() - __DIO_BoneQuestT > 6 then
+                            __DIO_BoneQuestT = tick()
+                            local quests = {
+                                { "StartQuest", "HauntedQuest1", 1 },
+                                { "StartQuest", "HauntedQuest1", 2 },
+                                { "StartQuest", "HauntedQuest2", 1 },
+                                { "StartQuest", "HauntedQuest2", 2 }
+                            }
+                            __SVC_RS.Remotes.CommF_:InvokeServer(unpack(quests[math.random(1, #quests)]))
+                            __DIO_wait(1)
+                        end
+                        -- quay lên bãi chờ cao NGAY (không ngu dưới NPC)
+                        if (__DIO_BoneSpawn.Position - hrp.Position).Magnitude > 10 then
+                            _tp(__DIO_BoneSpawn)
+                        end
+                        return
+                    elseif tick() - __DIO_BoneQuestT > 6 then
+                        _tp(__DIO_BoneNpcCF)   -- xuống NPC xin quest (chỉ khi hết cooldown)
+                        return
+                    end
+                    -- cooldown chưa hết -> đứng nguyên bãi, không flapping
                 end
 
                 -- Không còn mob sống -> về bãi chờ mob respawn
