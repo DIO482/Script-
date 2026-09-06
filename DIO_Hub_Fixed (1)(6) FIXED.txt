@@ -10351,6 +10351,10 @@ spawn(function()
     local __prevSpy = nil -- [FIX PERF 31] SetDesc chi khi gia tri DOI (ui khong ve lai voi cung chuoi)
     while __DIO_wait(1.5) do -- [FIX FPS 2] 0.2s -> 1.5s: giam remote InfoLeviathan khi treo
         pcall(function()
+            -- [FIX FROZEN-FLY] Gate remote: chi goi InfoLeviathan khi dang "Auto Find Frozen
+            -- Dimension" bat. Truoc day loop nay goi remote VO DIEU KIEN moi 1.5s ca khi khong
+            -- lam gi (nguon "chay remote lien tuc") -> gio 0 remote khi khong can.
+            if not _G.FrozenDimension then return end
             local spycheck = string.match(replicated.Remotes.CommF_:InvokeServer("InfoLeviathan", "1"), "%d+")
             if spycheck then 
                 local __v = "Spy Leviathan : " .. (tonumber(spycheck) == 5 and "Already Done!!" or tostring(spycheck))
@@ -10376,6 +10380,21 @@ Tabs.SeaEvent:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.FrozenDimension = Value
+    end
+})
+
+-- [FIX FROZEN-FLY] Dropdown chon che do bay khi Find Frozen / tim Leviathan.
+--  * "Y = 300 if have Sea event" = che do cu: dò quái bien (TerrorShark/SeaBeast/FishBoat/PGB)
+--    de bay cao 300 khi co sea event, ha ~150 khi khong (dò quái duoc throttle 1.2s).
+--  * "Y = 160" = che do nhe: boat LUON giu do cao 160, KHONG chay logic dò quái bien
+--    (khong scan Enemies/SeaBeasts lien tuc -> het nguyen nhan lag khi chi can fly).
+FrozenFlyMode = Tabs.SeaEvent:AddDropdown({
+    Name = "Fly Mode Frozen",
+    Description = "Y = 300 if have Sea event / Y = 160 luon giu do cao",
+    Options = {"Y = 300 if have Sea event", "Y = 160"},
+    Default = "Y = 160",
+    Callback = function(Value)
+        _G.FrozenFlyMode = Value
     end
 })
 
@@ -10456,6 +10475,8 @@ task.spawn(function()
                         flyingActive = true
                         local isIslandSpawned = false
                         local lastIslandScan = 0
+                        local __frozenDanger = false -- [FIX FROZEN-FLY] cache do quai bien (throttle 1.2s)
+                        local __frozenDangerT = 0
 
                         pcall(function()
                             repeat
@@ -10472,11 +10493,25 @@ task.spawn(function()
 
                                 stabilizer.CFrame = CFrame.new(root.Position, Vector3.new(-10000000, root.Position.Y, 37016.25))
 
-                                local targetY = 150
-                                if CheckTerrorShark or CheckSeaBeast or CheckEnemiesBoat then
-                                    if (CheckTerrorShark and CheckTerrorShark()) or (CheckSeaBeast and CheckSeaBeast()) or (CheckEnemiesBoat and CheckEnemiesBoat()) then
-                                        targetY = 300
+                                -- [FIX FROZEN-FLY] chon do cao bay theo che do:
+                                local targetY
+                                if _G.FrozenFlyMode ~= "Y = 160" then
+                                    -- che do "Y = 300 if have Sea event": do quai bien NHUNG throttle
+                                    -- 1.2s (truoc day mo do moi 0.45s -> scan Enemies/SeaBeasts lien tuc,
+                                    -- chinh la thu nghiem "chay remote/lap nhieu" gay lag).
+                                    if tick() - __frozenDangerT >= 1.2 then
+                                        __frozenDangerT = tick()
+                                        __frozenDanger = false
+                                        if CheckTerrorShark and CheckTerrorShark() then __frozenDanger = true
+                                        elseif CheckSeaBeast and CheckSeaBeast() then __frozenDanger = true
+                                        elseif CheckEnemiesBoat and CheckEnemiesBoat() then __frozenDanger = true
+                                        elseif CheckPirateGrandBrigade and CheckPirateGrandBrigade() then __frozenDanger = true end
                                     end
+                                    targetY = __frozenDanger and 300 or 150
+                                else
+                                    -- che do "Y = 160": thuyen LUON giu 160, khong can do quai bien
+                                    -- (0 lan scan) -> toi uu nhat khi chi can fly tim Frozen/Leviathan.
+                                    targetY = 160
                                 end
 
                                 local newY = root.Position.Y + (targetY - root.Position.Y) * 0.3
