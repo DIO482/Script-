@@ -1206,8 +1206,25 @@ end
 
 -- Watcher: chi chay khi dang bat mot trong cac toggle bien
 task.spawn(function()
-    while task.wait(0.05) do   -- 20Hz: du nhanh de bat don, re hon per-frame
-        if _G.DodgeSeaBeast and not __DIO_Dodging
+    while task.wait(0.1) do   -- [FIX FPS-SEA-4] 20Hz -> 10Hz (0.05): moi nhịp quet _WorldOrigin 2 lan
+        -- [FIX FPS-SEA-4] early-gate RE: neu KHONG co con quai bien nao dang song thi khong can
+        -- quet _WorldOrigin tim dan. Kiem tra 2 container con (SeaBeasts + Enemies) truoc.
+        local __has = false
+        local __sb = workspace:FindFirstChild("SeaBeasts")
+        if __sb and #__sb:GetChildren() > 0 then __has = true end
+        if not __has then
+            local __en = workspace:FindFirstChild("Enemies")
+            if __en then
+                for ___, __e in pairs(__en:GetChildren()) do
+                    local __n = __e.Name
+                    if __n == "Terrorshark" or __n == "FishBoat" or __n == "PirateBrigade" or __n == "PirateGrandBrigade" then
+                        __has = true
+                        break
+                    end
+                end
+            end
+        end
+        if _G.DodgeSeaBeast and not __DIO_Dodging and __has
            and (_G.SeaBeast1 or _G.TerrorShark or _G.Leviathan1 or _G.Shark or _G.Piranha) then
             pcall(function()
                 if __DIO_DodgeSeabeast() or __DIO_TerrorDodge() then
@@ -1856,6 +1873,20 @@ _tp = function(target)
     end
     
     local distance = (gg.Position - rootPart.Position).Magnitude
+    -- [FIX FPS-SEA-1] (yeu cau user: Find Leviathan/Prehis/Kitsune bay thuyen ~10 phut tut FPS)
+    -- Dedupe: neu tween dang PLAYING toi ~cung diem (<60 stud, moi <0.6s) thi BO QUA, khong
+    -- huy+tao lai. Cac loop bay/di thuyen gui _tp lien tuc ve CUNG 1 target moi 0.15-0.25s
+    -- -> truoc day moi lan tao 1 tween moi roi huy -> churn TweenService + watcher cancel
+    -- chong nhau, CPU tang tu tu theo phut. Gio chi 1 tween tru truot tiep.
+    do
+        local __cur = __DIO_LastTween
+        if __cur and __cur.PlaybackState == Enum.PlaybackState.Playing
+           and __DIO_LastTweenTarget and tick() - (__DIO_LastTweenT or 0) < 0.6 then
+            if (gg.Position - __DIO_LastTweenTarget.Position).Magnitude <= 60 then
+                return
+            end
+        end
+    end
     -- [FIXED] tốc độ tween đọc từ slider "Speed Tween" (bản cũ fix cứng 300)
     local __speed = tonumber(_G.TweenSpeed) or 300
     local __humTween = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
@@ -1896,6 +1927,8 @@ _tp = function(target)
     
     tween:Play()    
     __DIO_LastTween = tween -- [FIX FPS 1] luu de lan _tp ke tiep huy dung
+    __DIO_LastTweenTarget = gg -- [FIX FPS-SEA-1] luu target + thoi diem de dedupe
+    __DIO_LastTweenT = tick()
     
     -- [FIX FPS-B] NGUON DROP FPS SO 2: moi lan _tp SPAWN 1 COROUTINE MOI chi de canh shouldTween.
     -- Farm goi _tp ~4 lan/s -> 4 thread moi/giay, moi thread song het do dai tween va tu wake
@@ -1909,10 +1942,18 @@ _tp = function(target)
                 __DIO_wait(0.1)
                 local tw = __DIO_LastTween
                 if tw and not shouldTween then
-                    pcall(function()
-                        if tw.PlaybackState == Enum.PlaybackState.Playing then tw:Cancel() end
-                    end)
-                    __DIO_LastTween = nil
+                    -- [FIX FPS-SEA-2] KHONG cancel tween khi nhan vat dang NGOI THUYEN
+                    -- (_tp luc ngoi thuyen = dieu thuyen di tim Leviathan/Prehis/Kitsune).
+                    -- Truoc day watcher cancel 0.1s sau moi _tp -> loop phai tao tween moi
+                    -- 4-7 lan/s de "bay" duoc, churn nang, FPS tut tu tu theo phut.
+                    local __cNow = plr and plr.Character
+                    local __hNow = __cNow and __cNow:FindFirstChildOfClass("Humanoid")
+                    if not (__hNow and __hNow.Sit) then
+                        pcall(function()
+                            if tw.PlaybackState == Enum.PlaybackState.Playing then tw:Cancel() end
+                        end)
+                        __DIO_LastTween = nil
+                    end
                 end
             end
         end)
@@ -8949,7 +8990,7 @@ spawn(function()
 	    if tostring(plr.Data.Race.Value) == "Fishman" then
 	      if GetSeaBeastTrial() then            
             repeat __DIO_wait(Sec)
-              spawn(function()_tp(CFrame.new(GetSeaBeastTrial().HumanoidRootPart.Position.X,__SVC_WS.Map["WaterBase-Plane"].Position.Y + 300,GetSeaBeastTrial().HumanoidRootPart.Position.Z))end)
+              _tp(CFrame.new(GetSeaBeastTrial().HumanoidRootPart.Position.X,__SVC_WS.Map["WaterBase-Plane"].Position.Y + 300,GetSeaBeastTrial().HumanoidRootPart.Position.Z))
 		      MousePos = GetSeaBeastTrial().HumanoidRootPart.Position
               Useskills("Melee","Z")
 	          Useskills("Melee","X")
@@ -9151,7 +9192,7 @@ spawn(function()
           elseif x == 2 then
             if workspace.Map.Waterfall.IslandModel:FindFirstChild("Meshes/bambootree", true) then
               repeat __DIO_wait(0.25)                
-                spawn(function() _tp(workspace.Map.Waterfall.IslandModel:FindFirstChild("Meshes/bambootree", true).CFrame * CFrame.new(4,0,0)) end)
+                _tp(workspace.Map.Waterfall.IslandModel:FindFirstChild("Meshes/bambootree", true).CFrame * CFrame.new(4,0,0))
                 if (workspace.Map.Waterfall.IslandModel:FindFirstChild("Meshes/bambootree", true).Position - Root.Position).Magnitude <= 200 then
                 MousePos = workspace.Map.Waterfall.IslandModel:FindFirstChild("Meshes/bambootree", true).Position
                 Useskills("Melee","Z")
@@ -9191,7 +9232,7 @@ spawn(function()
   end
 end)
 
-Tabs.Prehistoric:AddSection("Drago Trial")
+Tabs.Prehistoric:AddSection("Draco Trial")
 GetQuestDracoLevel = function()
   local v371 = {[1] = {NPC = "Dragon Wizard",Command = "Upgrade"}};
   return replicated.Modules.Net:FindFirstChild("RF/InteractDragonQuest"):InvokeServer(unpack(v371))
@@ -9916,17 +9957,17 @@ Tabs.SeaEvent:AddToggle({
     end
 })
 spawn(function()
-    while __DIO_wait(1) do -- [FIX PERF 62] 0.5 -> 1 (yeu cau user: uu tien FPS; vong poll gated nen logic khong time-out)
+    local __ccPrev = false
+    while __DIO_wait(1) do -- [FIX PERF 62] chi quet GetDescendants khi trang thai DOI
         pcall(function()
             if #__SVC_WS.Boats:GetChildren() == 0 then return end
+            local __any = getgenv().NoClipShip or getgenv().FindPrehistoric
+            if __any == __ccPrev then return end
+            __ccPrev = __any
             for i, boat in pairs(__SVC_WS.Boats:GetChildren()) do
                 for _, v in pairs(boat:GetDescendants()) do
-                    if v:IsA("BasePart") then
-                        if getgenv().NoClipShip or getgenv().FindPrehistoric then
-                            v.CanCollide = false
-                        else
-                            v.CanCollide = true
-                        end
+                    if v:IsA("BasePart") and (__any and v.CanCollide or (not __any and not v.CanCollide)) then
+                        v.CanCollide = not __any
                     end
                 end
             end
@@ -9937,7 +9978,7 @@ Tabs.SeaEvent:AddSlider({
     Name = "Boat Speed Tween",
     Min = 1,
     Max = 300,
-    Default = 225,
+    Default = 165,
     Increment = 1,
     Callback = function(Value)
         -- [FIXED] đã nối function: tốc độ tween riêng khi đang NGỒI THUYỀN (_tp đọc _G.BoatTweenSpeed)
@@ -9945,112 +9986,6 @@ Tabs.SeaEvent:AddSlider({
         _G.BoatTweenSpeed = math.clamp(math.floor(Value + 0.5), 1, 300)
     end
 }) -- [FIXED] function đã thêm
-Tabs.SeaEvent:AddSection("Crafting Items")
-
-
-Tabs.SeaEvent:AddButton({
-Name = "Craft SharkTooth", 
-Description = "",
-Callback = function()
-        local args = {
-            [1] = "CraftItem",
-            [2] = "Craft",
-            [3] = "SharkTooth"
-        }
-        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
-    end
-})
-
-Tabs.SeaEvent:AddButton({
-Name = "Craft TerrorJaw", 
-Description = "",
-Callback = function()
-        local args = {
-            [1] = "CraftItem",
-            [2] = "Craft",
-            [3] = "TerrorJaw"
-        }
-        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
-    end
-})
-
-Tabs.SeaEvent:AddButton({
-Name = "Craft SharkAnchor", 
-Description = "",
-Callback = function()
-        local args = {
-            [1] = "CraftItem",
-            [2] = "Craft",
-            [3] = "SharkAnchor"
-        }
-        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
-    end
-})
-
-Tabs.SeaEvent:AddButton({
-Name = "Craft LeviathanCrown", 
-Description = "",
-Callback = function()
-        local args = {
-            [1] = "CraftItem",
-            [2] = "Craft",
-            [3] = "LeviathanCrown"
-        }
-        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
-    end
-})
- 
-Tabs.SeaEvent:AddButton({
-Name = "Craft LeviathanShield", 
-Description = "",
-Callback = function()
-        local args = {
-            [1] = "CraftItem",
-            [2] = "Craft",
-            [3] = "LeviathanShield"
-        }
-        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
-    end
-})
-
-Tabs.SeaEvent:AddButton({
-Name = "Craft LeviathanBoat", 
-Description = "",
-Callback = function()
-        local args = {
-            [1] = "CraftItem",
-            [2] = "Craft",
-            [3] = "LeviathanBoat"
-        }
-        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
-    end
-})
-
-Tabs.SeaEvent:AddButton({
-Name = "Craft LegendaryScroll", 
-Description = "",
-Callback = function()
-        local args = {
-            [1] = "CraftItem",
-            [2] = "Craft",
-            [3] = "LegendaryScroll"
-        }
-        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
-    end
-})
-
-Tabs.SeaEvent:AddButton({
-Name = "Craft MythicalScroll", 
-Description = "",
-Callback = function()
-        local args = {
-            [1] = "CraftItem",
-            [2] = "Craft",
-            [3] = "MythicalScroll"
-        }
-        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
-    end
-})
 Tabs.SeaEvent:AddSection("Choose Sea Event")
 
 Q = Tabs.SeaEvent:AddDropdown({
@@ -10117,9 +10052,24 @@ spawn(function()
     end
   end
 end)
-spawn(function()while __DIO_wait(0.5)do pcall(function() -- [FIX PERF 11] Sec(0.1) -> 0.5 + khong co thuyen thi bo qua: truoc day quet GetDescendants TAT CA thuyen 10 lan/s VA ghi CanCollide=true len moi part ke ca khi tat het toggle
-if #workspace.Boats:GetChildren() == 0 then return end
-for a,b in pairs(workspace.Boats:GetChildren())do for c,d in pairs(workspace.Boats[b.Name]:GetDescendants())do if d:IsA("BasePart")then if _G.SailBoats or _G.Prehis_Find or _G.FindMirage or _G.FrozenDimension or _G.SailBoat_Hydra or _G.AutofindKitIs then d.CanCollide=false else d.CanCollide=true end end end end end)end end)
+spawn(function()
+    local __ccPrev = false -- false = dang CanCollide=true, chua can quet lai
+    while __DIO_wait(0.5) do
+        pcall(function() -- [FIX PERF 11] khong quet GetDescendants lien tuc: chi quet khi trang thai DOI
+            if #workspace.Boats:GetChildren() == 0 then return end
+            local __any = _G.SailBoats or _G.Prehis_Find or _G.FindMirage or _G.FrozenDimension or _G.SailBoat_Hydra or _G.AutofindKitIs
+            if __any == __ccPrev then return end -- trang thai khong doi -> bo qua (0 scan)
+            __ccPrev = __any
+            for a,b in pairs(workspace.Boats:GetChildren()) do
+                for c,d in pairs(workspace.Boats[b.Name]:GetDescendants()) do
+                    if d:IsA("BasePart") and (__any and d.CanCollide or (not __any and not d.CanCollide)) then
+                        d.CanCollide = not __any
+                    end
+                end
+            end
+        end)
+    end
+end)
 
 Tabs.SeaEvent:AddSection("Entity Sea Event")
 
@@ -10215,10 +10165,10 @@ spawn(function()
       if _G.Piranha then local a={"Piranha"}if CheckPiranha()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) Attack.Kill(c,_G.Piranha)until _G.Piranha==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
       if _G.MobCrew then local a={"Fish Crew Member"}if CheckFishCrew()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) Attack.Kill(c,_G.MobCrew)until _G.MobCrew==false or not c.Parent or c.Humanoid.Health<=0 end end end end end                 
       if _G.HCM then local a={"Haunted Crew Member"}if CheckHauntedCrew()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) Attack.Kill(c,_G.HCM)until _G.HCM==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
-      if _G.SeaBeast1 then if workspace.SeaBeasts:FindFirstChild("SeaBeast1")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)spawn(function()_tp(CFrame.new(b.HumanoidRootPart.Position.X,__SVC_WS.Map["WaterBase-Plane"].Position.Y+200,b.HumanoidRootPart.Position.Z))end)if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then AitSeaSkill_Custom=b.HumanoidRootPart.CFrame;MousePos=AitSeaSkill_Custom.Position;if CheckF()then weaponSc("Blox Fruit")Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")else Useskills("Melee","Z")Useskills("Melee","X")Useskills("Melee","C")wait(.1)Useskills("Sword","Z")Useskills("Sword","X")wait(.1)Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")wait(.1)Useskills("Gun","Z")Useskills("Gun","X")end end until _G.SeaBeast1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
-      if _G.Leviathan1 then if workspace.SeaBeasts:FindFirstChild("Leviathan")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Leviathan Segment")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)spawn(function()_tp(CFrame.new(b.HumanoidRootPart.Position.X,__SVC_WS.Map["WaterBase-Plane"].Position.Y+200,b.HumanoidRootPart.Position.Z))end)if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then MousePos=b:FindFirstChild("Leviathan Segment").Position;if CheckF()then weaponSc("Blox Fruit")Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")else Useskills("Melee","Z")Useskills("Melee","X")Useskills("Melee","C")wait(.1)Useskills("Sword","Z")Useskills("Sword","X")wait(.1)Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")wait(.1)Useskills("Gun","Z")Useskills("Gun","X")end end until _G.Leviathan1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
-      if _G.FishBoat then if CheckEnemiesBoat()then for a,b in pairs(workspace.Enemies:GetChildren())do if b:FindFirstChild("Health")and b.Health.Value>0 and b:FindFirstChild("VehicleSeat")then repeat __DIO_wait(0.25)spawn(function()if b.Name=="FishBoat"then _tp(b.Engine.CFrame*CFrame.new(0,-50,-25))end end)if plr:DistanceFromCharacter(b.Engine.CFrame.Position)<=150 then AitSeaSkill_Custom=b.Engine.CFrame;MousePos=AitSeaSkill_Custom.Position;if CheckF()then weaponSc("Blox Fruit")Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")else Useskills("Melee","Z")Useskills("Melee","X")Useskills("Melee","C")wait(.1)Useskills("Sword","Z")Useskills("Sword","X")wait(.1)Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")wait(.1)Useskills("Gun","Z")Useskills("Gun","X")end end until _G.FishBoat==false or not b:FindFirstChild("VehicleSeat")or b.Health.Value<=0 end end end end
-      if _G.PGB then if CheckPirateGrandBrigade()then for a,b in pairs(workspace.Enemies:GetChildren())do if b:FindFirstChild("Health")and b.Health.Value>0 and b:FindFirstChild("VehicleSeat")then repeat __DIO_wait(0.25)spawn(function()if b.Name=="PirateBrigade"then _tp(b.Engine.CFrame*CFrame.new(0,-30,-10))elseif b.Name=="PirateGrandBrigade"then _tp(b.Engine.CFrame*CFrame.new(0,-50,-50))end end)if plr:DistanceFromCharacter(b.Engine.CFrame.Position)<=150 then AitSeaSkill_Custom=b.Engine.CFrame;MousePos=AitSeaSkill_Custom.Position;if CheckF()then weaponSc("Blox Fruit")Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")else Useskills("Melee","Z")Useskills("Melee","X")Useskills("Melee","C")wait(.1)Useskills("Sword","Z")Useskills("Sword","X")wait(.1)Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")wait(.1)Useskills("Gun","Z")Useskills("Gun","X")end end until _G.PGB==false or not b:FindFirstChild("VehicleSeat")or b.Health.Value<=0 end end end end
+      if _G.SeaBeast1 then if workspace.SeaBeasts:FindFirstChild("SeaBeast1")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)_tp(CFrame.new(b.HumanoidRootPart.Position.X,__SVC_WS.Map["WaterBase-Plane"].Position.Y+200,b.HumanoidRootPart.Position.Z))if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then AitSeaSkill_Custom=b.HumanoidRootPart.CFrame;MousePos=AitSeaSkill_Custom.Position;if CheckF()then weaponSc("Blox Fruit")Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")else Useskills("Melee","Z")Useskills("Melee","X")Useskills("Melee","C")wait(.1)Useskills("Sword","Z")Useskills("Sword","X")wait(.1)Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")wait(.1)Useskills("Gun","Z")Useskills("Gun","X")end end until _G.SeaBeast1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
+      if _G.Leviathan1 then if workspace.SeaBeasts:FindFirstChild("Leviathan")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Leviathan Segment")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)_tp(CFrame.new(b.HumanoidRootPart.Position.X,__SVC_WS.Map["WaterBase-Plane"].Position.Y+200,b.HumanoidRootPart.Position.Z))if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then MousePos=b:FindFirstChild("Leviathan Segment").Position;if CheckF()then weaponSc("Blox Fruit")Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")else Useskills("Melee","Z")Useskills("Melee","X")Useskills("Melee","C")wait(.1)Useskills("Sword","Z")Useskills("Sword","X")wait(.1)Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")wait(.1)Useskills("Gun","Z")Useskills("Gun","X")end end until _G.Leviathan1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
+      if _G.FishBoat then if CheckEnemiesBoat()then for a,b in pairs(workspace.Enemies:GetChildren())do if b:FindFirstChild("Health")and b.Health.Value>0 and b:FindFirstChild("VehicleSeat")then repeat __DIO_wait(0.25)if b.Name=="FishBoat"then _tp(b.Engine.CFrame*CFrame.new(0,-50,-25))endif plr:DistanceFromCharacter(b.Engine.CFrame.Position)<=150 then AitSeaSkill_Custom=b.Engine.CFrame;MousePos=AitSeaSkill_Custom.Position;if CheckF()then weaponSc("Blox Fruit")Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")else Useskills("Melee","Z")Useskills("Melee","X")Useskills("Melee","C")wait(.1)Useskills("Sword","Z")Useskills("Sword","X")wait(.1)Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")wait(.1)Useskills("Gun","Z")Useskills("Gun","X")end end until _G.FishBoat==false or not b:FindFirstChild("VehicleSeat")or b.Health.Value<=0 end end end end
+      if _G.PGB then if CheckPirateGrandBrigade()then for a,b in pairs(workspace.Enemies:GetChildren())do if b:FindFirstChild("Health")and b.Health.Value>0 and b:FindFirstChild("VehicleSeat")then repeat __DIO_wait(0.25)if b.Name=="PirateBrigade"then _tp(b.Engine.CFrame*CFrame.new(0,-30,-10))elseif b.Name=="PirateGrandBrigade"then _tp(b.Engine.CFrame*CFrame.new(0,-50,-50))endif plr:DistanceFromCharacter(b.Engine.CFrame.Position)<=150 then AitSeaSkill_Custom=b.Engine.CFrame;MousePos=AitSeaSkill_Custom.Position;if CheckF()then weaponSc("Blox Fruit")Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")else Useskills("Melee","Z")Useskills("Melee","X")Useskills("Melee","C")wait(.1)Useskills("Sword","Z")Useskills("Sword","X")wait(.1)Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")wait(.1)Useskills("Gun","Z")Useskills("Gun","X")end end until _G.PGB==false or not b:FindFirstChild("VehicleSeat")or b.Health.Value<=0 end end end end
     end)
   end
 end)
@@ -10463,7 +10413,7 @@ task.spawn(function()
 
                         pcall(function()
                             repeat
-                                __DIO_wait(0.15) 
+                                __DIO_wait(0.45) -- [FIX FPS-SEA-3] 0.15 -> 0.45: giam churn stabilizer/root.CFrame khi treo tim Leviathan/Frozen
 
                                 if not _G.FrozenDimension then break end
                                 if not plr.Character or not plr.Character:FindFirstChild("HumanoidRootPart") then break end
@@ -13409,20 +13359,110 @@ Callback = function()
   replicated.Remotes.CommF_:InvokeServer("CyborgTrainer"," Buy")
 end})
 
-Tabs.Shop:AddButton({
-    Name = "Buy Draco Race",
-    Callback = function()
-        task.spawn(function() -- [FIX FLYBUSY-BTN 2/2] 3 bug 1 cho: (1) _tp bi stomper Cancel -> repeat-wait cho vo tan = treo UI + khong mua; (2) repeat block UI (bai hoc PERF 66); (3) nguong <1 stud. Gio: bay qua busy-wrapper, den noi (<=3) moi invoke
-            if __DIO_FlyTo(CFrame.new(5814.42724609375, 1208.3267822265625, 884.5785522460938), 3) then
-                local args = {
-                    [1] = {
-                        ["NPC"] = "Dragon Wizard",
-                        ["Command"] = "DragonRace"
-                    }
-                }
-                __SVC_RS.Modules.Net:FindFirstChild("RF/InteractDragonQuest"):InvokeServer(unpack(args))
-            end
-        end)
+Tabs.SeaEvent:AddSection("Crafting Items")
+
+
+Tabs.SeaEvent:AddButton({
+Name = "Craft SharkTooth", 
+Description = "",
+Callback = function()
+        local args = {
+            [1] = "CraftItem",
+            [2] = "Craft",
+            [3] = "SharkTooth"
+        }
+        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
+    end
+})
+
+Tabs.SeaEvent:AddButton({
+Name = "Craft TerrorJaw", 
+Description = "",
+Callback = function()
+        local args = {
+            [1] = "CraftItem",
+            [2] = "Craft",
+            [3] = "TerrorJaw"
+        }
+        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
+    end
+})
+
+Tabs.SeaEvent:AddButton({
+Name = "Craft SharkAnchor", 
+Description = "",
+Callback = function()
+        local args = {
+            [1] = "CraftItem",
+            [2] = "Craft",
+            [3] = "SharkAnchor"
+        }
+        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
+    end
+})
+
+Tabs.SeaEvent:AddButton({
+Name = "Craft LeviathanCrown", 
+Description = "",
+Callback = function()
+        local args = {
+            [1] = "CraftItem",
+            [2] = "Craft",
+            [3] = "LeviathanCrown"
+        }
+        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
+    end
+})
+ 
+Tabs.SeaEvent:AddButton({
+Name = "Craft LeviathanShield", 
+Description = "",
+Callback = function()
+        local args = {
+            [1] = "CraftItem",
+            [2] = "Craft",
+            [3] = "LeviathanShield"
+        }
+        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
+    end
+})
+
+Tabs.SeaEvent:AddButton({
+Name = "Craft LeviathanBoat", 
+Description = "",
+Callback = function()
+        local args = {
+            [1] = "CraftItem",
+            [2] = "Craft",
+            [3] = "LeviathanBoat"
+        }
+        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
+    end
+})
+
+Tabs.SeaEvent:AddButton({
+Name = "Craft LegendaryScroll", 
+Description = "",
+Callback = function()
+        local args = {
+            [1] = "CraftItem",
+            [2] = "Craft",
+            [3] = "LegendaryScroll"
+        }
+        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
+    end
+})
+
+Tabs.SeaEvent:AddButton({
+Name = "Craft MythicalScroll", 
+Description = "",
+Callback = function()
+        local args = {
+            [1] = "CraftItem",
+            [2] = "Craft",
+            [3] = "MythicalScroll"
+        }
+        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
     end
 })
 
@@ -13961,6 +14001,14 @@ FastAttackModule.Enabled = true
 local __FA_attackEvent, __FA_hitEvent
 __FA_GetTargets = function(playerPos)
     local targets = {}
+    -- [FIX FPS-SEA-5] khi dang NGOI THUYEN (Sit) thi khong can fast-attack tool: bo qua ngay,
+    -- khong quet Enemies 33 lan/s trong luc lai thuyen di tim Leviathan/Prehis/Kitsune (nguon
+    -- CPU tich luy khi server dong: list Enemies rat dai ma quet mai 75-stud radius rong).
+    local __cFA = plr.Character
+    local __hFA = __cFA and __cFA:FindFirstChildOfClass("Humanoid")
+    if not __cFA or not __hFA or __hFA.Sit or __hFA.Health <= 0 then
+        return targets
+    end
     local enemies = workspace.Enemies:GetChildren()
     for i = 1, #enemies do
         local enemy = enemies[i]
