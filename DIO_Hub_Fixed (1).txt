@@ -1,5 +1,41 @@
-local RunService = game:GetService("RunService")
-local Stats = game:GetService("Stats")
+-- ==========================================================================
+-- [LUA OPT] CACHE GLOBAL -> LOCAL (upvalue)
+--
+-- TAI SAO: trong Lua/Luau, doc mot GLOBAL (vd `tick`, `workspace`, `math`) la mot
+-- phep tra bang _ENV: hash key roi lay gia tri. Doc mot LOCAL/upvalue chi la doc
+-- 1 o thanh ghi -> nhanh hon dang ke. Hub nay co ~230 vong lap goi tick()/math/
+-- Vector3 lien tuc, nen khoan cache nay an ngay tren hot path.
+--
+-- Ngoai ra `game:GetService(...)` duoc goi lap: ReplicatedStorage 58 lan,
+-- Players 27, Workspace 22. Moi lan la mot lenh goi method + tra cuu chuoi.
+-- Gan mot lan vao local o day, phia sau dung lai.
+--
+-- LUU Y: chi cache thu KHONG DOI. Khong cache Character/HumanoidRootPart vi
+-- chung thay doi moi lan respawn.
+-- ==========================================================================
+-- QUAN TRONG - GIOI HAN CUA LUA: mot ham chi duoc co toi da 200 local.
+-- File goc DA GAN SAT tran nay, nen o day chi cache nhung thu THUC SU duoc dung
+-- nhieu tren hot path. Da thu cache them math_*/string_*/Vector3_new... nhung chung
+-- khong duoc dung lai o dau ca -> chi ton slot local va lam file vuot 200 -> loi
+-- bien dich "main function has more than 200 local variables". Da bo.
+local tick = tick   -- dung 55 lan trong cac vong lap dinh gio -> dang cache nhat
+
+-- Service cache: goi GetService MOT lan duy nhat cho ca file.
+local __SVC_RS   = game:GetService("ReplicatedStorage")
+local __SVC_PLR  = game:GetService("Players")
+local __SVC_WS   = game:GetService("Workspace")
+local __SVC_TP   = game:GetService("TeleportService")
+local __SVC_HTTP = game:GetService("HttpService")
+local __SVC_CS   = game:GetService("CollectionService")
+local __SVC_RUN  = game:GetService("RunService")
+local __SVC_TWN  = game:GetService("TweenService")
+local __SVC_VU   = game:GetService("VirtualUser")
+local __SVC_VIM  = game:GetService("VirtualInputManager")
+local __SVC_STAT = game:GetService("Stats")
+local __SVC_LIGHT= game:GetService("Lighting")
+
+local RunService = __SVC_RUN
+local Stats = __SVC_STAT
 
 local fpsGui = Instance.new("ScreenGui", game.CoreGui)
 fpsGui.Name = "FPS_Display_80"
@@ -32,25 +68,25 @@ do
   ply = game.Players
   plr = ply.LocalPlayer 
   -- [FIX UI-DEAD 4/4] MIN NO SOM NHAT (dong ~34, truoc ca hookfunction):
-  -- plr.Character.HumanoidRootPart va plr.Data.Level.Value doc TRUC TIEP khong cho doi.
+  -- plr.Character.HumanoidRootPart va __DIO_Level() doc TRUC TIEP khong cho doi.
   -- Neu inject luc nhan vat CHUA load xong (rat hay gap sau update vi game load cham hon),
   -- ca 2 dong nay nem "attempt to index nil" -> script chet ngay truoc khi ve UI.
   -- Cho tu te thay vi gia dinh da co san.
   if not plr.Character then plr.CharacterAdded:Wait() end
   Root = plr.Character:WaitForChild("HumanoidRootPart", 30)
-  replicated = game:GetService("ReplicatedStorage")
+  replicated = __SVC_RS
   local __data = plr:WaitForChild("Data", 30)
   local __lvl = __data and __data:FindFirstChild("Level")
   Lv = __lvl and __lvl.Value or 0
-  TeleportService = game:GetService("TeleportService")
-  TW = game:GetService("TweenService")
-  Lighting = game:GetService("Lighting")
+  TeleportService = __SVC_TP
+  TW = __SVC_TWN
+  Lighting = __SVC_LIGHT
   Enemies = workspace:WaitForChild("Enemies", 30) -- [FIX UI-DEAD] khong gia dinh Enemies da co
-  vim1 = game:GetService("VirtualInputManager")
-  vim2 = game:GetService("VirtualUser")
+  vim1 = __SVC_VIM
+  vim2 = __SVC_VU
   TeamSelf = plr.Team
-  RunSer = game:GetService("RunService")
-  Stats = game:GetService("Stats")
+  RunSer = __SVC_RUN
+  Stats = __SVC_STAT
   local __en = plr.Character:FindFirstChild("Energy") -- [FIX UI-DEAD] cung loai min: Energy co the chua ton tai
   Energy = __en and __en.Value or 0
   BringConnections = {}
@@ -127,7 +163,7 @@ _G.SaveData = _G.SaveData or {}
 SaveSettings = function()
     if not writefile then return false end
     local ok = pcall(function()
-        writefile(SaveFileName, game:GetService("HttpService"):JSONEncode(_G.SaveData))
+        writefile(SaveFileName, __SVC_HTTP:JSONEncode(_G.SaveData))
     end)
     return ok
 end
@@ -135,7 +171,7 @@ end
 LoadSettings = function()
     if not (isfile and isfile(SaveFileName)) then return false end
     local ok, data = pcall(function()
-        return game:GetService("HttpService"):JSONDecode(readfile(SaveFileName))
+        return __SVC_HTTP:JSONDecode(readfile(SaveFileName))
     end)
     if ok and type(data) == "table" then
         _G.SaveData = data
@@ -169,6 +205,96 @@ if loading then
         task.wait() 
     until not loading.Visible
 end
+-- ==========================================================================
+-- [U30 COMPAT] LOP TRUY CAP AN TOAN - dat SOM de moi phan phia sau dung duoc.
+--
+-- Blox Fruits Update 30 (phat hanh 05/09/2026) co "Revamped QOL/UI/HUD" + rework
+-- toan bo Sea 1 + level cap 2800 -> 3000. Hub dang dung 37 cho path CUNG
+-- "plr.PlayerGui.Main.Quest" va 7 cho "plr.Data.Level.Value" doc TRUC TIEP.
+-- Chi can U30 doi ten/di chuyen 1 node la NEM LOI -> pcall nuot -> farm dung im
+-- khong bao loi (dung trieu chung auto farm level chet).
+--
+-- 3 helper duoi day tra ve nil an toan thay vi nem loi, va TU DO tim UI quest o
+-- cac vi tri moi neu path cu khong con.
+-- ==========================================================================
+__DIO_QuestUICache = nil
+function __DIO_GetQuestUI()
+    -- cache con song thi dung lai (tranh quet UI moi lan goi)
+    if __DIO_QuestUICache and __DIO_QuestUICache.Parent then return __DIO_QuestUICache end
+    local pg = plr:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    -- (1) path co dien
+    local m = pg:FindFirstChild("Main")
+    local q = m and m:FindFirstChild("Quest")
+    -- (2) U30 co the doi ten container HUD -> quet cac ScreenGui tim con ten "Quest"
+    if not q then
+        for _, gui in ipairs(pg:GetChildren()) do
+            if gui:IsA("ScreenGui") then
+                local cand = gui:FindFirstChild("Quest")
+                if cand then q = cand break end
+            end
+        end
+    end
+    -- (3) van khong thay -> tim sau hon 1 cap (HUD moi hay long them 1 frame)
+    if not q then
+        for _, gui in ipairs(pg:GetChildren()) do
+            if gui:IsA("ScreenGui") then
+                local cand = gui:FindFirstChild("Quest", true)
+                if cand and cand:IsA("GuiObject") then q = cand break end
+            end
+        end
+    end
+    __DIO_QuestUICache = q
+    return q
+end
+
+function __DIO_QuestVisible()
+    local q = __DIO_GetQuestUI()
+    return (q ~= nil) and q.Visible == true
+end
+
+function __DIO_QuestTitle()
+    local q = __DIO_GetQuestUI()
+    if not q or not q.Visible then return "" end
+    -- path cu: Quest.Container.QuestTitle.Title.Text
+    local c = q:FindFirstChild("Container")
+    local t = c and c:FindFirstChild("QuestTitle")
+    local title = t and t:FindFirstChild("Title")
+    if title and title:IsA("TextLabel") then return title.Text end
+    -- fallback U30: lay TextLabel dau tien co chu (cau truc HUD moi)
+    for _, d in ipairs(q:GetDescendants()) do
+        if d:IsA("TextLabel") and d.Text ~= "" then return d.Text end
+    end
+    return ""
+end
+
+-- [U30 FIX 11] Cac node HUD KHAC ngoai Quest cung doc path cung "plr.PlayerGui.Main.X".
+-- Update 30 "Revamped QOL/UI/HUD" co the doi/di chuyen bat ky node nao trong so nay.
+-- Truoc: node mat -> "attempt to index nil" -> pcall nuot -> tinh nang chet im.
+-- Sau: tra nil an toan, caller tu kiem tra.
+function __DIO_HUD(name)
+    local pg = plr:FindFirstChild("PlayerGui")
+    local m = pg and pg:FindFirstChild("Main")
+    local n = m and m:FindFirstChild(name)
+    if n then return n end
+    -- fallback: quet cac ScreenGui khac (U30 co the tach HUD ra gui rieng)
+    if pg then
+        for _, gui in ipairs(pg:GetChildren()) do
+            if gui:IsA("ScreenGui") then
+                local c = gui:FindFirstChild(name, true)
+                if c then return c end
+            end
+        end
+    end
+    return nil
+end
+
+function __DIO_Level()
+    local d = plr:FindFirstChild("Data")
+    local l = d and d:FindFirstChild("Level")
+    return (l and l.Value) or 0
+end
+
 World1 = game.PlaceId == 2753915549 or game.PlaceId == 85211729168715
 World2 = game.PlaceId == 4442272183 or game.PlaceId == 79091703265657
 World3 = game.PlaceId == 7449423635 or game.PlaceId == 100117331123089
@@ -375,7 +501,7 @@ local PosMsList = {
 -- ==========================================================================
 pcall(function()
     if not hookfunction then return end
-    local rs = game:GetService("ReplicatedStorage")
+    local rs = __SVC_RS
     local eff = rs:FindFirstChild("Effect")
     local cont = eff and eff:FindFirstChild("Container")
     local death = cont and cont:FindFirstChild("Death")
@@ -389,7 +515,7 @@ end)
 
 pcall(function()
     if not hookfunction then return end
-    local rs = game:GetService("ReplicatedStorage")
+    local rs = __SVC_RS
     local gm = rs:FindFirstChild("GuideModule")   -- FindFirstChild: khong treo neu Update 30 da xoa
     if gm and gm:IsA("ModuleScript") then
         local ok, mod = pcall(require, gm)
@@ -619,7 +745,7 @@ statsSetings = function(Num, value)
     end
   end
 end
-local TweenService = game:GetService("TweenService")
+local TweenService = __SVC_TWN
 local TweenInfoBring = TweenInfo.new(0.45, Enum.EasingStyle.Linear) -- [FIX PERF 15] 0.3 -> 0.45 (thong so Bear Hub): tween dai hon thi it bi goi lai thi giua chung
 
 _G.BringRange = _G.BringRange or 180 -- [USER-EDIT] chinh tay user tu ban 99999: 300 -> 180 (giam VFX/FPS khi farm)
@@ -942,12 +1068,12 @@ DropFruits = function()
   for _,v3 in next, plr.Backpack:GetChildren() do
     if string.find(v3.Name, "Fruit") then
       EquipWeapon(v3.Name) wait(.1)
-      if plr.PlayerGui.Main.Dialogue.Visible == true then plr.PlayerGui.Main.Dialogue.Visible = false end EquipWeapon(v3.Name) plr.Character:FindFirstChild(v3.Name).EatRemote:InvokeServer("Drop")
+      do local __dlg = __DIO_HUD("Dialogue") if __dlg and __dlg.Visible then __dlg.Visible = false end end EquipWeapon(v3.Name) plr.Character:FindFirstChild(v3.Name).EatRemote:InvokeServer("Drop")
     end
   end
   for a,b2 in pairs(plr.Character:GetChildren()) do
     if string.find(b2.Name, "Fruit") then EquipWeapon(b2.Name) wait(.1)
-    if plr.PlayerGui.Main.Dialogue.Visible == true then plr.PlayerGui.Main.Dialogue.Visible = false end EquipWeapon(b2.Name) plr.Character:FindFirstChild(b2.Name).EatRemote:InvokeServer("Drop")
+    do local __dlg = __DIO_HUD("Dialogue") if __dlg and __dlg.Visible then __dlg.Visible = false end end EquipWeapon(b2.Name) plr.Character:FindFirstChild(b2.Name).EatRemote:InvokeServer("Drop")
     end
   end
 end
@@ -1115,11 +1241,11 @@ task.spawn(function()
     end
 end)
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ReplicatedStorage = __SVC_RS
 local CommF = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
-local TweenService = game:GetService("TweenService")
-local RunService = game:GetService("RunService")
-local Players = game:GetService("Players")
+local TweenService = __SVC_TWN
+local RunService = __SVC_RUN
+local Players = __SVC_PLR
 local LocalPlayer = Players.LocalPlayer
 
 sea1 = (game.PlaceId == 2753915549 or game.PlaceId == 85211729168715)
@@ -1529,7 +1655,7 @@ _tp = function(target)
         return
     end
     local tweenInfo = TweenInfo.new(distance / __speed, Enum.EasingStyle.Linear)
-    local tween = game:GetService("TweenService"):Create(block, tweenInfo, {CFrame = gg})    
+    local tween = __SVC_TWN:Create(block, tweenInfo, {CFrame = gg})    
     
     if plr.Character.Humanoid and plr.Character.Humanoid.Sit == true then -- [FIX PERF 30] Humanoid nil khi vua chet -> _tp bao loi
         block.CFrame = CFrame.new(block.Position.X, gg.Y, block.Position.Z)
@@ -1864,7 +1990,7 @@ QuestB = function()
 -- tinh nang quest tu dong bao thieu.
 local Quests, GuideModule
 do
-    local rs = game:GetService("ReplicatedStorage")
+    local rs = __SVC_RS
     local okQ, resQ = pcall(function()
         local m = rs:WaitForChild("Quests", 10)
         return m and require(m)
@@ -1915,9 +2041,17 @@ GetQuestPointFromNPC = function(npcName)
 end
 
 GetQuests = function()
-    local lvl = plr.Data.Level.Value
+    -- [U30 FIX 1] __DIO_Level() doc truc tiep -> nem loi neu Data chua replicate
+    -- (U30 load cham hon vi Sea 1 rework nang) -> QuestNeta tra bang rong -> farm dung im.
+    local lvl = __DIO_Level()
     local LevelReq = 0
     local mmb = {}
+
+    -- [U30 FIX 2] Quests module co the nil (U30 doi cau truc). Khong co no thi vong for
+    -- ben duoi nem loi. Tra ve bang rong co kiem soat de caller biet ma bo qua.
+    if type(Quests) ~= "table" then
+        return mmb
+    end
     
     if lvl >= 700 and CheckSea(1) then
         mmb["Mob"] = "Galley Captain"
@@ -1930,16 +2064,26 @@ GetQuests = function()
         mmb["ID"] = 2
         mmb["LevelReq"] = 1450
     else
+        -- [U30 FIX 3] Vong quet nay gia dinh MOI entry deu co .LevelReq va .Task kieu bang.
+        -- U30 rework Sea 1: nhieu quest doi schema / them entry kieu moi (secret quests
+        -- khong co .Task) -> "attempt to index nil" hoac so sanh nil -> ca ham chet ->
+        -- QuestNeta[1] = nil -> auto farm level dung im. Kiem tra kieu truoc khi dung.
         for r, v in pairs(Quests) do
-            for id, v1 in pairs(v) do
-                local LvReq = v1.LevelReq
-                for nguoi, tinh in pairs(v1.Task) do
-                    if lvl >= LvReq and LevelReq <= LvReq and v1.Task[nguoi] > 1 and not table.find(blacklistquest, r) then
-                        LevelReq = LvReq
-                        mmb["Mob"] = nguoi
-                        mmb["NameQuest"] = r
-                        mmb["ID"] = id
-                        mmb["LevelReq"] = LvReq
+            if type(v) == "table" and not table.find(blacklistquest, r) then
+                for id, v1 in pairs(v) do
+                    if type(v1) == "table" and type(v1.Task) == "table" then
+                        local LvReq = tonumber(v1.LevelReq) or 0
+                        for nguoi, tinh in pairs(v1.Task) do
+                            -- tinh phai la SO va > 1 (bo qua entry schema la)
+                            if type(tinh) == "number" and tinh > 1
+                               and lvl >= LvReq and LevelReq <= LvReq then
+                                LevelReq = LvReq
+                                mmb["Mob"] = nguoi
+                                mmb["NameQuest"] = r
+                                mmb["ID"] = id
+                                mmb["LevelReq"] = LvReq
+                            end
+                        end
                     end
                 end
             end
@@ -1950,9 +2094,42 @@ GetQuests = function()
 end
 
 GetQuestPoint = function()
-    if GuideModule and GuideModule.Data and GuideModule.Data.LastClosestNPC then
-        return GetQuestPointFromNPC(GuideModule.Data.LastClosestNPC)
-    end
+    -- [U30 FIX 4] Truoc day CHI dua vao GuideModule.Data.LastClosestNPC. Neu U30 bo/doi
+    -- GuideModule (rat co the vi "Revamped QOL/UI/HUD") -> tra nil -> auto farm level
+    -- khong biet di dau nhan quest -> dung im. Them 2 lop du phong.
+    local ok, cf = pcall(function()
+        if GuideModule and GuideModule.Data and GuideModule.Data.LastClosestNPC then
+            return GetQuestPointFromNPC(GuideModule.Data.LastClosestNPC)
+        end
+        return nil
+    end)
+    if ok and cf then return cf end
+
+    -- Du phong: suy ra NPC quest tu ten quest hien tai (vd "JungleQuest" -> NPC gan Jungle),
+    -- bang cach tim NPC co QuestName trung trong workspace.NPCs.
+    local okq, res = pcall(function()
+        local q = GetQuests()
+        local qname = q and q.NameQuest
+        if not qname then return nil end
+        local npcs = workspace:FindFirstChild("NPCs")
+        if not npcs then return nil end
+        local hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+        local best, bestd = nil, math.huge
+        for _, npc in ipairs(npcs:GetChildren()) do
+            local root = npc:FindFirstChild("HumanoidRootPart")
+            if root then
+                -- NPC quest thuong co ten chua tien to cua quest (JungleQuest -> "Jungle")
+                local key = qname:gsub("Quest%d*$", "")
+                if key ~= "" and npc.Name:find(key) then
+                    local d = hrp and (root.Position - hrp.Position).Magnitude or 0
+                    if d < bestd then bestd = d best = root.CFrame end
+                end
+            end
+        end
+        return best
+    end)
+    if okq and res then return res end
+
     return nil
 end
 
@@ -2145,7 +2322,7 @@ function UpdateOS()
     local datetime = string.format("%02d/%02d/%04d", date.day, date.month, date.year)    
     
     local LocalizationService = game:GetService("LocalizationService")
-    local Players = game:GetService("Players")
+    local Players = __SVC_PLR
     local player = Players.LocalPlayer
     local result, code    
     
@@ -2211,7 +2388,7 @@ local KitsuneCheck = Tabs.Status:AddParagraph("Kitsune Island", "Status: ")
 local previousKitsuneStatus = ""
 spawn(function()
     while __DIO_wait(3) do -- [FIX FPS-D] status hien thi: 1s -> 3s (ungated, chay vinh vien tu luc load)
-        local currentStatus = game:GetService("Workspace").Map:FindFirstChild("KitsuneIsland") and '✅' or '❌'
+        local currentStatus = __SVC_WS.Map:FindFirstChild("KitsuneIsland") and '✅' or '❌'
         if currentStatus ~= previousKitsuneStatus then
             KitsuneCheck:SetDesc('Status: ' .. currentStatus)
             previousKitsuneStatus = currentStatus
@@ -2250,7 +2427,7 @@ local CakePrinceStatus = Tabs.Status:AddParagraph("Cake Prince", "")
 spawn(function()
     local __prevCP = nil -- [FIX SPAM-1] nho trang thai: chi SetDesc khi gia tri DOI
     while __DIO_wait(3) do -- [FIX SPAM-1] 1s->3s: vong status chay VINH VIEN (khong gate) tu khi load; poll 3s du cho status
-        local cakePrince = game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("CakePrinceSpawner")
+        local cakePrince = __SVC_RS.Remotes.CommF_:InvokeServer("CakePrinceSpawner")
         local killStatus = "Cake Prince: ✅"
         if string.len(cakePrince) >= 86 then
             local killCount = string.sub(cakePrince, 39, 41)
@@ -2265,8 +2442,8 @@ local RipIndraCheck = Tabs.Status:AddParagraph("Rip Indra", "Status: ")
 local previousRipStatus = ""
 spawn(function()
     while __DIO_wait(3) do -- [FIX FPS-D] status hien thi: 1s -> 3s (ungated, chay vinh vien tu luc load)
-        local currentStatus = (game:GetService("ReplicatedStorage"):FindFirstChild("rip_indra True Form") or 
-                               game:GetService("Workspace").Enemies:FindFirstChild("rip_indra")) and '✅' or '❌'
+        local currentStatus = (__SVC_RS:FindFirstChild("rip_indra True Form") or 
+                               __SVC_WS.Enemies:FindFirstChild("rip_indra")) and '✅' or '❌'
         if currentStatus ~= previousRipStatus then
             RipIndraCheck:SetDesc("Status: " .. currentStatus)
             previousRipStatus = currentStatus
@@ -2279,8 +2456,8 @@ local DoughKingCheck = Tabs.Status:AddParagraph("Dough King", "Status: ")
 local previousDoughStatus = ""
 spawn(function()
     while __DIO_wait(3) do -- [FIX FPS-D] status hien thi: 1s -> 3s (ungated, chay vinh vien tu luc load)
-        local currentStatus = (game:GetService("ReplicatedStorage"):FindFirstChild("Dough King") or 
-                               game:GetService("Workspace").Enemies:FindFirstChild("Dough King")) and '✅' or '❌'
+        local currentStatus = (__SVC_RS:FindFirstChild("Dough King") or 
+                               __SVC_WS.Enemies:FindFirstChild("Dough King")) and '✅' or '❌'
         if currentStatus ~= previousDoughStatus then
             DoughKingCheck:SetDesc("Status: " .. currentStatus)
             previousDoughStatus = currentStatus
@@ -2292,7 +2469,7 @@ local FullMoonCheck = Tabs.Status:AddParagraph("Full Moon", "")
 
 task.spawn(function()
     while __DIO_wait(1) do
-        local moonTextureId = game:GetService("Lighting").Sky.MoonTextureId
+        local moonTextureId = __SVC_LIGHT.Sky.MoonTextureId
         local moonStatus = "Moon: 0/5"
         
         if moonTextureId == "http://www.roblox.com/asset/?id=9709149431" then
@@ -2317,15 +2494,15 @@ spawn(function()
     local __prevSword = nil
     while __DIO_wait(5) do -- [FIX PERF 64] 1s x 3 remote -> 5s + break som (tim thay thi khong goi con lai): 3/s -> 0.2/s
         local swordStatus = "Not Found"
-        local d1 = game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("LegendarySwordDealer", "1")
+        local d1 = __SVC_RS.Remotes.CommF_:InvokeServer("LegendarySwordDealer", "1")
         if d1 then
             swordStatus = "Shisui ✅"
         else
-            local d2 = game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("LegendarySwordDealer", "2")
+            local d2 = __SVC_RS.Remotes.CommF_:InvokeServer("LegendarySwordDealer", "2")
             if d2 then
                 swordStatus = "Wando ✅"
             else
-                local d3 = game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("LegendarySwordDealer", "3")
+                local d3 = __SVC_RS.Remotes.CommF_:InvokeServer("LegendarySwordDealer", "3")
                 if d3 then
                     swordStatus = "Saddi ✅"
                 end
@@ -2388,22 +2565,6 @@ Tabs.Main:AddDropdown({
 
 Tabs.Main:AddSection("Farming")
 
--- ============================================================
--- [GHOST MOB FIX v2] Persistent skip-table — Bone / Cake / Level
---
--- VẤN ĐỀ CŨ: __DIO_GhostTrack() reset timer mỗi lần outer loop lặp
--- → cùng ghost mob bị attack lại từ 0 mãi mãi (vô dụng).
---
--- CÁCH FIX ĐÚNG:
---   __DIO_GhostMobs[mob]  = bảng {hp, t, skillFired}  per mob instance
---   Khi ghost xác nhận (6s)  → __DIO_GhostSkip[mob] = true
---   Mob selection           → bỏ qua mob có __DIO_GhostSkip[mob]
---   Cleanup tự động         → mob chết/remove → xoá khỏi cả 2 bảng
---   Toggle OFF              → xoá toàn bộ bảng
---
--- Khi phát hiện ghost: farm chờ 0-3s, bắn skill Z/X/C ở 3s, đánh dấu skip ở 6s.
--- Mob tìm tiếp sẽ BỎ QUA mob đã mark → không bao giờ tween về ghost cũ nữa.
--- ============================================================
 local __DIO_GhostData = {}  -- [mob] = {hp=N, t=tick(), skill=false}
 local __DIO_GhostSkip = {}  -- [mob] = true  → bỏ qua khi chọn mob
 
@@ -2551,12 +2712,33 @@ task.spawn(function()
                 local Root = char:WaitForChild("HumanoidRootPart")
                 if not Root then return end
 
-                local level = plr.Data.Level.Value
+                -- [U30 FIX 5] 3 dong nay la CHO CHET CUA AUTO FARM LEVEL:
+                --   __DIO_Level()          -> loi neu Data chua san sang
+                --   plr.PlayerGui.Main.Quest      -> loi neu U30 doi cau truc HUD (U30 co
+                --                                    "Revamped QOL/UI/HUD" trong patch note)
+                --   questUI.Container.QuestTitle.Title.Text -> loi neu doi cay con
+                -- Bat ky cai nao nem loi -> pcall ben ngoai nuot -> vong lap im lang khong
+                -- lam gi ca. Dung helper U30-safe co fallback tu dong.
+                local level = __DIO_Level()
                 local inSub = IsInSubmergedIsland()
-                local questUI = plr.PlayerGui.Main.Quest
-                local QuestTitle = questUI.Visible and questUI.Container.QuestTitle.Title.Text or ""
+                local questUI = __DIO_GetQuestUI()
+                if not questUI then
+                    -- Khong tim thay UI quest o bat ky vi tri nao -> bao 1 lan roi cho,
+                    -- KHONG spam va khong chet im lang.
+                    if not __DIO_WarnedQuestUI then
+                        __DIO_WarnedQuestUI = true
+                        warn("[DIO] Khong tim thay Quest UI (co the do Blox Fruits Update 30 doi HUD). Auto Farm Level tam dung.")
+                    end
+                    __DIO_wait(2)
+                    return
+                end
+                local QuestTitle = __DIO_QuestTitle()
 
-                if level >= 2600 and not inSub and not teleporting and not alreadyTeleported then
+                -- [U30 FIX 6] Nguong Submerged: U30 nang cap tu 2800 -> 3000 (secret levels).
+                -- Moc 2600 la de vao Submerged farm doan cuoi - van dung, nhung khi da >= 2800
+                -- ma chua co secret level thi EXP dung, khong can bay sang Submerged nua.
+                -- Giu 2600 lam moc vao, chi bo qua khi da kich max that su.
+                if level >= 2600 and level < 3000 and not inSub and not teleporting and not alreadyTeleported then
                     teleporting = true
                     
                     local npcPos = CFrame.new(-16269.7041, 25.2288494, 1373.65955)
@@ -2577,7 +2759,7 @@ task.spawn(function()
                     
                     pcall(function()
                         local args = {"TravelToSubmergedIsland"} 
-                        game:GetService("ReplicatedStorage").Modules.Net:FindFirstChild("RF/SubmarineWorkerSpeak"):InvokeServer(unpack(args))
+                        __SVC_RS.Modules.Net:FindFirstChild("RF/SubmarineWorkerSpeak"):InvokeServer(unpack(args))
                     end)
 
                     local timeout = tick()
@@ -2595,7 +2777,7 @@ task.spawn(function()
                     alreadyTeleported = true
                     teleporting = false
                     
-                elseif inSub or level < 2600 then
+                elseif inSub or level < 2600 or level >= 3000 then
                     alreadyTeleported = true
                     teleporting = false
 
@@ -2606,13 +2788,13 @@ task.spawn(function()
                         return
                     end
                     
-                    if questUI.Visible and not string.find(QuestTitle, questData[1]) then
+                    if __DIO_QuestVisible() and QuestTitle ~= "" and not string.find(QuestTitle, questData[1]) then
                         replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
                         __DIO_wait(0.2)
                         return
                     end
 
-                    if not questUI.Visible then
+                    if not __DIO_QuestVisible() then
                         local questPos = questData[6]
                         if questPos then
                             _tp(questPos)
@@ -2651,7 +2833,7 @@ task.spawn(function()
                                 if not curRoot then break end
                                 _tp(v.HumanoidRootPart.CFrame * CFrame.new(0, 20, 0))
                                 Attack.Kill(v, _G.Level)
-                                if not questUI.Visible then break end
+                                if not __DIO_QuestVisible() then break end
                                 -- Ghost check: 3s bắn skill / 6s đánh dấu skip vĩnh viễn
                                 if __DIO_GhostCheck(v) then
                                     foundMob = false
@@ -2809,8 +2991,8 @@ spawn(function()
   while __DIO_wait(Sec) do
     if _G.AutoFarmChest then
       pcall(function()
-        local CollectionService = game:GetService("CollectionService")
-        local Players = game:GetService("Players")
+        local CollectionService = __SVC_CS
+        local Players = __SVC_PLR
         local Player = Players.LocalPlayer
         local Character = Player.Character or Player.CharacterAdded:Wait()                
         if not Character then return end                
@@ -2841,7 +3023,7 @@ ChestBP = Tabs.Main:AddToggle({
         _G.AutoChestBP = Value
 
         if Value then
-            local LocalPlayer = game:GetService("Players").LocalPlayer
+            local LocalPlayer = __SVC_PLR.LocalPlayer
             local IsFarming = false
             local UncheckedChests = {}
             local FirstRun = true
@@ -2941,8 +3123,8 @@ end})
 spawn(function()
   while __DIO_wait(Sec) do
     if _G.AutoBerry then
-      local CollectionService= game:GetService("CollectionService")
-      local Players= game:GetService("Players")
+      local CollectionService= __SVC_CS
+      local Players= __SVC_PLR
       local Player = Players.LocalPlayer
       local BerryBush = CollectionService:GetTagged("BerryBush")      
       local Distance, Nearest = math.huge      
@@ -2978,17 +3160,17 @@ end})
 spawn(function()
     while __DIO_wait(Sec) do
         if _G.AutoBerryH then
-            local CollectionService = game:GetService("CollectionService")
-            local Players = game:GetService("Players")
+            local CollectionService = __SVC_CS
+            local Players = __SVC_PLR
             local Player = Players.LocalPlayer
             local BerryBush = CollectionService:GetTagged("BerryBush")
 
             if #BerryBush == 0 then
-                local TeleportService = game:GetService("TeleportService")
+                local TeleportService = __SVC_TP
                 local ServerList = {}
                 
                 local Success, Error = pcall(function()
-                    ServerList = game:GetService("HttpService"):JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"))
+                    ServerList = __SVC_HTTP:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"))
                 end)
                 
                 if Success and ServerList.data then
@@ -3093,14 +3275,14 @@ spawn(function()
     while __DIO_wait(1) do -- [FIX PERF 62] 0.1 -> 1 (yeu cau user: uu tien FPS; vong poll gated nen logic khong time-out)
         if _G.AutoKillMob then
             pcall(function()
-                if game:GetService("Workspace").Enemies:FindFirstChild(getgenv().SelectMob) then
-                    for i, v in pairs(game:GetService("Workspace").Enemies:GetChildren()) do
+                if __SVC_WS.Enemies:FindFirstChild(getgenv().SelectMob) then
+                    for i, v in pairs(__SVC_WS.Enemies:GetChildren()) do
                         if v.Name == getgenv().SelectMob then
                             if v:FindFirstChild("Humanoid")
                             and v:FindFirstChild("HumanoidRootPart")
                             and v.Humanoid.Health > 0 then                                
                                 repeat
-                                    game:GetService("RunService").Heartbeat:Wait()
+                                    __SVC_RUN.Heartbeat:Wait()
                                     Attack.Kill(v,_G.AutoKillMob)
                                 until not _G.AutoKillMob or not v.Parent or v.Humanoid.Health <= 0                                
                             end
@@ -3459,13 +3641,13 @@ local EliteHunter = Tabs.Main:AddParagraph("Elite Spawn", "Status: ")
 spawn(function()
     local previousStatus = ""
     while __DIO_wait(1) do
-        local currentStatus = (game:GetService("ReplicatedStorage"):FindFirstChild("Diablo") or 
-                               game:GetService("ReplicatedStorage"):FindFirstChild("Deandre") or 
-                               game:GetService("ReplicatedStorage"):FindFirstChild("Urban") or 
-                               game:GetService("Workspace").Enemies:FindFirstChild("Diablo") or 
-                               game:GetService("Workspace").Enemies:FindFirstChild("Deandre") or 
-                               game:GetService("Workspace").Enemies:FindFirstChild("Urban")) and '✅' or '❌'
-        local progress = game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("EliteHunter", "Progress")
+        local currentStatus = (__SVC_RS:FindFirstChild("Diablo") or 
+                               __SVC_RS:FindFirstChild("Deandre") or 
+                               __SVC_RS:FindFirstChild("Urban") or 
+                               __SVC_WS.Enemies:FindFirstChild("Diablo") or 
+                               __SVC_WS.Enemies:FindFirstChild("Deandre") or 
+                               __SVC_WS.Enemies:FindFirstChild("Urban")) and '✅' or '❌'
+        local progress = __SVC_RS.Remotes.CommF_:InvokeServer("EliteHunter", "Progress")
         if currentStatus ~= previousStatus then
             EliteHunter:SetDesc("Status: " .. currentStatus .. " | Killed: " .. progress)
             previousStatus = currentStatus
@@ -3485,7 +3667,8 @@ spawn(function()
     while __DIO_wait(1) do
         pcall(function()
             if _G.FarmEliteHunt then
-                local questGui = plr.PlayerGui.Main.Quest
+                local questGui = __DIO_GetQuestUI() -- [U30 FIX] path cung -> helper co fallback
+                if not questGui then return end
                 local questTitle = questGui.Container.QuestTitle.Title.Text
 
                 if not questGui.Visible then
@@ -3553,8 +3736,8 @@ end})
 
 
 local function HopServer()
-	local Http = game:GetService("HttpService")
-	local TPS = game:GetService("TeleportService")
+	local Http = __SVC_HTTP
+	local TPS = __SVC_TP
 	local Api = "https://games.roblox.com/v1/games/"
 	local PlaceID = game.PlaceId
 	local Servers = {}
@@ -3586,7 +3769,8 @@ spawn(function()
 	while __DIO_wait(1) do
 		pcall(function()
 			if _G.FarmEliteH then
-				local questGui = plr.PlayerGui.Main.Quest
+				local questGui = __DIO_GetQuestUI() -- [U30 FIX] path cung -> helper co fallback
+                if not questGui then return end
 				local questTitle = questGui.Container.QuestTitle.Title.Text
 
 				
@@ -3811,7 +3995,7 @@ spawn(function()
                 -- nhung vong farm lai doc _G.AcceptQuest (khong ai gan, luon = nil) -> nhanh nhan quest
                 -- KHONG BAO GIO chay -> bat toggle van khong nhan nhiem vu. Doc dung ca 2 ten cho an toan.
                 local __wantQuest = _G.AcceptQuestC or _G.AcceptQuest
-                if __wantQuest and not plr.PlayerGui.Main.Quest.Visible then
+                if __wantQuest and not __DIO_QuestVisible() then
                     local questPos = CFrame.new(-1927.92, 37.80, -12842.54)
                     -- [FIX CAKE-QUEST 2/3] TeleportConditional chi tp khi > 15 studs; nhung dieu kien
                     -- invoke lai la <= 40 -> co vung 15..40 dung yen KHONG tp va KHONG invoke = ket cung.
@@ -4017,7 +4201,7 @@ Tabs.Main:AddToggle({
 
 local function HopServer()
     pcall(function()
-        local Http = game:GetService("HttpService")
+        local Http = __SVC_HTTP
         local Servers = {}
         local req = game:HttpGet("https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100")
         local data = Http:JSONDecode(req)
@@ -4028,7 +4212,7 @@ local function HopServer()
             end
         end
         if #Servers > 0 then
-            game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, Servers[math.random(1,#Servers)], game.Players.LocalPlayer)
+            __SVC_TP:TeleportToPlaceInstance(game.PlaceId, Servers[math.random(1,#Servers)], game.Players.LocalPlayer)
         end
     end)
 end
@@ -4097,7 +4281,8 @@ spawn(function()
                     bv.Parent = hrp
                 end
 
-                local QuestUI = plr.PlayerGui.Main.Quest      
+                local QuestUI = __DIO_GetQuestUI() -- [U30 FIX] path cung -> helper co fallback
+                if not QuestUI then return end      
                 local MOBS = {"Reborn Skeleton", "Living Zombie", "Demonic Soul", "Posessed Mummy"}
                 local npcPos = CFrame.new(-9516.99, 172.01, 6078.46) -- Posição do NPC de Bones
 
@@ -4115,7 +4300,7 @@ spawn(function()
                             {"StartQuest","HauntedQuest2",1}, 
                             {"StartQuest","HauntedQuest2",2}
                         }
-                        game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer(unpack(quests[math.random(1,#quests)]))
+                        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(quests[math.random(1,#quests)]))
                         __DIO_wait(1) 
                     end
 
@@ -4399,7 +4584,7 @@ Callback = function(Value)
 end})
 
 local function sendSkillKey(skillKey)
-    local virtualInputManager = game:GetService("VirtualInputManager")
+    local virtualInputManager = __SVC_VIM
     virtualInputManager:SendKeyEvent(true, skillKey, false, game)
     wait(0.05)
     virtualInputManager:SendKeyEvent(false, skillKey, false, game)
@@ -4496,7 +4681,7 @@ spawn(function()
     end
   end
   local function handleEnemySpawns()
-    for _, v in pairs(game:GetService("Workspace")["_WorldOrigin"].EnemySpawns:GetChildren()) do
+    for _, v in pairs(__SVC_WS["_WorldOrigin"].EnemySpawns:GetChildren()) do
       for _, EnemyName in ipairs(MMon) do
         if string.find(v.Name, EnemyName) then
           if (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - v.Position).Magnitude >= 10 then
@@ -4542,7 +4727,7 @@ FarmBoss = Tabs.Main:AddToggle({
                 if _G.FarmBoss then
                     pcall(function()
                         local HasQuest = QuestBeta()[2] ~= nil and QuestBeta()[3] ~= nil
-                        local QuestTitle = plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text
+                        local QuestTitle = __DIO_QuestTitle()
 
                        
                         if _G.AcceptQuestBoss and HasQuest then
@@ -4550,12 +4735,12 @@ FarmBoss = Tabs.Main:AddToggle({
                                 replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
                             end
 
-                            if plr.PlayerGui.Main.Quest.Visible == false then
+                            if (not __DIO_QuestVisible()) then
                                 _tp(QuestBeta()[5])
                                 if (Root.Position - QuestBeta()[5].Position).Magnitude <= 5 then
                                     replicated.Remotes.CommF_:InvokeServer("StartQuest", QuestBeta()[3], QuestBeta()[2])
                                 end
-                            elseif plr.PlayerGui.Main.Quest.Visible == true then
+                            elseif __DIO_QuestVisible() then
                                 if workspace.Enemies:FindFirstChild(QuestBeta()[1]) then
                                     for i, v in pairs(workspace.Enemies:GetChildren()) do
                                         if Attack.Alive(v) and v.Name == QuestBeta()[1] then
@@ -4563,7 +4748,7 @@ FarmBoss = Tabs.Main:AddToggle({
                                                 repeat
                                                     __DIO_wait(0.25)
                                                     Attack.Kill(v, _G.FarmBoss)
-                                                until not _G.FarmBoss or v.Humanoid.Health <= 0 or not v.Parent or plr.PlayerGui.Main.Quest.Visible == false
+                                                until not _G.FarmBoss or v.Humanoid.Health <= 0 or not v.Parent or (not __DIO_QuestVisible())
                                             else
                                                 replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
                                             end
@@ -4988,7 +5173,7 @@ Spawn(function()
                         )
                     end
 
-                    game:GetService("TeleportService")
+                    __SVC_TP
                         :Teleport(game.PlaceId, game.Players.LocalPlayer)
                 end
             end)
@@ -5012,7 +5197,7 @@ Tabs.Settings:AddToggle({
         getgenv().Set = Value
         if Value then
             pcall(function()
-                game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("SetSpawnPoint")
+                __SVC_RS.Remotes.CommF_:InvokeServer("SetSpawnPoint")
             end)
         end
     end
@@ -5045,7 +5230,7 @@ spawn(function()
     while __DIO_wait(1) do -- [FIX PERF 62] 0.1 -> 1 (yeu cau user: uu tien FPS; vong poll gated nen logic khong time-out)
         if getgenv().Observation then
             pcall(function()
-                game:GetService("ReplicatedStorage").Remotes.CommE:FireServer("Ken", true)
+                __SVC_RS.Remotes.CommE:FireServer("Ken", true)
             end)
         end
     end
@@ -5181,9 +5366,9 @@ Tabs.Settings:AddToggle({
     Default = true,
     Callback = function(Value)
         if Value then
-            local vu = game:GetService("VirtualUser")
+            local vu = __SVC_VU
             repeat wait() until game:IsLoaded()
-            game:GetService("Players").LocalPlayer.Idled:Connect(function()
+            __SVC_PLR.LocalPlayer.Idled:Connect(function()
                 vu:Button2Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
                 wait(1)
                 vu:Button2Up(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
@@ -5398,10 +5583,10 @@ FishingToggle = Tabs.Fish:AddToggle({
     end
 })
 
-local Players = game:GetService("Players")
+local Players = __SVC_PLR
 local LocalPlayer = Players.LocalPlayer
-local Workspace = game:GetService("Workspace")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = __SVC_WS
+local ReplicatedStorage = __SVC_RS
 local FishReplicated = ReplicatedStorage:WaitForChild("FishReplicated")
 local FishingRequest = FishReplicated:WaitForChild("FishingRequest")
 local Config = require(FishReplicated.FishingClient.Config)
@@ -5462,9 +5647,9 @@ Callback = function(Value)
 end})
 
 
-local Players3 = game:GetService("Players")
+local Players3 = __SVC_PLR
 local LocalPlayer3 = Players3.LocalPlayer
-local ReplicatedStorage3 = game:GetService("ReplicatedStorage")
+local ReplicatedStorage3 = __SVC_RS
 local RFJobsRemoteFunction3 = ReplicatedStorage3.Modules.Net:WaitForChild("RF/JobsRemoteFunction")
 
 local function HasQuest3()
@@ -5551,7 +5736,7 @@ Callback = function(Value)
 end})
 
 
-local ReplicatedStorage4 = game:GetService("ReplicatedStorage")
+local ReplicatedStorage4 = __SVC_RS
 local RFJobToolAbilities4 = ReplicatedStorage4.Modules.Net:WaitForChild("RF/JobToolAbilities")
 
 task.spawn(function()
@@ -5575,7 +5760,7 @@ spawn(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.TravelDres then
-        if plr.Data.Level.Value >= 700 then
+        if __DIO_Level() >= 700 then
           if workspace.Map.Ice.Door.CanCollide == true and workspace.Map.Ice.Door.Transparency == 0 then
             replicated.Remotes.CommF_:InvokeServer("DressrosaQuestProgress","Detective")
 		    EquipWeapon("Key")
@@ -5610,7 +5795,7 @@ spawn(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.AutoZou then
-   	    if plr.Data.Level.Value >= 1500 then
+   	    if __DIO_Level() >= 1500 then
           if replicated.Remotes.CommF_:InvokeServer("BartiloQuestProgress","Bartilo") == 3 then
             if replicated.Remotes.CommF_:InvokeServer("GetUnlockables").FlamingoAccess ~= nil then
               replicated.Remotes.CommF_:InvokeServer("F_","TravelZou")
@@ -5667,10 +5852,10 @@ spawn(function()
             end
           else
             if replicated.Remotes.CommF_:InvokeServer("BartiloQuestProgress","Bartilo") == 0 then
-              if string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Swan Pirates") and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "50") and plr.PlayerGui.Main.Quest.Visible == true then                
+              if string.find(__DIO_QuestTitle(), "Swan Pirates") and string.find(__DIO_QuestTitle(), "50") and __DIO_QuestVisible() then                
                 local v = GetConnectionEnemies("Swan Pirate")
                 if v then
-                  pcall(function() repeat __DIO_wait(0.25) Attack.Kill(v,_G.AutoZou) until not v.Parent or v.Humanoid.Health <= 0 or _G.AutoZou == false or plr.PlayerGui.Main.Quest.Visible == false end)                    
+                  pcall(function() repeat __DIO_wait(0.25) Attack.Kill(v,_G.AutoZou) until not v.Parent or v.Humanoid.Health <= 0 or _G.AutoZou == false or (not __DIO_QuestVisible()) end)                    
                 else
                   _tp(CFrame.new(1057.92761, 137.614319, 1242.08069))
                 end
@@ -6067,7 +6252,7 @@ spawn(function()
               until tonumber(replicated.Remotes.CommF_:InvokeServer("CDKQuest","Progress")["Evil"]) == 1 or not _G.CDK_YM
             elseif tonumber(replicated.Remotes.CommF_:InvokeServer("CDKQuest","Progress")["Evil"]) == -4 then
               QuestYama_1 = false QuestYama_2 = true QuestYama_3 = false
-              for ix,HitMon in pairs(game:GetService("Players").LocalPlayer.QuestHaze:GetChildren()) do
+              for ix,HitMon in pairs(__SVC_PLR.LocalPlayer.QuestHaze:GetChildren()) do
                 for NameMonHaze, CFramePos in pairs(PosMsList) do
                   if string.find(NameMonHaze,HitMon.Name) and HitMon.Value > 0 then
                     if (CFramePos.Position - Root.Position).Magnitude <= 1000 and workspace.Enemies:FindFirstChild(NameMonHaze) then
@@ -6196,18 +6381,18 @@ spawn(function()
               QuestTushita_1 = true
               QuestTushita_2 = false
               QuestTushita_3 = false
-              repeat __DIO_wait(0.25) _tp(CFrame.new(-4602.5107421875, 16.446542739868164, -2880.998046875)) until (CFrame.new(-4602.5107421875, 16.446542739868164, -2880.998046875).Position - game:GetService("Players").LocalPlayer.Character.HumanoidRootPart.Position).Magnitude <= 3 or not _G.CDK_TS or tonumber(replicated.Remotes.CommF_:InvokeServer("CDKQuest","Progress")["Good"]) == 1
-              if (CFrame.new(-4602.5107421875, 16.446542739868164, -2880.998046875).Position - game:GetService("Players").LocalPlayer.Character.HumanoidRootPart.Position).Magnitude <= 10 then
+              repeat __DIO_wait(0.25) _tp(CFrame.new(-4602.5107421875, 16.446542739868164, -2880.998046875)) until (CFrame.new(-4602.5107421875, 16.446542739868164, -2880.998046875).Position - __SVC_PLR.LocalPlayer.Character.HumanoidRootPart.Position).Magnitude <= 3 or not _G.CDK_TS or tonumber(replicated.Remotes.CommF_:InvokeServer("CDKQuest","Progress")["Good"]) == 1
+              if (CFrame.new(-4602.5107421875, 16.446542739868164, -2880.998046875).Position - __SVC_PLR.LocalPlayer.Character.HumanoidRootPart.Position).Magnitude <= 10 then
                 wait(.7) replicated.Remotes.CommF_:InvokeServer("CDKQuest","BoatQuest",workspace.NPCs:FindFirstChild("Luxury Boat Dealer"),"Check")
                 wait(.5) replicated.Remotes.CommF_:InvokeServer("CDKQuest","BoatQuest",workspace.NPCs:FindFirstChild("Luxury Boat Dealer"))
               end
-                wait(1) repeat __DIO_wait(0.25) _tp(CFrame.new(4001.185302734375, 10.089399337768555, -2654.86328125)) until (CFrame.new(4001.185302734375, 10.089399337768555, -2654.86328125).Position - game:GetService("Players").LocalPlayer.Character.HumanoidRootPart.Position).Magnitude <= 3 or not _G.CDK_TS or tonumber(replicated.Remotes.CommF_:InvokeServer("CDKQuest","Progress")["Good"]) == 1
-                if (CFrame.new(4001.185302734375, 10.089399337768555, -2654.86328125).Position - game:GetService("Players").LocalPlayer.Character.HumanoidRootPart.Position).Magnitude <= 10 then
+                wait(1) repeat __DIO_wait(0.25) _tp(CFrame.new(4001.185302734375, 10.089399337768555, -2654.86328125)) until (CFrame.new(4001.185302734375, 10.089399337768555, -2654.86328125).Position - __SVC_PLR.LocalPlayer.Character.HumanoidRootPart.Position).Magnitude <= 3 or not _G.CDK_TS or tonumber(replicated.Remotes.CommF_:InvokeServer("CDKQuest","Progress")["Good"]) == 1
+                if (CFrame.new(4001.185302734375, 10.089399337768555, -2654.86328125).Position - __SVC_PLR.LocalPlayer.Character.HumanoidRootPart.Position).Magnitude <= 10 then
                 wait(.7) replicated.Remotes.CommF_:InvokeServer("CDKQuest","BoatQuest",workspace.NPCs:FindFirstChild("Luxury Boat Dealer"),"Check")
                 wait(.5) replicated.Remotes.CommF_:InvokeServer("CDKQuest","BoatQuest",workspace.NPCs:FindFirstChild("Luxury Boat Dealer"))
                 end
-                  wait(1) repeat __DIO_wait(0.25) _tp(CFrame.new(-9530.763671875, 7.245208740234375, -8375.5087890625)) until (CFrame.new(-9530.763671875, 7.245208740234375, -8375.5087890625).Position - game:GetService("Players").LocalPlayer.Character.HumanoidRootPart.Position).Magnitude <= 3 or not _G.CDK_TS or tonumber(replicated.Remotes.CommF_:InvokeServer("CDKQuest","Progress")["Good"]) == 1
-                  if (CFrame.new(-9530.763671875, 7.245208740234375, -8375.5087890625).Position - game:GetService("Players").LocalPlayer.Character.HumanoidRootPart.Position).Magnitude <= 10 then
+                  wait(1) repeat __DIO_wait(0.25) _tp(CFrame.new(-9530.763671875, 7.245208740234375, -8375.5087890625)) until (CFrame.new(-9530.763671875, 7.245208740234375, -8375.5087890625).Position - __SVC_PLR.LocalPlayer.Character.HumanoidRootPart.Position).Magnitude <= 3 or not _G.CDK_TS or tonumber(replicated.Remotes.CommF_:InvokeServer("CDKQuest","Progress")["Good"]) == 1
+                  if (CFrame.new(-9530.763671875, 7.245208740234375, -8375.5087890625).Position - __SVC_PLR.LocalPlayer.Character.HumanoidRootPart.Position).Magnitude <= 10 then
                     wait(.7) replicated.Remotes.CommF_:InvokeServer("CDKQuest","BoatQuest",workspace.NPCs:FindFirstChild("Luxury Boat Dealer"),"Check")
                     wait(.5) replicated.Remotes.CommF_:InvokeServer("CDKQuest","BoatQuest",workspace.NPCs:FindFirstChild("Luxury Boat Dealer"))
                   end
@@ -6412,7 +6597,7 @@ end})
 spawn(function()
   while __DIO_wait(1) do -- [FIX PERF 62] .2 -> 1 (yeu cau user: uu tien FPS; vong poll gated nen logic khong time-out)
     pcall(function()
-      if _G.AutoSaber and plr.Data.Level.Value >= 200 and not plr.Backpack:FindFirstChild("Saber") and not plr.Character:FindFirstChild("Saber") then
+      if _G.AutoSaber and __DIO_Level() >= 200 and not plr.Backpack:FindFirstChild("Saber") and not plr.Character:FindFirstChild("Saber") then
         if workspace.Map.Jungle.Final.Part.Transparency == 0 then
 	      if workspace.Map.Jungle.QuestPlates.Door.Transparency == 0 then
 		    if (CFrame.new(-1612.55884, 36.9774132, 148.719543, 0.37091279, 3.0717151e-09, -0.928667724, 3.97099491e-08, 1, 1.91679348e-08, 0.928667724, -4.39869794e-08, 0.37091279).Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 100 then
@@ -6794,7 +6979,7 @@ spawn(function()
   while __DIO_wait(1) do -- [FIX PERF 62] 0.3 -> 1 (yeu cau user: uu tien FPS; vong poll gated nen logic khong time-out)
     if _G.Auto_DonAcces then
       pcall(function()
-        if replicated.Remotes.CommF_:InvokeServer("GetUnlockables").FlamingoAccess == nil and plr.Data.Level.Value >= 1500 then
+        if replicated.Remotes.CommF_:InvokeServer("GetUnlockables").FlamingoAccess == nil and __DIO_Level() >= 1500 then
           FruitPrice = {}
 	      FruitStore = {}
 		  for i,v in next,replicated:WaitForChild("Remotes").CommF_:InvokeServer("GetFruits") do
@@ -6986,9 +7171,9 @@ spawn(function()
   pcall(function()
     while __DIO_wait(Sec) do
       if _G.Auto_Rainbow_Haki then
-        if plr.PlayerGui.Main.Quest.Visible == false then
+        if (not __DIO_QuestVisible()) then
           if _G.GetQFast then
-            if plr.PlayerGui.Main.Quest.Visible == false then replicated.Remotes.CommF_:InvokeServer("HornedMan","Bet") end     
+            if (not __DIO_QuestVisible()) then replicated.Remotes.CommF_:InvokeServer("HornedMan","Bet") end     
           else
             Rainbow1 = CFrame.new(-11892.0703125, 930.57672119141, -8760.1591796875)
             if (plr.Character.HumanoidRootPart.Position - Rainbow1.Position).Magnitude > 5 then -- [FIX PERF 24] CFrame== hang so khong bao gio khop -> step "Bet" khong bao gio chay
@@ -6998,34 +7183,34 @@ spawn(function()
               replicated.Remotes.CommF_:InvokeServer("HornedMan","Bet")
             end
           end
-          elseif plr.PlayerGui.Main.Quest.Visible == true and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Stone") then
+          elseif __DIO_QuestVisible() and string.find(__DIO_QuestTitle(), "Stone") then
             local v = GetConnectionEnemies("Stone")
             if v then
-              repeat __DIO_wait(0.25) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or plr.PlayerGui.Main.Quest.Visible == false
+              repeat __DIO_wait(0.25) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or (not __DIO_QuestVisible())
             else
               _tp(CFrame.new(-1086.11621, 38.8425903, 6768.71436, 0.0231462717, -0.592676699, 0.805107772, 2.03251839e-05, 0.805323839, 0.592835128, -0.999732077, -0.0137055516, 0.0186523199))
             end
-          elseif plr.PlayerGui.Main.Quest.Visible == true and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Hydra Leader") then
+          elseif __DIO_QuestVisible() and string.find(__DIO_QuestTitle(), "Hydra Leader") then
             local v = GetConnectionEnemies("Hydra Leader")
             if v then
-              repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or plr.PlayerGui.Main.Quest.Visible == false
+              repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or (not __DIO_QuestVisible())
             else
               replicated.Remotes.CommF_:InvokeServer("requestEntrance",Vector3.new(5643.45263671875, 1013.0858154296875, -340.51025390625))
               local framelong1 = Vector3.new(5643.45263671875, 1013.0858154296875, -340.51025390625)
               local framelong2 = CFrame.new(5821.89794921875, 1019.0950927734375, -73.71923065185547)
               if (plr.Character.HumanoidRootPart.Position - framelong1).Magnitude <= 5 then _tp(framelong2) end -- [FIX PERF 25] so sanh Vector3 == hang so khong bao gio khop
             end
-          elseif plr.PlayerGui.Main.Quest.Visible == true and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Kilo Admiral") then
+          elseif __DIO_QuestVisible() and string.find(__DIO_QuestTitle(), "Kilo Admiral") then
             local v = GetConnectionEnemies("Kilo Admiral")
             if v then
-              repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or plr.PlayerGui.Main.Quest.Visible == false
+              repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or (not __DIO_QuestVisible())
             else
               _tp(CFrame.new(2877.61743, 423.558685, -7207.31006, -0.989591599, -0, -0.143904909, -0, 1.00000012, -0, 0.143904924, 0, -0.989591479))
             end
-            elseif plr.PlayerGui.Main.Quest.Visible == true and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Captain Elephant") then
+            elseif __DIO_QuestVisible() and string.find(__DIO_QuestTitle(), "Captain Elephant") then
               local v = GetConnectionEnemies("Captain Elephant")
               if v then
-                repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki)until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or plr.PlayerGui.Main.Quest.Visible == false
+                repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki)until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or (not __DIO_QuestVisible())
               else
               local gamergayror1 = Vector3.new(-12471.169921875, 374.94024658203, -7551.677734375)
               local gamergayror2 = CFrame.new(-13376.7578125, 433.28689575195, -8071.392578125)
@@ -7035,10 +7220,10 @@ spawn(function()
                 _tp(gamergayror2)
               end
             end
-        elseif plr.PlayerGui.Main.Quest.Visible == true and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Beautiful Pirate") then
+        elseif __DIO_QuestVisible() and string.find(__DIO_QuestTitle(), "Beautiful Pirate") then
           local v = GetConnectionEnemies("Captain Elephant")
           if v then
-            repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or plr.PlayerGui.Main.Quest.Visible == false
+            repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or (not __DIO_QuestVisible())
           else
             replicated.Remotes.CommF_:InvokeServer("requestEntrance",Vector3.new(5314.54638671875, 22.562219619750977, -127.06755065917969))
           end
@@ -7145,21 +7330,21 @@ spawn(function()
       local Kv2Pos3 = CFrame.new(-10920.125, 624.20275878906, -10266.995117188)
       local Kv2Pos4 = CFrame.new(-13277.568359375, 370.34185791016, -7821.1572265625)
       local Kv2Pos5 = CFrame.new(-13493.12890625, 318.89553833008, -8373.7919921875)
-	  if plr.PlayerGui.Main.Quest.Visible == true and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text,"Defeat 50 Forest Pirates") then
+	  if __DIO_QuestVisible() and string.find(__DIO_QuestTitle(),"Defeat 50 Forest Pirates") then
 	    local v = GetConnectionEnemies("Forest Pirate")
         if v then
-	      repeat __DIO_wait(0.25) Attack.Kill(v,_G.AutoKenVTWO) until not _G.AutoKenVTWO or v.Humanoid.Health <= 0 or plr.PlayerGui.Main.Quest.Visible == false
+	      repeat __DIO_wait(0.25) Attack.Kill(v,_G.AutoKenVTWO) until not _G.AutoKenVTWO or v.Humanoid.Health <= 0 or (not __DIO_QuestVisible())
 	    else
 	      _tp(Kv2Pos4)
 	    end
-	  elseif plr.PlayerGui.Main.Quest.Visible == true then 
+	  elseif __DIO_QuestVisible() then 
 	    local v = GetConnectionEnemies("Captain Elephant")
 	    if v then
-          repeat __DIO_wait(0.25) Attack.Kill(v,_G.AutoKenVTWO) until not _G.AutoKenVTWO or v.Humanoid.Health <= 0 or plr.PlayerGui.Main.Quest.Visible == false
+          repeat __DIO_wait(0.25) Attack.Kill(v,_G.AutoKenVTWO) until not _G.AutoKenVTWO or v.Humanoid.Health <= 0 or (not __DIO_QuestVisible())
 	    else
 	      _tp(Kv2Pos5)
 	    end
-	  elseif plr.PlayerGui.Main.Quest.Visible == false then
+	  elseif (not __DIO_QuestVisible()) then
 	    replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress","Citizen") wait(.1)
 	    replicated.Remotes.CommF_:InvokeServer("StartQuest","CitizenQuest",1)
 	  end
@@ -7223,8 +7408,9 @@ end})
 spawn(function()
   while __DIO_wait(1) do -- [FIX PERF 62] 0.8 -> 1 (yeu cau user: uu tien FPS; vong poll gated nen logic khong time-out)
     pcall(function()
-      if _G.Bartilo_Quest and Lv >= 850 then
-      local Qbart = plr.PlayerGui.Main.Quest
+      if _G.Bartilo_Quest and __DIO_Level() >= 850 then
+      local Qbart = __DIO_GetQuestUI() -- [U30 FIX] path cung -> helper co fallback
+                if not Qbart then return end
         if replicated.Remotes.CommF_:InvokeServer("BartiloQuestProgress","Bartilo") == 0 then
           _G.Level = false
           if Qbart.Visible == true then
@@ -7233,7 +7419,7 @@ spawn(function()
               local x = GetConnectionEnemies(BartMon)
               if x then
                 repeat __DIO_wait(Sec)
-                  if not string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Swan Pirate")then replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
+                  if not string.find(__DIO_QuestTitle(), "Swan Pirate")then replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
                   else Attack.Kill(x,_G.Bartilo_Quest)end
                 until _G.Bartilo_Quest == false or not x.Parent or x.Humanoid.Health <= 0 or Qbart.Visible == false or not x:FindFirstChild("HumanoidRootPart")                  
               end
@@ -7291,11 +7477,11 @@ spawn(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.CitizenQuest then
-        if Lv >= 1800 and replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress").KilledBandits == false then
-          if string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Forest Pirate") and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "50") and plr.PlayerGui.Main.Quest.Visible == true then
+        if __DIO_Level() >= 1800 and replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress").KilledBandits == false then
+          if string.find(__DIO_QuestTitle(), "Forest Pirate") and string.find(__DIO_QuestTitle(), "50") and __DIO_QuestVisible() then
             local v = GetConnectionEnemies("Forest Pirate")
             if v then
-              repeat __DIO_wait(Sec) Attack.Kill(v,_G.CitizenQuest)until _G.CitizenQuest == false or not v.Parent or v.Humanoid.Health <= 0 or plr.PlayerGui.Main.Quest.Visible == false
+              repeat __DIO_wait(Sec) Attack.Kill(v,_G.CitizenQuest)until _G.CitizenQuest == false or not v.Parent or v.Humanoid.Health <= 0 or (not __DIO_QuestVisible())
             else
               _tp(CFrame.new(-13206.452148438, 425.89199829102, -7964.5537109375))
             end
@@ -7305,11 +7491,11 @@ spawn(function()
               wait(1.5) replicated.Remotes.CommF_:InvokeServer("StartQuest","CitizenQuest",1)
             end
           end
-        elseif Lv >= 1800 and replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress").KilledBoss == false then
+        elseif __DIO_Level() >= 1800 and replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress").KilledBoss == false then
           local v = GetConnectionEnemies("Captain Elephant")
-          if plr.PlayerGui.Main.Quest.Visible and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Captain Elephant") and plr.PlayerGui.Main.Quest.Visible == true then
+          if __DIO_QuestVisible() and string.find(__DIO_QuestTitle(), "Captain Elephant") and __DIO_QuestVisible() then
             if v then
-              repeat __DIO_wait(Sec) Attack.Kill(v,_G.CitizenQuest) until _G.CitizenQuest == false or v.Humanoid.Health <= 0 or not v.Parent or plr.PlayerGui.Main.Quest.Visible == false
+              repeat __DIO_wait(Sec) Attack.Kill(v,_G.CitizenQuest) until _G.CitizenQuest == false or v.Humanoid.Health <= 0 or not v.Parent or (not __DIO_QuestVisible())
             else
               _tp(CFrame.new(-13374.889648438, 421.27752685547, -8225.208984375))
             end
@@ -7320,7 +7506,7 @@ spawn(function()
               replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress","Citizen")
             end
           end
-        elseif Lv >= 1800 and replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress","Citizen") == 2 then
+        elseif __DIO_Level() >= 1800 and replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress","Citizen") == 2 then
           _tp(CFrame.new(-12512.138671875, 340.39279174805, -9872.8203125))
         end
       end
@@ -7338,7 +7524,7 @@ spawn(function()
   while __DIO_wait(Sec) do
     if _G.DummyMan then
       pcall(function()
-        if plr.PlayerGui.Main.Quest.Visible == false then	
+        if (not __DIO_QuestVisible()) then	
           local xxx = {[1] = "ArenaTrainer"}
 	      replicated:WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer(unpack(xxx))
         else
@@ -7766,7 +7952,7 @@ spawn(function()
     while __DIO_wait(1) do -- [FIX PERF 62] 0.1 -> 1 (yeu cau user: uu tien FPS; vong poll gated nen logic khong time-out)
         pcall(function()
             if _G.AutoMysticIsland then
-                for _, location in pairs(game:GetService("Workspace")._WorldOrigin.Locations:GetChildren()) do
+                for _, location in pairs(__SVC_WS._WorldOrigin.Locations:GetChildren()) do
                     if location.Name == "Mirage Island" then
                         topos(location.CFrame * CFrame.new(0, 333, 0))
                     end
@@ -7865,8 +8051,8 @@ spawn(function()
     if _G.FarmChestM then
       pcall(function()
         if workspace.Map.MysticIsland.Chests:FindFirstChild("DiamondChest") or workspace.Map.MysticIsland.Chests:FindFirstChild("FragChest") then
-          local CollectionService = game:GetService("CollectionService")
-          local Players = game:GetService("Players")
+          local CollectionService = __SVC_CS
+          local Players = __SVC_PLR
           local Player = Players.LocalPlayer
           local Character = Player.Character or Player.CharacterAdded:Wait()                
           if not Character then return end                
@@ -8180,14 +8366,14 @@ Tabs.Race:AddButton({
     Name = "Teleport to Temple of Time",
     Description = "",
     Callback = function()
-        local plr = game:GetService("Players").LocalPlayer
+        local plr = __SVC_PLR.LocalPlayer
         local hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
         if hrp then
             hrp.CFrame = CFrame.new(28286.35546875, 14895.3017578125, 102.62469482421875)
         end
 
-        if not game:GetService("Workspace").Map:FindFirstChild("Temple of Time") and World3 then
-            local stash = game:GetService("ReplicatedStorage"):FindFirstChild("MapStash")
+        if not __SVC_WS.Map:FindFirstChild("Temple of Time") and World3 then
+            local stash = __SVC_RS:FindFirstChild("MapStash")
             if stash and stash:FindFirstChild("Temple of Time") then
                 stash["Temple of Time"].Parent = workspace.Map
             end
@@ -8198,15 +8384,15 @@ Tabs.Race:AddButton({
 Name = "Teleport to Ancient One", 
 Description = "",
 Callback = function()
-        local plr = game:GetService("Players").LocalPlayer
+        local plr = __SVC_PLR.LocalPlayer
         local hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
 
         if hrp then
             hrp.CFrame = CFrame.new(28286.35546875, 14895.3017578125, 102.62469482421875)
         end
 
-        if not game:GetService("Workspace").Map:FindFirstChild("Temple of Time") and World3 then
-            local stash = game:GetService("ReplicatedStorage"):FindFirstChild("MapStash")
+        if not __SVC_WS.Map:FindFirstChild("Temple of Time") and World3 then
+            local stash = __SVC_RS:FindFirstChild("MapStash")
             if stash and stash:FindFirstChild("Temple of Time") then
                 stash["Temple of Time"].Parent = workspace.Map
             end
@@ -8221,7 +8407,7 @@ Tabs.Race:AddButton({
 Name = "Teleport to Ancient Clock", 
 Description = "",
 Callback = function()
-        local plr = game:GetService("Players").LocalPlayer
+        local plr = __SVC_PLR.LocalPlayer
         local hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
 
         local pos1 = CFrame.new(28286.35546875, 14895.3017578125, 102.62469482421875)
@@ -8237,7 +8423,7 @@ Callback = function()
         end)
 
         if not workspace.Map:FindFirstChild("Temple of Time") and World3 then
-            local stash = game:GetService("ReplicatedStorage"):FindFirstChild("MapStash")
+            local stash = __SVC_RS:FindFirstChild("MapStash")
             if stash and stash:FindFirstChild("Temple of Time") then
                 stash["Temple of Time"].Parent = workspace.Map
             end
@@ -8308,7 +8494,7 @@ spawn(function()
 	    if tostring(plr.Data.Race.Value) == "Fishman" then
 	      if GetSeaBeastTrial() then            
             repeat __DIO_wait(Sec)
-              spawn(function()_tp(CFrame.new(GetSeaBeastTrial().HumanoidRootPart.Position.X,game:GetService("Workspace").Map["WaterBase-Plane"].Position.Y + 300,GetSeaBeastTrial().HumanoidRootPart.Position.Z))end)
+              spawn(function()_tp(CFrame.new(GetSeaBeastTrial().HumanoidRootPart.Position.X,__SVC_WS.Map["WaterBase-Plane"].Position.Y + 300,GetSeaBeastTrial().HumanoidRootPart.Position.Z))end)
 		      MousePos = GetSeaBeastTrial().HumanoidRootPart.Position
               Useskills("Melee","Z")
 	          Useskills("Melee","X")
@@ -8392,7 +8578,7 @@ Tabs.Prehistoric:AddSection("Dojo Quest")
 Tabs.Prehistoric:AddButton({
     Title = "Teleport To Dragon Dojo",
     Callback = function()
-        game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("requestEntrance", Vector3.new(5661.5322265625, 1013.0907592773438, - 334.9649963378906))
+        __SVC_RS.Remotes.CommF_:InvokeServer("requestEntrance", Vector3.new(5661.5322265625, 1013.0907592773438, - 334.9649963378906))
         topos(CFrame.new(5814.42724609375, 1208.3267822265625, 884.5785522460938))
     end
 })
@@ -8492,8 +8678,8 @@ Default = false,
 Callback = function(Value)
   _G.FarmBlazeEM = Value
 end})
-checkQuesta=function()local a={[1]={["Context"]="Check"}}local b=nil;pcall(function()local c={[1]={["Context"]="RequestQuest"}}game:GetService("ReplicatedStorage"):WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RF/DragonHunter"):InvokeServer(unpack(c))end)local d,e=pcall(function()b=game:GetService("ReplicatedStorage"):WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RF/DragonHunter"):InvokeServer(unpack(a))end)local f=false;local g;local h;local i;if b then if b.Text then f=true;local j=b.Text;if string.find(tostring(j),"Defeat")then i=1;g=string.sub(tostring(j),8,9)g=tonumber(g)local k={"Hydra Enforcer","Venomous Assailant"}for l,m in pairs(k)do if string.find(j,m)then h=m;break end end elseif string.find(tostring(j),"Destroy")then g=10;i=2;h=nil end end end;return f,h,g,i end
-BackTODoJo=function()for a,b in pairs(game:GetService("Players").LocalPlayer.PlayerGui.Notifications:GetChildren())do if b.Name=="NotificationTemplate"then if string.find(b.Text,"Head back to the Dojo to complete more tasks")then return true end end end;return false end
+checkQuesta=function()local a={[1]={["Context"]="Check"}}local b=nil;pcall(function()local c={[1]={["Context"]="RequestQuest"}}__SVC_RS:WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RF/DragonHunter"):InvokeServer(unpack(c))end)local d,e=pcall(function()b=__SVC_RS:WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RF/DragonHunter"):InvokeServer(unpack(a))end)local f=false;local g;local h;local i;if b then if b.Text then f=true;local j=b.Text;if string.find(tostring(j),"Defeat")then i=1;g=string.sub(tostring(j),8,9)g=tonumber(g)local k={"Hydra Enforcer","Venomous Assailant"}for l,m in pairs(k)do if string.find(j,m)then h=m;break end end elseif string.find(tostring(j),"Destroy")then g=10;i=2;h=nil end end end;return f,h,g,i end
+BackTODoJo=function()for a,b in pairs(__SVC_PLR.LocalPlayer.PlayerGui.Notifications:GetChildren())do if b.Name=="NotificationTemplate"then if string.find(b.Text,"Head back to the Dojo to complete more tasks")then return true end end end;return false end
 DragonMobClear=function(a,b,c)if workspace.Enemies:FindFirstChild(b)then for d,e in pairs(workspace.Enemies:GetChildren())do if e.Name==b and Attack.Alive(e)then if a then Attack.Kill(e,a)end end end else _tp(c)end end
 spawn(function()
   while __DIO_wait(1) do -- [FIX PERF 62] 0.1 -> 1 (yeu cau user: uu tien FPS; vong poll gated nen logic khong time-out)
@@ -8793,7 +8979,7 @@ Callback = function()
             [2] = "Craft",
             [3] = "Dragonheart"
         }
-        game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer(unpack(args))
+        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
     end
 })
 
@@ -8806,7 +8992,7 @@ Callback = function()
             [2] = "Craft",
             [3] = "Dragonstorm"
         }
-        game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer(unpack(args))
+        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
     end
 })
 
@@ -8818,7 +9004,7 @@ Tabs.Prehistoric:AddButton({
             [2] = "Craft",
             [3] = "DinoHood"
         }
-        game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer(unpack(args))
+        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
     end
 })
 
@@ -8830,7 +9016,7 @@ Tabs.Prehistoric:AddButton({
             [2] = "Craft",
             [3] = "TRexSkull"
         }
-        game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer(unpack(args))
+        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
     end
 })
 
@@ -8850,7 +9036,7 @@ end)
 Tabs.Prehistoric:AddButton({
     Name = "Craft Volcanic Magnet",
     Callback = function()
-        local RF = game:GetService("ReplicatedStorage").Modules.Net["RF/Craft"]
+        local RF = __SVC_RS.Modules.Net["RF/Craft"]
 
         RF:InvokeServer(
             "PossibleHardcode",
@@ -8868,7 +9054,7 @@ Tabs.Prehistoric:AddToggle({
 })
 
 task.spawn(function()
-    local RF = game:GetService("ReplicatedStorage").Modules.Net["RF/Craft"]
+    local RF = __SVC_RS.Modules.Net["RF/Craft"]
 
     while __DIO_wait(1) do -- [FIX PERF 62] 0.3 -> 1 (yeu cau user: uu tien FPS; vong poll gated nen logic khong time-out)
         if getgenv().AutoCraftVolcanic then
@@ -9218,7 +9404,7 @@ local ListSeaZone={"Lv 1","Lv 2","Lv 3","Lv 4","Lv 5","Lv 6","Lv Infinite"}
 Tabs.SeaEvent:AddButton({
     Name = "Remove Lighting Effect",
     Callback = function()
-        game:GetService("Lighting").BaseAtmosphere:Destroy()
+        __SVC_LIGHT.BaseAtmosphere:Destroy()
     end
 })
 
@@ -9230,14 +9416,14 @@ Tabs.SeaEvent:AddToggle({
     end
 })
 local __nextSpeedBoat = 0
-game:GetService("RunService").RenderStepped:Connect(function()
+__SVC_RUN.RenderStepped:Connect(function()
     if getgenv().SpeedBoat then
         if tick() < __nextSpeedBoat then return end
         __nextSpeedBoat = tick() + 0.25 -- [FIX PERF 32] set MaxSpeed khong can 60 lan/s; 4 lan/s du
-        local plr = game:GetService("Players").LocalPlayer
+        local plr = __SVC_PLR.LocalPlayer
         if plr.Character and plr.Character:FindFirstChild("Humanoid") then
             if plr.Character.Humanoid.Sit then
-                for _, boat in pairs(game:GetService("Workspace").Boats:GetChildren()) do
+                for _, boat in pairs(__SVC_WS.Boats:GetChildren()) do
                     local seat = boat:FindFirstChildWhichIsA("VehicleSeat")
                     if seat then
                         seat.MaxSpeed = SetSpeedBoat
@@ -9271,7 +9457,7 @@ spawn(function()
                 local __chW = game.Players.LocalPlayer.Character
                 local humanoid = __chW and __chW:FindFirstChild("Humanoid") -- [FIX PERF 33] WaitForChild trong loop = churn; FindFirstChild du
                 if humanoid and humanoid.Sit == true then
-                    game:GetService("VirtualInputManager"):SendKeyEvent(true, "W", false, game)
+                    __SVC_VIM:SendKeyEvent(true, "W", false, game)
                 end
             end
         end)
@@ -9287,8 +9473,8 @@ Tabs.SeaEvent:AddToggle({
 spawn(function()
     while __DIO_wait(1) do -- [FIX PERF 62] 0.5 -> 1 (yeu cau user: uu tien FPS; vong poll gated nen logic khong time-out)
         pcall(function()
-            if #game:GetService("Workspace").Boats:GetChildren() == 0 then return end
-            for i, boat in pairs(game:GetService("Workspace").Boats:GetChildren()) do
+            if #__SVC_WS.Boats:GetChildren() == 0 then return end
+            for i, boat in pairs(__SVC_WS.Boats:GetChildren()) do
                 for _, v in pairs(boat:GetDescendants()) do
                     if v:IsA("BasePart") then
                         if getgenv().NoClipShip or getgenv().FindPrehistoric then
@@ -9326,7 +9512,7 @@ Callback = function()
             [2] = "Craft",
             [3] = "SharkTooth"
         }
-        game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer(unpack(args))
+        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
     end
 })
 
@@ -9339,7 +9525,7 @@ Callback = function()
             [2] = "Craft",
             [3] = "TerrorJaw"
         }
-        game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer(unpack(args))
+        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
     end
 })
 
@@ -9352,7 +9538,7 @@ Callback = function()
             [2] = "Craft",
             [3] = "SharkAnchor"
         }
-        game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer(unpack(args))
+        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
     end
 })
 
@@ -9365,7 +9551,7 @@ Callback = function()
             [2] = "Craft",
             [3] = "LeviathanCrown"
         }
-        game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer(unpack(args))
+        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
     end
 })
  
@@ -9378,7 +9564,7 @@ Callback = function()
             [2] = "Craft",
             [3] = "LeviathanShield"
         }
-        game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer(unpack(args))
+        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
     end
 })
 
@@ -9391,7 +9577,7 @@ Callback = function()
             [2] = "Craft",
             [3] = "LeviathanBoat"
         }
-        game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer(unpack(args))
+        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
     end
 })
 
@@ -9404,7 +9590,7 @@ Callback = function()
             [2] = "Craft",
             [3] = "LegendaryScroll"
         }
-        game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer(unpack(args))
+        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
     end
 })
 
@@ -9417,7 +9603,7 @@ Callback = function()
             [2] = "Craft",
             [3] = "MythicalScroll"
         }
-        game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer(unpack(args))
+        __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
     end
 })
 Tabs.SeaEvent:AddSection("Choose Sea Event")
@@ -9564,8 +9750,8 @@ spawn(function()
       if _G.Piranha then local a={"Piranha"}if CheckPiranha()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) Attack.Kill(c,_G.Piranha)until _G.Piranha==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
       if _G.MobCrew then local a={"Fish Crew Member"}if CheckFishCrew()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) Attack.Kill(c,_G.MobCrew)until _G.MobCrew==false or not c.Parent or c.Humanoid.Health<=0 end end end end end                 
       if _G.HCM then local a={"Haunted Crew Member"}if CheckHauntedCrew()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) Attack.Kill(c,_G.HCM)until _G.HCM==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
-      if _G.SeaBeast1 then if workspace.SeaBeasts:FindFirstChild("SeaBeast1")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)spawn(function()_tp(CFrame.new(b.HumanoidRootPart.Position.X,game:GetService("Workspace").Map["WaterBase-Plane"].Position.Y+200,b.HumanoidRootPart.Position.Z))end)if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then AitSeaSkill_Custom=b.HumanoidRootPart.CFrame;MousePos=AitSeaSkill_Custom.Position;if CheckF()then weaponSc("Blox Fruit")Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")else Useskills("Melee","Z")Useskills("Melee","X")Useskills("Melee","C")wait(.1)Useskills("Sword","Z")Useskills("Sword","X")wait(.1)Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")wait(.1)Useskills("Gun","Z")Useskills("Gun","X")end end until _G.SeaBeast1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
-      if _G.Leviathan1 then if workspace.SeaBeasts:FindFirstChild("Leviathan")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Leviathan Segment")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)spawn(function()_tp(CFrame.new(b.HumanoidRootPart.Position.X,game:GetService("Workspace").Map["WaterBase-Plane"].Position.Y+200,b.HumanoidRootPart.Position.Z))end)if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then MousePos=b:FindFirstChild("Leviathan Segment").Position;if CheckF()then weaponSc("Blox Fruit")Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")else Useskills("Melee","Z")Useskills("Melee","X")Useskills("Melee","C")wait(.1)Useskills("Sword","Z")Useskills("Sword","X")wait(.1)Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")wait(.1)Useskills("Gun","Z")Useskills("Gun","X")end end until _G.Leviathan1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
+      if _G.SeaBeast1 then if workspace.SeaBeasts:FindFirstChild("SeaBeast1")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)spawn(function()_tp(CFrame.new(b.HumanoidRootPart.Position.X,__SVC_WS.Map["WaterBase-Plane"].Position.Y+200,b.HumanoidRootPart.Position.Z))end)if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then AitSeaSkill_Custom=b.HumanoidRootPart.CFrame;MousePos=AitSeaSkill_Custom.Position;if CheckF()then weaponSc("Blox Fruit")Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")else Useskills("Melee","Z")Useskills("Melee","X")Useskills("Melee","C")wait(.1)Useskills("Sword","Z")Useskills("Sword","X")wait(.1)Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")wait(.1)Useskills("Gun","Z")Useskills("Gun","X")end end until _G.SeaBeast1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
+      if _G.Leviathan1 then if workspace.SeaBeasts:FindFirstChild("Leviathan")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Leviathan Segment")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)spawn(function()_tp(CFrame.new(b.HumanoidRootPart.Position.X,__SVC_WS.Map["WaterBase-Plane"].Position.Y+200,b.HumanoidRootPart.Position.Z))end)if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then MousePos=b:FindFirstChild("Leviathan Segment").Position;if CheckF()then weaponSc("Blox Fruit")Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")else Useskills("Melee","Z")Useskills("Melee","X")Useskills("Melee","C")wait(.1)Useskills("Sword","Z")Useskills("Sword","X")wait(.1)Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")wait(.1)Useskills("Gun","Z")Useskills("Gun","X")end end until _G.Leviathan1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
       if _G.FishBoat then if CheckEnemiesBoat()then for a,b in pairs(workspace.Enemies:GetChildren())do if b:FindFirstChild("Health")and b.Health.Value>0 and b:FindFirstChild("VehicleSeat")then repeat __DIO_wait(0.25)spawn(function()if b.Name=="FishBoat"then _tp(b.Engine.CFrame*CFrame.new(0,-50,-25))end end)if plr:DistanceFromCharacter(b.Engine.CFrame.Position)<=150 then AitSeaSkill_Custom=b.Engine.CFrame;MousePos=AitSeaSkill_Custom.Position;if CheckF()then weaponSc("Blox Fruit")Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")else Useskills("Melee","Z")Useskills("Melee","X")Useskills("Melee","C")wait(.1)Useskills("Sword","Z")Useskills("Sword","X")wait(.1)Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")wait(.1)Useskills("Gun","Z")Useskills("Gun","X")end end until _G.FishBoat==false or not b:FindFirstChild("VehicleSeat")or b.Health.Value<=0 end end end end
       if _G.PGB then if CheckPirateGrandBrigade()then for a,b in pairs(workspace.Enemies:GetChildren())do if b:FindFirstChild("Health")and b.Health.Value>0 and b:FindFirstChild("VehicleSeat")then repeat __DIO_wait(0.25)spawn(function()if b.Name=="PirateBrigade"then _tp(b.Engine.CFrame*CFrame.new(0,-30,-10))elseif b.Name=="PirateGrandBrigade"then _tp(b.Engine.CFrame*CFrame.new(0,-50,-50))end end)if plr:DistanceFromCharacter(b.Engine.CFrame.Position)<=150 then AitSeaSkill_Custom=b.Engine.CFrame;MousePos=AitSeaSkill_Custom.Position;if CheckF()then weaponSc("Blox Fruit")Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")else Useskills("Melee","Z")Useskills("Melee","X")Useskills("Melee","C")wait(.1)Useskills("Sword","Z")Useskills("Sword","X")wait(.1)Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")wait(.1)Useskills("Gun","Z")Useskills("Gun","X")end end until _G.PGB==false or not b:FindFirstChild("VehicleSeat")or b.Health.Value<=0 end end end end
     end)
@@ -9742,7 +9928,7 @@ end)
 Tabs.SeaEvent:AddButton({
     Name = "Buy Spy",
     Callback = function()
-        game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("InfoLeviathan", "2")
+        __SVC_RS.Remotes.CommF_:InvokeServer("InfoLeviathan", "2")
     end
 })
 
@@ -10081,7 +10267,7 @@ Number = math.random(1, 1000000)
 
 
 local plr = game:GetService('Players').LocalPlayer
-local replicated = game:GetService("ReplicatedStorage")
+local replicated = __SVC_RS
 local TeamSelf = plr.Team
 
 
@@ -10448,7 +10634,7 @@ end
 
 ChestEsp = function()
     if ChestESP then
-        local CollectionService = game:GetService("CollectionService")
+        local CollectionService = __SVC_CS
         local Chests = CollectionService:GetTagged("_ChestTagged")        
         for _, Chest in ipairs(Chests) do
             pcall(function()
@@ -10492,7 +10678,7 @@ ChestEsp = function()
             end)
         end
     else
-        for _, Chest in ipairs(game:GetService("CollectionService"):GetTagged("_ChestTagged")) do
+        for _, Chest in ipairs(__SVC_CS:GetTagged("_ChestTagged")) do
             local espAttachment = Chest:FindFirstChild("ChestEspAttachment")
             if espAttachment then
                 espAttachment:Destroy()
@@ -10504,7 +10690,7 @@ end
 
 berriesEsp = function()
     if BerryEsp then
-        local CollectionService = game:GetService("CollectionService")
+        local CollectionService = __SVC_CS
         local BerryBushes = CollectionService:GetTagged("BerryBush")
         for _, Bush in ipairs(BerryBushes) do
             pcall(function()
@@ -10619,7 +10805,7 @@ Tabs.Esp:AddToggle({
     Callback = function(Value)
         ChestESP = Value
         if not Value then
-            for _, Chest in ipairs(game:GetService("CollectionService"):GetTagged("_ChestTagged")) do
+            for _, Chest in ipairs(__SVC_CS:GetTagged("_ChestTagged")) do
                 local espAttachment = Chest:FindFirstChild("ChestEspAttachment")
                 if espAttachment then
                     espAttachment:Destroy()
@@ -10838,7 +11024,7 @@ end
 local function getFruitStock()
     local resultStr = "Advance Fruit Stock\n"
     local success, advanceFruits = pcall(function()
-        return game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("GetFruits", true)
+        return __SVC_RS.Remotes.CommF_:InvokeServer("GetFruits", true)
     end)
 
     if not success or not advanceFruits then
@@ -10858,7 +11044,7 @@ local function getFruitStock()
 
     resultStr = resultStr .. "\nNormal Fruit Stock\n"
     local success2, normalFruits = pcall(function()
-        return game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("GetFruits")
+        return __SVC_RS.Remotes.CommF_:InvokeServer("GetFruits")
     end)
 
     if success2 and normalFruits then
@@ -10999,8 +11185,8 @@ spawn(function()
     pcall(function()
         while __DIO_wait(1) do -- [FIX PERF 34] 0.1 -> 1s: 2 remote MUA 20 lan/s = spam server; mua 1 lan/s van snipe duoc
             if getgenv().AutoBuyFruitSniper then
-                game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("GetFruits")
-                game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("PurchaseRawFruit", getgenv().SelectFruit)
+                __SVC_RS.Remotes.CommF_:InvokeServer("GetFruits")
+                __SVC_RS.Remotes.CommF_:InvokeServer("PurchaseRawFruit", getgenv().SelectFruit)
             end
         end
     end)
@@ -11043,7 +11229,7 @@ spawn(function()
                         [1] = "LoadFruit",
                         [2] = fruit
                     }
-                    game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer(unpack(args))
+                    __SVC_RS.Remotes.CommF_:InvokeServer(unpack(args))
                 end
             end
         end)
@@ -11203,7 +11389,8 @@ spawn(function()
             continue 
         end
 
-        local gui = plr.PlayerGui.Main.TopHUDList.RaidTimer
+        local __thl = __DIO_HUD("TopHUDList") -- [U30 FIX] path cung -> helper
+        local gui = __thl and __thl:FindFirstChild("RaidTimer")
         -- Tắt KillAura nếu Raid kết thúc (RaidTimer không hiện)
         if not gui or not gui.Visible then 
             _G.KillAuraFull = false
@@ -11346,7 +11533,7 @@ spawn(function()
     while __DIO_wait(1) do  
         if getgenv().AutoBuyMicrochipLaw then
             pcall(function()
-                game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("BlackbeardReward","Microchip","2")
+                __SVC_RS.Remotes.CommF_:InvokeServer("BlackbeardReward","Microchip","2")
             end)
         end
     end
@@ -11619,7 +11806,7 @@ end)
 Tabs.Combat:AddSection("Combat / AimBot")
 
 local PlrList = {}   
-for _, v in pairs(game:GetService("Players"):GetChildren()) do
+for _, v in pairs(__SVC_PLR:GetChildren()) do
     table.insert(PlrList, v.Name)
 end
 
@@ -11642,7 +11829,7 @@ Tabs.Combat:AddToggle({
             pcall(function()
                 while _G.TpPly do
                     wait()
-                    _tp(game:GetService("Players")[_G.PlayersList].Character.HumanoidRootPart.CFrame)
+                    _tp(__SVC_PLR[_G.PlayersList].Character.HumanoidRootPart.CFrame)
                 end
             end)
         end)
@@ -11658,7 +11845,7 @@ Tabs.Combat:AddToggle({
         spawn(function()
             repeat
                 __DIO_wait(0.1)
-                local __sp = game:GetService("Players"):FindFirstChild(_G.PlayersList) -- [FIX PERF 29] target doi man hinh/chet -> Character/Humanoid nil lam chet thread spectate va mat cleanup camera
+                local __sp = __SVC_PLR:FindFirstChild(_G.PlayersList) -- [FIX PERF 29] target doi man hinh/chet -> Character/Humanoid nil lam chet thread spectate va mat cleanup camera
                 if __sp and __sp.Character and __sp.Character:FindFirstChild("Humanoid") then
                     workspace.Camera.CameraSubject = __sp.Character.Humanoid
                 end
@@ -11765,7 +11952,7 @@ Tabs.Combat:AddButton({
     Description = "",
     Callback = function()
         pcall(function()
-            game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("PlayerHunter")
+            __SVC_RS.Remotes.CommF_:InvokeServer("PlayerHunter")
         end)
     end
 })
@@ -11784,7 +11971,7 @@ spawn(function()
     while __DIO_wait(1) do
         if _G.AutoReceivePlayerQuest then
             pcall(function()
-                game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("PlayerHunter")
+                __SVC_RS.Remotes.CommF_:InvokeServer("PlayerHunter")
             end)
         end
     end
@@ -11802,12 +11989,12 @@ Tabs.Combat:AddToggle({
 spawn(function()
     while __DIO_wait(1) do -- [FIX PERF 62] 0.1 -> 1 (yeu cau user: uu tien FPS; vong poll gated nen logic khong time-out)
         if _G.AutoPlayerHunter then
-            if game.Players.LocalPlayer.PlayerGui.Main.Quest.Visible == false then
+            if __DIO_QuestVisible() == false then
                 __DIO_wait(0.5)
-                game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("PlayerHunter")
+                __SVC_RS.Remotes.CommF_:InvokeServer("PlayerHunter")
             else
-                for _, target in pairs(game:GetService("Workspace").Characters:GetChildren()) do
-                    if string.find(game.Players.LocalPlayer.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, target.Name) then
+                for _, target in pairs(__SVC_WS.Characters:GetChildren()) do
+                    if string.find(__DIO_QuestTitle(), target.Name) then
                         repeat
                             __DIO_wait(0.25)
                             if AutoHaki then AutoHaki() end
@@ -11818,13 +12005,13 @@ spawn(function()
                             
                             target.HumanoidRootPart.Size = Vector3.new(60, 60, 60)
                             
-                            game:GetService("VirtualUser"):CaptureController()
-                            game:GetService("VirtualUser"):Button1Down(Vector2.new(1280, 672))
+                            __SVC_VU:CaptureController()
+                            __SVC_VU:Button1Down(Vector2.new(1280, 672))
                             
                         until _G.AutoPlayerHunter == false or target.Humanoid.Health <= 0
                         
                         Useskill = false
-                        game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("AbandonQuest")
+                        __SVC_RS.Remotes.CommF_:InvokeServer("AbandonQuest")
                     end
                 end
             end
@@ -11853,7 +12040,7 @@ spawn(function()
             if playerGui and playerGui.Main and playerGui.Main:FindFirstChild("PvpDisabled") then
                 if playerGui.Main.PvpDisabled.Visible then
                     pcall(function()
-                        game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("EnablePvp")
+                        __SVC_RS.Remotes.CommF_:InvokeServer("EnablePvp")
                     end)
                 end
             end
@@ -11885,9 +12072,9 @@ end)
 
 Tabs.Combat:AddSection("LocalPlayer Settings")
 
-local Players = game:GetService("Players")
+local Players = __SVC_PLR
 local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
+local RunService = __SVC_RUN
 
 local player = Players.LocalPlayer
 
@@ -12728,7 +12915,7 @@ Tabs.Shop:AddButton({
                         ["Command"] = "DragonRace"
                     }
                 }
-                game:GetService("ReplicatedStorage").Modules.Net:FindFirstChild("RF/InteractDragonQuest"):InvokeServer(unpack(args))
+                __SVC_RS.Modules.Net:FindFirstChild("RF/InteractDragonQuest"):InvokeServer(unpack(args))
             end
         end)
     end
@@ -12752,7 +12939,7 @@ Tabs.Misc:AddButton({
             "NOOB2ADMIN","CODESLIDE","fruitconcepts","krazydares"
         }
 
-        local ReplicatedStorage = game:GetService("ReplicatedStorage")
+        local ReplicatedStorage = __SVC_RS
         local RemotesFolder = ReplicatedStorage:WaitForChild("Remotes")
         local RedeemRemote = RemotesFolder:FindFirstChild("Redeem")
 
@@ -12776,17 +12963,17 @@ Tabs.Misc:AddButton({
 Name = "Rejoin Server", 
 Description = "",
 Callback = function()
-  game:GetService("TeleportService"):Teleport(game.PlaceId, game.Players.LocalPlayer)
+  __SVC_TP:Teleport(game.PlaceId, game.Players.LocalPlayer)
 end})
 Tabs.Misc:AddButton({
     Name = "Hop Server",
     Description = "",
     Callback = function()
         task.spawn(function()
-            local HttpService = game:GetService("HttpService")
-            local TeleportService = game:GetService("TeleportService")
+            local HttpService = __SVC_HTTP
+            local TeleportService = __SVC_TP
             local PlaceId = game.PlaceId
-            local Players = game:GetService("Players")
+            local Players = __SVC_PLR
 
             local success, servers = pcall(function()
                 local url = "https://games.roblox.com/v1/games/"..PlaceId.."/servers/Public?sortOrder=Asc&limit=100"
@@ -12815,8 +13002,8 @@ Tabs.Misc:AddButton({
 Name = "Hop to Lowest Players", 
 Description = "",
 Callback = function()
-  local Http = game:GetService("HttpService")
-  local TPS = game:GetService("TeleportService")
+  local Http = __SVC_HTTP
+  local TPS = __SVC_TP
   local Api = "https://games.roblox.com/v1/games/"
   local _place = game.PlaceId
   local _servers = Api.._place.."/servers/Public?sortOrder=Asc&limit=100"
@@ -12836,9 +13023,9 @@ Tabs.Misc:AddButton({
 Name = "Hop to Lowest Pings Server", 
 Description = "",
 Callback = function()
-local HTTPService = game:GetService("HttpService")
-local TeleportService = game:GetService("TeleportService")
-local StatsService = game:GetService("Stats")
+local HTTPService = __SVC_HTTP
+local TeleportService = __SVC_TP
+local StatsService = __SVC_STAT
 local function fetchServersData(placeId, limit)
     local url = string.format("https://games.roblox.com/v1/games/%d/servers/Public?limit=%d", placeId, limit)
     local success, response = pcall(function()
@@ -12871,7 +13058,7 @@ local function fetchServersData(placeId, limit)
   end
 end})
 
-local replicated = game:GetService("ReplicatedStorage")
+local replicated = __SVC_RS
 
 Tabs.Misc:AddTextBox({
     Name = "Input Job Id",
@@ -12886,7 +13073,7 @@ Tabs.Misc:AddButton({
     Name = "Teleport [Job ID]", 
     Callback = function()
         if getgenv().Job and getgenv().Job ~= "" then
-            game:GetService("TeleportService")
+            __SVC_TP
                 :TeleportToPlaceInstance(
                     game.PlaceId,
                     getgenv().Job,
@@ -12908,14 +13095,16 @@ Tabs.Misc:AddButton({
 Name = "Open Awakenings Expert", 
 Description = "",
 Callback = function()
-  plr.PlayerGui.Main.AwakeningToggler.Visible = true
+  local __aw = __DIO_HUD("AwakeningToggler") -- [U30 FIX]
+  if __aw then __aw.Visible = true else warn("[DIO] Khong tim thay AwakeningToggler (Update 30 doi HUD?)") end
 end})
 Tabs.Misc:AddButton({
 Name = "Open Title Selection", 
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("getTitles",true)
-  plr.PlayerGui.Main.Titles.Visible = true
+  local __ti = __DIO_HUD("Titles") -- [U30 FIX]
+  if __ti then __ti.Visible = true else warn("[DIO] Khong tim thay Titles (Update 30 doi HUD?)") end
 end})
 DisbleChat = Tabs.Misc:AddToggle({
 Name = "Disable Chat GUI", 
@@ -13173,9 +13362,9 @@ Default = true,
 Callback = function(Value)
   _G.WalkWater_Part = Value
   if _G.WalkWater_Part then
-    game:GetService("Workspace").Map["WaterBase-Plane"].Size = Vector3.new(1000, 112, 1000)
+    __SVC_WS.Map["WaterBase-Plane"].Size = Vector3.new(1000, 112, 1000)
   else
-    game:GetService("Workspace").Map["WaterBase-Plane"].Size = Vector3.new(1000, 80, 1000)
+    __SVC_WS.Map["WaterBase-Plane"].Size = Vector3.new(1000, 80, 1000)
   end
 end
 })
