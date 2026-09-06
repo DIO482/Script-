@@ -11613,6 +11613,64 @@ spawn(function()
     end)
 end)
 
+-- =============================================================
+-- [FIX CHIP-BUY-v2] (yeu cau user) Khu vuc Raid / mua chip:
+--  * Cả 4 cach mua chip (Button Beli, Button Fruit, Auto Beli, Auto Fruit) phai
+--    BAY toi diem room-start CFrame.new(-5059.1748, 314.863464, -2923.36108) (noi dat
+--    Start Raid / gan RaidsNpc) roi MOI InvokeServer mua key - nhieu remote cua game
+--    chi co hieu luc khi nhan vat o gan NPC.
+--  * Mua bang fruit: chi LoadFruit DUNG loai fruit tuong ung voi chip dang chon (neu
+--    co trong danh sach re), neu khong thi moi dung fruit re nhat; KHONG LoadFruit spam
+--    lap 1 loai fruit moi giay (nguyen nhan "lau fruit vo han").
+--  * Button = 1 lan an = dung 1 lan (bo 2 vong lap for long nhau goi invoke hang chuc lan).
+__RAID_BUY_CF = CFrame.new(-5059.1748, 314.863464, -2923.36108)
+function __RaidBuyEnsure()
+    local plr = game.Players.LocalPlayer
+    local char = plr and plr.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    local cf = __RAID_BUY_CF
+    if not World3 then
+        local rs = workspace.Map and workspace.Map:FindFirstChild("CircleIsland")
+        rs = rs and rs:FindFirstChild("RaidSummon2")
+        local bt = rs and rs:FindFirstChild("Button")
+        local main = bt and bt:FindFirstChild("Main")
+        local pp = main and (main:IsA("BasePart") and main or main:FindFirstChildWhichIsA("BasePart"))
+        if pp then cf = pp.CFrame * CFrame.new(0, 2, 0) end
+    end
+    if (root.Position - cf.Position).Magnitude <= 12 then return end
+    _tp(cf) -- bay toi noi truoc khi mua chip
+    local t0 = tick()
+    repeat
+        __DIO_wait(0.2)
+        local c2 = plr.Character
+        local r2 = c2 and c2:FindFirstChild("HumanoidRootPart")
+        if (r2 and (r2.Position - cf.Position).Magnitude <= 12) or (tick() - t0 > 8) then break end
+    until false
+    __DIO_wait(0.2)
+end
+function __ChipFruitBase(sel)
+    local b = tostring(sel or ""):match("^[^:]*:%s*(.+)$") or tostring(sel or "")
+    return b:gsub("%s+", ""):lower()
+end
+-- Chon fruit trong hang (gia <= maxPrice) de tra khi mua chip: uu tien fruit TRUNG voi
+-- chip dang chon (vd SelectChip="Flame" -> fruit ten chua "flame"), neu khong co thi fruit re nhat.
+function __PickFruitForChip(maxPrice)
+    local want = __ChipFruitBase(_G.SelectChip)
+    local fallback = nil
+    local fruits = replicated:WaitForChild("Remotes").CommF_:InvokeServer("GetFruits")
+    if type(fruits) ~= "table" then return nil end
+    for _, f in next, fruits do
+        if type(f) == "table" and f.Name and (not maxPrice or (tonumber(f.Price) or 0) <= maxPrice) then
+            if not fallback then fallback = f.Name end
+            if want ~= "" and tostring(f.Name):lower():find(want, 1, true) then
+                return f.Name
+            end
+        end
+    end
+    return fallback
+end
+-- =============================================================
 Tabs.Raids:AddSection("Dungeon Event / Raiding")
 DungeonTables = {"Flame","Ice","Quake","Light","Dark","String","Rumble","Magma","Human: Buddha","Sand","Bird: Phoenix","Dough"}
 Q = Tabs.Raids:AddDropdown({
@@ -11661,26 +11719,23 @@ Tabs.Raids:AddButton({
 Name = "Buy Dungeon Chips [Beli]", 
 Description = "",
 Callback = function()
-  if not GetBP("Special Microchip") then replicated.Remotes.CommF_:InvokeServer("RaidsNpc","Select",_G.SelectChip) end
+  if GetBP("Special Microchip") then return end
+  __RaidBuyEnsure() -- [FIX CHIP-BUY-v2] bay den diem Start Raid roi moi mua
+  replicated.Remotes.CommF_:InvokeServer("RaidsNpc","Select",_G.SelectChip)
 end})
 Tabs.Raids:AddButton({
 Name = "Buy Dungeon Chips [Devil Fruit]", 
 Description = "",
 Callback = function()
   if GetBP("Special Microchip") then return end
-  local FruitPrice = {}
-  local FruitStore = {}
-  for i,v in next,replicated:WaitForChild("Remotes").CommF_:InvokeServer("GetFruits") do
-    if v.Price <= 490000 then table.insert(FruitPrice,v.Name) end 
-  end    
-  for _,y in pairs(FruitPrice) do    
-    for i,v in pairs(DungeonTables) do 
-      if not GetBP("Special Microchip") then     
-        replicated.Remotes.CommF_:InvokeServer("LoadFruit",tostring(y))	      
-	    replicated.Remotes.CommF_:InvokeServer("RaidsNpc","Select",_G.SelectChip)	
-	  end            
-    end    
-  end
+  __RaidBuyEnsure() -- [FIX CHIP-BUY-v2] bay toi noi Start Raid truoc
+  -- [FIX FRUIT-LOOP] 1 lan an = DUNG 1 lan: bo 2 vong for long nhau (cu goi LoadFruit
+  -- hang chuc lan/1 click gay "lau fruit vo han"). Chi load fruit trung chip dang chon
+  -- (hoac re nhat) roi Select 1 lan.
+  local cand = __PickFruitForChip(490000)
+  if not cand then return end
+  replicated.Remotes.CommF_:InvokeServer("LoadFruit", tostring(cand))
+  replicated.Remotes.CommF_:InvokeServer("RaidsNpc","Select",_G.SelectChip)
 end})
 
 
@@ -11697,9 +11752,9 @@ task.spawn(function()
     while __DIO_wait(1) do
         if _G.AutoChipBeli then
             pcall(function()
-                if not GetBP("Special Microchip") then
-                    replicated.Remotes.CommF_:InvokeServer("RaidsNpc", "Select", _G.SelectChip)
-                end
+                if GetBP("Special Microchip") then return end
+                __RaidBuyEnsure() -- [FIX CHIP-BUY-v2] bay den diem Start Raid roi moi InvokeServer
+                replicated.Remotes.CommF_:InvokeServer("RaidsNpc", "Select", _G.SelectChip)
             end)
         end
     end
@@ -11716,25 +11771,25 @@ end
 })
 
 task.spawn(function()
+    local lastCand = nil
+    local lastTry = 0
     while __DIO_wait(1) do
-        if _G.AutoChipFruit then
-            pcall(function()
-                if not GetBP("Special Microchip") then
-                    local fruits = replicated.Remotes.CommF_:InvokeServer("GetFruits")
-                    local cheapest = nil
-                    for _, data in pairs(fruits) do
-                        if data.Price <= 490000 then
-                            cheapest = data.Name
-                            break
-                        end
-                    end
-                    if cheapest then
-                        replicated.Remotes.CommF_:InvokeServer("LoadFruit", tostring(cheapest))
-                        replicated.Remotes.CommF_:InvokeServer("RaidsNpc", "Select", _G.SelectChip)
-                    end
-                end
-            end)
-        end
+        if not _G.AutoChipFruit then continue end
+        pcall(function()
+            if GetBP("Special Microchip") then return end
+            __RaidBuyEnsure() -- [FIX CHIP-BUY-v2] bay den diem Start Raid roi moi mua
+            local cand = __PickFruitForChip(490000)
+            if not cand then return end
+            -- [FIX FRUIT-LOOP] TAT toggle -> vong nay dung ngay (continue o dau).
+            -- Chống "lau fruit vo han": khong LoadFruit lap 1 loai fruit duoi 4 giay
+            -- (truoc day moi giay LoadFruit+Select 1 lan, mua khong duoc thi spam mai).
+            if cand ~= lastCand or tick() - lastTry >= 4 then
+                lastCand = cand
+                lastTry = tick()
+                replicated.Remotes.CommF_:InvokeServer("LoadFruit", tostring(cand))
+                replicated.Remotes.CommF_:InvokeServer("RaidsNpc", "Select", _G.SelectChip)
+            end
+        end)
     end
 end)
 
