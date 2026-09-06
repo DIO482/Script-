@@ -1842,19 +1842,15 @@ _tp = function(target)
         __speed = tonumber(_G.BoatTweenSpeed) or __speed
     end
     __speed = math.max(__speed, 1)
-    -- [FIX PERF 7] (yeu cau user): tang len 600 CHI khi tween NGUOI DI BO (khong Sit);
-    -- khi dang NGOI THUYEN luon dung BoatTweenSpeed, KHONG boost 600.
-    -- Dieu kien: gan dich (<=150 stud) -> 600 de ky cuoi khong cham; het tween den noi,
-    -- cac loi _tp ke tiep o xa tu ve dung speed slider (speed tinh lai tung lan goi).
-    -- Muon doi khoang cach "gan dich" thi sua so 150 ben duoi.
-    if not (__humTween and __humTween.Sit) and distance <= 150 then
-        __speed = 600
-    end
-    -- [FIX NEAR-TWEEN] (yeu cau user) Neu bat toggle "Tween speed 600 if near" (Neartween):
-    -- khi dang tween di bo ma co mob gan (< 150 stud) -> day toc do len 600 de nhanh ra khoi
-    -- tam dan / khong bi quai can duong. Toggle tat -> giu nguyen hanh vi cu.
-    if _G.Neartween and not (__humTween and __humTween.Sit) and __DIO_MobNear(rootPart.Position) then
-        __speed = 600
+    -- [FIX NEAR-TWEEN-v2] (yeu cau user "fix ngay"): toc do 600 chi XAY RA khi BAT toggle
+    -- "Tween speed 600 if near" (Neartween). Ban cu co 1 block FIX PERF 7 tu dong ~ gan dich
+    -- (<=150 stud) la 600 NGAY CA KHI TAT toggle -> da go bo. TAT = luon dung Speed Tween.
+    -- BAT = 600 khi (a) gan dich hoac (b) co mob gan nguoi (<150 stud); chi khi di bo (khong Sit),
+    -- ngoi thuyen van dung BoatTweenSpeed rieng. Muon doi ban kinh thi sua so 150 ben duoi.
+    if _G.Neartween and not (__humTween and __humTween.Sit) then
+        if distance <= 150 or __DIO_MobNear(rootPart.Position) then
+            __speed = 600
+        end
     end
     -- [FIX FPS 1] phan tich: moi loi _tp tao 1 tween MOI tren cung block "block" ma khong
     -- huy tween cu; cac loop camp (Rip Indra, Gravestone, FrozenTP...) goi _tp 10 lan/s
@@ -2377,8 +2373,10 @@ do
                     Setting.Default = saved -- nạp lại trạng thái lần trước
                 end
                 local origCb = Setting and Setting.Callback
+                local __userTouched = false
                 if Setting and origCb then
                     Setting.Callback = function(Value)
+                        __userTouched = true
                         if _G.SaveData[key] ~= Value then
                             SetSetting(key, Value)
                         end
@@ -2386,10 +2384,15 @@ do
                     end
                 end
                 local ctrl = _AddToggle(self, Setting)
-                -- đảm bảo cờ _G được áp dụng kể cả khi library không tự gọi Callback(Default)
+                -- [FIX FRUIT-LOOP-v2] Chi nap lai gia tri da luu neu nguoi dung CHUA tu bat/tat
+                -- truoc khi timer 3s chay (va library cung khong tu goi Callback(Default)).
+                -- Truoc day replay bat buoc sau 3s -> co the BẬT LẠI feature khi UI dang TAT
+                -- (flag that = true nhung hinh anh toggle = off) => loop "lau fruit vo han".
                 if saved ~= nil and origCb then
                     task.delay(3, function()
-                        pcall(origCb, saved)
+                        if not __userTouched then
+                            pcall(origCb, saved)
+                        end
                     end)
                 end
                 return ctrl
@@ -2406,8 +2409,10 @@ do
                     Setting.Default = saved
                 end
                 local origCb = Setting and Setting.Callback
+                local __userTouched = false
                 if Setting and origCb then
                     Setting.Callback = function(Value)
+                        __userTouched = true
                         if _G.SaveData[key] ~= Value then
                             SetSetting(key, Value)
                         end
@@ -2415,9 +2420,12 @@ do
                     end
                 end
                 local ctrl = _AddDropdown(self, Setting)
+                -- [FIX FRUIT-LOOP-v2] replay chi khi user chua tu chinh (xem ghi chu AddToggle)
                 if saved ~= nil and origCb then
                     task.delay(3, function()
-                        pcall(origCb, saved)
+                        if not __userTouched then
+                            pcall(origCb, saved)
+                        end
                     end)
                 end
                 return ctrl
@@ -2434,8 +2442,10 @@ do
                     Setting.Default = saved
                 end
                 local origCb = Setting and Setting.Callback
+                local __userTouched = false
                 if Setting and origCb then
                     Setting.Callback = function(Value)
+                        __userTouched = true
                         if _G.SaveData[key] ~= Value then
                             SetSetting(key, Value)
                         end
@@ -2443,9 +2453,12 @@ do
                     end
                 end
                 local ctrl = _AddSlider(self, Setting)
+                -- [FIX FRUIT-LOOP-v2] replay chi khi user chua tu chinh (xem ghi chu AddToggle)
                 if saved ~= nil and origCb then
                     task.delay(3, function()
-                        pcall(origCb, saved)
+                        if not __userTouched then
+                            pcall(origCb, saved)
+                        end
                     end)
                 end
                 return ctrl
@@ -11633,6 +11646,7 @@ spawn(function()
                     "Ghost-Ghost", "Diamond-Diamond", "Light-Light", "Rubber-Rubber", "Barrier-Barrier"
                 }
                 for _, fruit in ipairs(fruits) do
+                    if not getgenv().AutoGetFruit then break end -- [FIX FRUIT-LOOP] tat giua chung: ngung ngay
                     local args = {
                         [1] = "LoadFruit",
                         [2] = fruit
