@@ -68,7 +68,7 @@ do
   ply = game.Players
   plr = ply.LocalPlayer 
   -- [FIX UI-DEAD 4/4] MIN NO SOM NHAT (dong ~34, truoc ca hookfunction):
-  -- plr.Character.HumanoidRootPart va __DIO_Level() doc TRUC TIEP khong cho doi.
+  -- plr.Character.HumanoidRootPart va plr.Data.Level.Value doc TRUC TIEP khong cho doi.
   -- Neu inject luc nhan vat CHUA load xong (rat hay gap sau update vi game load cham hon),
   -- ca 2 dong nay nem "attempt to index nil" -> script chet ngay truoc khi ve UI.
   -- Cho tu te thay vi gia dinh da co san.
@@ -205,143 +205,6 @@ if loading then
         task.wait() 
     until not loading.Visible
 end
--- ==========================================================================
--- [U30 COMPAT] LOP TRUY CAP AN TOAN - dat SOM de moi phan phia sau dung duoc.
---
--- Blox Fruits Update 30 (phat hanh 05/09/2026) co "Revamped QOL/UI/HUD" + rework
--- toan bo Sea 1 + level cap 2800 -> 3000. Hub dang dung 37 cho path CUNG
--- "plr.PlayerGui.Main.Quest" va 7 cho "plr.Data.Level.Value" doc TRUC TIEP.
--- Chi can U30 doi ten/di chuyen 1 node la NEM LOI -> pcall nuot -> farm dung im
--- khong bao loi (dung trieu chung auto farm level chet).
---
--- 3 helper duoi day tra ve nil an toan thay vi nem loi, va TU DO tim UI quest o
--- cac vi tri moi neu path cu khong con.
--- ==========================================================================
--- ==========================================================================
--- [HOTFIX QUESTUI] LOI DO TOI GAY RA O BAN TRUOC - PHAN TICH THAT:
---
--- Ban truoc toi viet tang (3): gui:FindFirstChild("Quest", true) - tham so `true`
--- la RECURSIVE, quet TOAN BO cay con cua moi ScreenGui. Trong Blox Fruits co RAT
--- NHIEU node ten "Quest" khong phai khung quest chinh, vi du:
---     Main.Quest              <- DUNG (khung quest that)
---     ...SomeFrame.Quest      <- nut/icon/template, LUON Visible = true
---     ...QuestList.Quest      <- item trong danh sach
---
--- Hau qua day chuyen:
---   1) Neu Main.Quest ton tai nhung dang AN (chua nhan quest), tang (1) van tra ve
---      dung node -> KHONG SAO. Nhung neu vi bat ky ly do gi tang (1) truot (Main
---      chua load xong luc goi lan dau), tang (3) tom nham 1 node "Quest" khac.
---   2) Node nham do bi CACHE VINH VIEN vao __DIO_QuestUICache (no van co .Parent
---      nen cache khong bao gio bi lam moi).
---   3) Node nham thuong Visible = true => __DIO_QuestVisible() LUON TRA TRUE
---      => farm tuong "dang co quest" => KHONG BAO GIO di nhan nhiem vu nua.
---   4) Vi ca 3 farm (Level/Cake/Bone) deu goi CHUNG helper nay -> hong DONG LOAT.
---      Dung nhu trieu chung: "chi nhan quest" / "hong lan sang Cake va Bone".
---
--- SUA:
---   * BO hoan toan tang (3) recursive - no doan mo va gay hai nhieu hon loi.
---   * Chi chap nhan node co DUNG cau truc khung quest that (co Container hoac
---      it nhat 1 TextLabel ben trong) -> loai nut/icon.
---   * Cache co TTL 5s va tu huy khi node mat Parent -> khong khoa vinh vien.
--- ==========================================================================
-__DIO_QuestUICache = nil
-__DIO_QuestUICacheT = 0
-
-local function __DIO_IsRealQuestFrame(node)
-    if not node or not node:IsA("GuiObject") then return false end
-    -- khung quest that co Container.QuestTitle.Title
-    local c = node:FindFirstChild("Container")
-    if c and c:FindFirstChild("QuestTitle") then return true end
-    -- hoac it nhat phai chua TextLabel (nut/icon thuong chi co ImageLabel)
-    for _, d in ipairs(node:GetDescendants()) do
-        if d:IsA("TextLabel") then return true end
-    end
-    return false
-end
-
-function __DIO_GetQuestUI()
-    -- cache: con song VA chua qua han
-    if __DIO_QuestUICache and __DIO_QuestUICache.Parent
-       and (tick() - __DIO_QuestUICacheT) < 5 then
-        return __DIO_QuestUICache
-    end
-
-    local pg = plr:FindFirstChild("PlayerGui")
-    if not pg then return nil end
-
-    -- (1) path co dien - uu tien tuyet doi, KHONG kiem tra gi them
-    local m = pg:FindFirstChild("Main")
-    local q = m and m:FindFirstChild("Quest")
-
-    -- (2) chi khi (1) truot: quet CON TRUC TIEP cua cac ScreenGui (KHONG recursive)
-    --     va bat buoc phai giong khung quest that.
-    if not q then
-        for _, gui in ipairs(pg:GetChildren()) do
-            if gui:IsA("ScreenGui") then
-                local cand = gui:FindFirstChild("Quest")
-                if __DIO_IsRealQuestFrame(cand) then q = cand break end
-            end
-        end
-    end
-
-    __DIO_QuestUICache = q
-    __DIO_QuestUICacheT = tick()
-    return q
-end
-
-function __DIO_QuestVisible()
-    local q = __DIO_GetQuestUI()
-    -- [HOTFIX] KHONG tim thay khung quest -> tra FALSE (coi nhu CHUA co quest).
-    -- Quan trong: false = farm se di NHAN QUEST (hanh vi an toan, tu phuc hoi).
-    -- Neu tra true thi farm tuong da co quest va dung im mai mai - dung loi vua roi.
-    if not q then return false end
-    return q.Visible == true
-end
-
-function __DIO_QuestTitle()
-    local q = __DIO_GetQuestUI()
-    if not q or not q.Visible then return "" end
-    -- path cu: Quest.Container.QuestTitle.Title.Text
-    local c = q:FindFirstChild("Container")
-    local t = c and c:FindFirstChild("QuestTitle")
-    local title = t and t:FindFirstChild("Title")
-    if title and title:IsA("TextLabel") then return title.Text end
-    -- fallback U30: lay TextLabel dau tien co chu (cau truc HUD moi)
-    for _, d in ipairs(q:GetDescendants()) do
-        if d:IsA("TextLabel") and d.Text ~= "" then return d.Text end
-    end
-    return ""
-end
-
--- [U30 FIX 11] Cac node HUD KHAC ngoai Quest cung doc path cung "plr.PlayerGui.Main.X".
--- Update 30 "Revamped QOL/UI/HUD" co the doi/di chuyen bat ky node nao trong so nay.
--- Truoc: node mat -> "attempt to index nil" -> pcall nuot -> tinh nang chet im.
--- Sau: tra nil an toan, caller tu kiem tra.
-function __DIO_HUD(name)
-    local pg = plr:FindFirstChild("PlayerGui")
-    local m = pg and pg:FindFirstChild("Main")
-    local n = m and m:FindFirstChild(name)
-    if n then return n end
-    -- fallback: quet cac ScreenGui khac (U30 co the tach HUD ra gui rieng)
-    if pg then
-        for _, gui in ipairs(pg:GetChildren()) do
-            if gui:IsA("ScreenGui") then
-                -- [HOTFIX] BO recursive (tham so true) - cung loi da lam hong QuestUI:
-                -- quet sau tom nham node trung ten o cho khac. Chi quet con truc tiep.
-                local c = gui:FindFirstChild(name)
-                if c then return c end
-            end
-        end
-    end
-    return nil
-end
-
-function __DIO_Level()
-    local d = plr:FindFirstChild("Data")
-    local l = d and d:FindFirstChild("Level")
-    return (l and l.Value) or 0
-end
-
 World1 = game.PlaceId == 2753915549 or game.PlaceId == 85211729168715
 World2 = game.PlaceId == 4442272183 or game.PlaceId == 79091703265657
 World3 = game.PlaceId == 7449423635 or game.PlaceId == 100117331123089
@@ -1343,12 +1206,12 @@ DropFruits = function()
   for _,v3 in next, plr.Backpack:GetChildren() do
     if string.find(v3.Name, "Fruit") then
       EquipWeapon(v3.Name) wait(.1)
-      do local __dlg = __DIO_HUD("Dialogue") if __dlg and __dlg.Visible then __dlg.Visible = false end end EquipWeapon(v3.Name) plr.Character:FindFirstChild(v3.Name).EatRemote:InvokeServer("Drop")
+      if plr.PlayerGui.Main.Dialogue.Visible == true then plr.PlayerGui.Main.Dialogue.Visible = false end EquipWeapon(v3.Name) plr.Character:FindFirstChild(v3.Name).EatRemote:InvokeServer("Drop")
     end
   end
   for a,b2 in pairs(plr.Character:GetChildren()) do
     if string.find(b2.Name, "Fruit") then EquipWeapon(b2.Name) wait(.1)
-    do local __dlg = __DIO_HUD("Dialogue") if __dlg and __dlg.Visible then __dlg.Visible = false end end EquipWeapon(b2.Name) plr.Character:FindFirstChild(b2.Name).EatRemote:InvokeServer("Drop")
+    if plr.PlayerGui.Main.Dialogue.Visible == true then plr.PlayerGui.Main.Dialogue.Visible = false end EquipWeapon(b2.Name) plr.Character:FindFirstChild(b2.Name).EatRemote:InvokeServer("Drop")
     end
   end
 end
@@ -2327,17 +2190,9 @@ GetQuestPointFromNPC = function(npcName)
 end
 
 GetQuests = function()
-    -- [U30 FIX 1] __DIO_Level() doc truc tiep -> nem loi neu Data chua replicate
-    -- (U30 load cham hon vi Sea 1 rework nang) -> QuestNeta tra bang rong -> farm dung im.
-    local lvl = __DIO_Level()
+    local lvl = plr.Data.Level.Value
     local LevelReq = 0
     local mmb = {}
-
-    -- [U30 FIX 2] Quests module co the nil (U30 doi cau truc). Khong co no thi vong for
-    -- ben duoi nem loi. Tra ve bang rong co kiem soat de caller biet ma bo qua.
-    if type(Quests) ~= "table" then
-        return mmb
-    end
     
     if lvl >= 700 and CheckSea(1) then
         mmb["Mob"] = "Galley Captain"
@@ -2350,26 +2205,16 @@ GetQuests = function()
         mmb["ID"] = 2
         mmb["LevelReq"] = 1450
     else
-        -- [U30 FIX 3] Vong quet nay gia dinh MOI entry deu co .LevelReq va .Task kieu bang.
-        -- U30 rework Sea 1: nhieu quest doi schema / them entry kieu moi (secret quests
-        -- khong co .Task) -> "attempt to index nil" hoac so sanh nil -> ca ham chet ->
-        -- QuestNeta[1] = nil -> auto farm level dung im. Kiem tra kieu truoc khi dung.
         for r, v in pairs(Quests) do
-            if type(v) == "table" and not table.find(blacklistquest, r) then
-                for id, v1 in pairs(v) do
-                    if type(v1) == "table" and type(v1.Task) == "table" then
-                        local LvReq = tonumber(v1.LevelReq) or 0
-                        for nguoi, tinh in pairs(v1.Task) do
-                            -- tinh phai la SO va > 1 (bo qua entry schema la)
-                            if type(tinh) == "number" and tinh > 1
-                               and lvl >= LvReq and LevelReq <= LvReq then
-                                LevelReq = LvReq
-                                mmb["Mob"] = nguoi
-                                mmb["NameQuest"] = r
-                                mmb["ID"] = id
-                                mmb["LevelReq"] = LvReq
-                            end
-                        end
+            for id, v1 in pairs(v) do
+                local LvReq = v1.LevelReq
+                for nguoi, tinh in pairs(v1.Task) do
+                    if lvl >= LvReq and LevelReq <= LvReq and v1.Task[nguoi] > 1 and not table.find(blacklistquest, r) then
+                        LevelReq = LvReq
+                        mmb["Mob"] = nguoi
+                        mmb["NameQuest"] = r
+                        mmb["ID"] = id
+                        mmb["LevelReq"] = LvReq
                     end
                 end
             end
@@ -2380,42 +2225,9 @@ GetQuests = function()
 end
 
 GetQuestPoint = function()
-    -- [U30 FIX 4] Truoc day CHI dua vao GuideModule.Data.LastClosestNPC. Neu U30 bo/doi
-    -- GuideModule (rat co the vi "Revamped QOL/UI/HUD") -> tra nil -> auto farm level
-    -- khong biet di dau nhan quest -> dung im. Them 2 lop du phong.
-    local ok, cf = pcall(function()
-        if GuideModule and GuideModule.Data and GuideModule.Data.LastClosestNPC then
-            return GetQuestPointFromNPC(GuideModule.Data.LastClosestNPC)
-        end
-        return nil
-    end)
-    if ok and cf then return cf end
-
-    -- Du phong: suy ra NPC quest tu ten quest hien tai (vd "JungleQuest" -> NPC gan Jungle),
-    -- bang cach tim NPC co QuestName trung trong workspace.NPCs.
-    local okq, res = pcall(function()
-        local q = GetQuests()
-        local qname = q and q.NameQuest
-        if not qname then return nil end
-        local npcs = workspace:FindFirstChild("NPCs")
-        if not npcs then return nil end
-        local hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
-        local best, bestd = nil, math.huge
-        for _, npc in ipairs(npcs:GetChildren()) do
-            local root = npc:FindFirstChild("HumanoidRootPart")
-            if root then
-                -- NPC quest thuong co ten chua tien to cua quest (JungleQuest -> "Jungle")
-                local key = qname:gsub("Quest%d*$", "")
-                if key ~= "" and npc.Name:find(key) then
-                    local d = hrp and (root.Position - hrp.Position).Magnitude or 0
-                    if d < bestd then bestd = d best = root.CFrame end
-                end
-            end
-        end
-        return best
-    end)
-    if okq and res then return res end
-
+    if GuideModule and GuideModule.Data and GuideModule.Data.LastClosestNPC then
+        return GetQuestPointFromNPC(GuideModule.Data.LastClosestNPC)
+    end
     return nil
 end
 
@@ -2998,33 +2810,12 @@ task.spawn(function()
                 local Root = char:WaitForChild("HumanoidRootPart")
                 if not Root then return end
 
-                -- [U30 FIX 5] 3 dong nay la CHO CHET CUA AUTO FARM LEVEL:
-                --   __DIO_Level()          -> loi neu Data chua san sang
-                --   plr.PlayerGui.Main.Quest      -> loi neu U30 doi cau truc HUD (U30 co
-                --                                    "Revamped QOL/UI/HUD" trong patch note)
-                --   questUI.Container.QuestTitle.Title.Text -> loi neu doi cay con
-                -- Bat ky cai nao nem loi -> pcall ben ngoai nuot -> vong lap im lang khong
-                -- lam gi ca. Dung helper U30-safe co fallback tu dong.
-                local level = __DIO_Level()
+                local level = plr.Data.Level.Value
                 local inSub = IsInSubmergedIsland()
-                local questUI = __DIO_GetQuestUI()
-                if not questUI then
-                    -- Khong tim thay UI quest o bat ky vi tri nao -> bao 1 lan roi cho,
-                    -- KHONG spam va khong chet im lang.
-                    if not __DIO_WarnedQuestUI then
-                        __DIO_WarnedQuestUI = true
-                        warn("[DIO] Khong tim thay Quest UI (co the do Blox Fruits Update 30 doi HUD). Auto Farm Level tam dung.")
-                    end
-                    __DIO_wait(2)
-                    return
-                end
-                local QuestTitle = __DIO_QuestTitle()
+                local questUI = plr.PlayerGui.Main.Quest
+                local QuestTitle = questUI.Visible and questUI.Container.QuestTitle.Title.Text or ""
 
-                -- [U30 FIX 6] Nguong Submerged: U30 nang cap tu 2800 -> 3000 (secret levels).
-                -- Moc 2600 la de vao Submerged farm doan cuoi - van dung, nhung khi da >= 2800
-                -- ma chua co secret level thi EXP dung, khong can bay sang Submerged nua.
-                -- Giu 2600 lam moc vao, chi bo qua khi da kich max that su.
-                if level >= 2600 and level < 3000 and not inSub and not teleporting and not alreadyTeleported then
+                if level >= 2600 and not inSub and not teleporting and not alreadyTeleported then
                     teleporting = true
                     
                     local npcPos = CFrame.new(-16269.7041, 25.2288494, 1373.65955)
@@ -3045,7 +2836,7 @@ task.spawn(function()
                     
                     pcall(function()
                         local args = {"TravelToSubmergedIsland"} 
-                        __SVC_RS.Modules.Net:FindFirstChild("RF/SubmarineWorkerSpeak"):InvokeServer(unpack(args))
+                        game:GetService("ReplicatedStorage").Modules.Net:FindFirstChild("RF/SubmarineWorkerSpeak"):InvokeServer(unpack(args))
                     end)
 
                     local timeout = tick()
@@ -3063,7 +2854,7 @@ task.spawn(function()
                     alreadyTeleported = true
                     teleporting = false
                     
-                elseif inSub or level < 2600 or level >= 3000 then
+                elseif inSub or level < 2600 then
                     alreadyTeleported = true
                     teleporting = false
 
@@ -3074,13 +2865,13 @@ task.spawn(function()
                         return
                     end
                     
-                    if __DIO_QuestVisible() and QuestTitle ~= "" and not string.find(QuestTitle, questData[1]) then
+                    if questUI.Visible and not string.find(QuestTitle, questData[1]) then
                         replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
                         __DIO_wait(0.2)
                         return
                     end
 
-                    if not __DIO_QuestVisible() then
+                    if not questUI.Visible then
                         local questPos = questData[6]
                         if questPos then
                             _tp(questPos)
@@ -3119,7 +2910,7 @@ task.spawn(function()
                                 if not curRoot then break end
                                 _tp(v.HumanoidRootPart.CFrame * CFrame.new(0, 20, 0))
                                 Attack.Kill(v, _G.Level)
-                                if not __DIO_QuestVisible() then break end
+                                if not questUI.Visible then break end
                                 -- Ghost check: 3s bắn skill / 6s đánh dấu skip vĩnh viễn
                                 if __DIO_GhostCheck(v) then
                                     foundMob = false
@@ -3953,8 +3744,7 @@ spawn(function()
     while __DIO_wait(1) do
         pcall(function()
             if _G.FarmEliteHunt then
-                local questGui = __DIO_GetQuestUI() -- [U30 FIX] path cung -> helper co fallback
-                if not questGui then return end
+                local questGui = plr.PlayerGui.Main.Quest
                 local questTitle = questGui.Container.QuestTitle.Title.Text
 
                 if not questGui.Visible then
@@ -4055,8 +3845,7 @@ spawn(function()
 	while __DIO_wait(1) do
 		pcall(function()
 			if _G.FarmEliteH then
-				local questGui = __DIO_GetQuestUI() -- [U30 FIX] path cung -> helper co fallback
-                if not questGui then return end
+				local questGui = plr.PlayerGui.Main.Quest
 				local questTitle = questGui.Container.QuestTitle.Title.Text
 
 				
@@ -4228,9 +4017,7 @@ end
 })
 
 spawn(function()
-    -- [FIX CAKE-POLL] 1s qua cham cho nhanh nhan quest / bat portal (mat luot). 0.3s van re vi
-    -- than vong chi chay khi toggle bat, va cac doan nang deu co vong con rieng o nhip Sec.
-    while __DIO_wait(0.3) do
+    while __DIO_wait(1) do -- [FIX PERF 62] 0.1 -> 1 (yeu cau user: uu tien FPS; vong poll gated nen logic khong time-out)
         if _G.Auto_Cake_Prince then
             pcall(function()
                 local plr = game.Players.LocalPlayer
@@ -4255,13 +4042,7 @@ spawn(function()
                     if boss and boss:FindFirstChild("Humanoid") and boss.Humanoid.Health > 0 and boss.PrimaryPart then  
                         -- [FIX CAKE FPS] Kill2 da tu xu ly TP + BringEnemy.
                         -- Bo 2 _tp trung lap truoc Kill2 -> tranh tao/cancel tween lien tuc.
-                        -- [FIX CAKE-BOSS] Vong ngoai chay 1s/lan -> boss chi bi danh 1 lan/giay = gan nhu dung yen.
-                        -- Bam vao boss o nhip Sec (4/s) cho den khi boss chet, khong quay ve vong poll cham.
-                        repeat
-                            Attack.Kill2(boss, true)
-                            __DIO_wait(Sec)
-                        until not _G.Auto_Cake_Prince or not boss.Parent
-                            or not boss:FindFirstChild("Humanoid") or boss.Humanoid.Health <= 0
+                        Attack.Kill2(boss, true)  
                         return  
                     end  
                     if (hrp.Position - PortalEntrance.Position).Magnitude < 500 then  
@@ -4277,29 +4058,15 @@ spawn(function()
                     ["Baking Staff"] = true,
                     ["Head Baker"] = true
                 }  
-                -- [FIX CAKE-QUEST 1/3] LOI GOC: toggle "Accept Quests" (CakeQ) set _G.AcceptQuestC,
-                -- nhung vong farm lai doc _G.AcceptQuest (khong ai gan, luon = nil) -> nhanh nhan quest
-                -- KHONG BAO GIO chay -> bat toggle van khong nhan nhiem vu. Doc dung ca 2 ten cho an toan.
-                local __wantQuest = _G.AcceptQuestC or _G.AcceptQuest
-                if __wantQuest and not __DIO_QuestVisible() then
-                    local questPos = CFrame.new(-1927.92, 37.80, -12842.54)
-                    -- [FIX CAKE-QUEST 2/3] TeleportConditional chi tp khi > 15 studs; nhung dieu kien
-                    -- invoke lai la <= 40 -> co vung 15..40 dung yen KHONG tp va KHONG invoke = ket cung.
-                    -- Dung cung 1 nguong: tp cho den khi <= 40 thi moi invoke.
-                    local dq = (questPos.Position - hrp.Position).Magnitude
-                    if dq > 30 then
-                        _tp(questPos)
-                        return
-                    end
-                    -- [FIX CAKE-QUEST 3/3] Cho server dang ky quest roi moi spam tiep (Bear cho 1.9s).
-                    -- Khong cho -> invoke 1 lan/s lien tuc, server drop het -> UI quest khong hien.
-                    if not __DIO_CakeQ_t or tick() - __DIO_CakeQ_t > 3 then
-                        __DIO_CakeQ_t = tick()
-                        local q = {{"StartQuest", "CakeQuest2", 2}, {"StartQuest", "CakeQuest2", 1}, {"StartQuest", "CakeQuest1", 1}, {"StartQuest", "CakeQuest1", 2}}
-                        game.ReplicatedStorage.Remotes.CommF_:InvokeServer(unpack(q[math.random(1, 4)]))
-                    end
-                    return
-                end
+                if _G.AcceptQuest and not plr.PlayerGui.Main.Quest.Visible then  
+                    local questPos = CFrame.new(-1927.92, 37.80, -12842.54)  
+                    TeleportConditional(hrp, questPos, TELEPORT_DISTANCE_THRESHOLD)  
+                    if (hrp.Position - questPos.Position).Magnitude <= 40 then  
+                        local q = {{"StartQuest", "CakeQuest2", 2}, {"StartQuest", "CakeQuest2", 1}, {"StartQuest", "CakeQuest1", 1}, {"StartQuest", "CakeQuest1", 2}}  
+                        game.ReplicatedStorage.Remotes.CommF_:InvokeServer(unpack(q[math.random(1, 4)]))  
+                    end  
+                    return  
+                end  
 
                 -- [FIX CAKE FPS] GhostClean da co worker cleanup 5s; khong quet 2 bang moi iteration.
                 -- pcall(__DIO_GhostClean)
@@ -4321,8 +4088,8 @@ spawn(function()
                 if bestMob then
                     -- [FIX CAKE LAG] __DIO_wait(Sec) = 4/s thay task.wait() 60/s + ghost skip
                     repeat
-                        -- [FIX CAKE-MOB] Truoc day wait TRUOC khi danh -> moi lan chon mob moi deu tre 1 nhip.
-                        if not bestMob.Parent or not bestMob:FindFirstChild("Humanoid") or bestMob.Humanoid.Health <= 0 then break end
+                        __DIO_wait(Sec)
+                        if not bestMob.Parent or bestMob.Humanoid.Health <= 0 then break end
                         -- [FIX CAKE FPS] Dung object da cache o dau vong; tranh pcall + path lookup 4 lan/s.
                         local portalNow = other and other.Transparency == 0
                         if portalNow or enemies:FindFirstChild("Cake Prince") then break end
@@ -4330,7 +4097,6 @@ spawn(function()
                         -- [FIX CAKE FPS] Kill2 da tu TP den vi tri farm + BringEnemy.
                         -- _tp truoc do la tween trung lap, tao task.spawn moi lan goi.
                         Attack.Kill2(bestMob, true)
-                        __DIO_wait(Sec)
                         -- Ghost check: 3s ban skill / 6s chon mob khac
                         if __DIO_GhostCheck(bestMob) then
                             -- Tim mob ke tiep thay vi tiep tuc ghost mob nay
@@ -4350,9 +4116,7 @@ Name = "Accept Quests",
 Description = "", 
 Default = false,
 Callback = function(Value)
-  -- [FIX CAKE-QUEST] Gan CA HAI ten: vong farm cu doc _G.AcceptQuest, toggle chi set _G.AcceptQuestC.
   _G.AcceptQuestC = Value
-  _G.AcceptQuest = Value
 end
 })
 
@@ -4567,8 +4331,7 @@ spawn(function()
                     bv.Parent = hrp
                 end
 
-                local QuestUI = __DIO_GetQuestUI() -- [U30 FIX] path cung -> helper co fallback
-                if not QuestUI then return end      
+                local QuestUI = plr.PlayerGui.Main.Quest      
                 local MOBS = {"Reborn Skeleton", "Living Zombie", "Demonic Soul", "Posessed Mummy"}
                 local npcPos = CFrame.new(-9516.99, 172.01, 6078.46) -- Posição do NPC de Bones
 
@@ -5013,7 +4776,7 @@ FarmBoss = Tabs.Main:AddToggle({
                 if _G.FarmBoss then
                     pcall(function()
                         local HasQuest = QuestBeta()[2] ~= nil and QuestBeta()[3] ~= nil
-                        local QuestTitle = __DIO_QuestTitle()
+                        local QuestTitle = plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text
 
                        
                         if _G.AcceptQuestBoss and HasQuest then
@@ -5021,12 +4784,12 @@ FarmBoss = Tabs.Main:AddToggle({
                                 replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
                             end
 
-                            if (not __DIO_QuestVisible()) then
+                            if plr.PlayerGui.Main.Quest.Visible == false then
                                 _tp(QuestBeta()[5])
                                 if (Root.Position - QuestBeta()[5].Position).Magnitude <= 5 then
                                     replicated.Remotes.CommF_:InvokeServer("StartQuest", QuestBeta()[3], QuestBeta()[2])
                                 end
-                            elseif __DIO_QuestVisible() then
+                            elseif plr.PlayerGui.Main.Quest.Visible then
                                 if workspace.Enemies:FindFirstChild(QuestBeta()[1]) then
                                     for i, v in pairs(workspace.Enemies:GetChildren()) do
                                         if Attack.Alive(v) and v.Name == QuestBeta()[1] then
@@ -5034,7 +4797,7 @@ FarmBoss = Tabs.Main:AddToggle({
                                                 repeat
                                                     __DIO_wait(0.25)
                                                     Attack.Kill(v, _G.FarmBoss)
-                                                until not _G.FarmBoss or v.Humanoid.Health <= 0 or not v.Parent or (not __DIO_QuestVisible())
+                                                until not _G.FarmBoss or v.Humanoid.Health <= 0 or not v.Parent or plr.PlayerGui.Main.Quest.Visible == false
                                             else
                                                 replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
                                             end
@@ -6077,7 +5840,7 @@ spawn(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.TravelDres then
-        if __DIO_Level() >= 700 then
+        if plr.Data.Level.Value >= 700 then
           if workspace.Map.Ice.Door.CanCollide == true and workspace.Map.Ice.Door.Transparency == 0 then
             replicated.Remotes.CommF_:InvokeServer("DressrosaQuestProgress","Detective")
 		    EquipWeapon("Key")
@@ -6112,7 +5875,7 @@ spawn(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.AutoZou then
-   	    if __DIO_Level() >= 1500 then
+   	    if plr.Data.Level.Value >= 1500 then
           if replicated.Remotes.CommF_:InvokeServer("BartiloQuestProgress","Bartilo") == 3 then
             if replicated.Remotes.CommF_:InvokeServer("GetUnlockables").FlamingoAccess ~= nil then
               replicated.Remotes.CommF_:InvokeServer("F_","TravelZou")
@@ -6169,10 +5932,10 @@ spawn(function()
             end
           else
             if replicated.Remotes.CommF_:InvokeServer("BartiloQuestProgress","Bartilo") == 0 then
-              if string.find(__DIO_QuestTitle(), "Swan Pirates") and string.find(__DIO_QuestTitle(), "50") and __DIO_QuestVisible() then                
+              if string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Swan Pirates") and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "50") and plr.PlayerGui.Main.Quest.Visible then                
                 local v = GetConnectionEnemies("Swan Pirate")
                 if v then
-                  pcall(function() repeat __DIO_wait(0.25) Attack.Kill(v,_G.AutoZou) until not v.Parent or v.Humanoid.Health <= 0 or _G.AutoZou == false or (not __DIO_QuestVisible()) end)                    
+                  pcall(function() repeat __DIO_wait(0.25) Attack.Kill(v,_G.AutoZou) until not v.Parent or v.Humanoid.Health <= 0 or _G.AutoZou == false or plr.PlayerGui.Main.Quest.Visible == false end)                    
                 else
                   _tp(CFrame.new(1057.92761, 137.614319, 1242.08069))
                 end
@@ -6914,7 +6677,7 @@ end})
 spawn(function()
   while __DIO_wait(1) do -- [FIX PERF 62] .2 -> 1 (yeu cau user: uu tien FPS; vong poll gated nen logic khong time-out)
     pcall(function()
-      if _G.AutoSaber and __DIO_Level() >= 200 and not plr.Backpack:FindFirstChild("Saber") and not plr.Character:FindFirstChild("Saber") then
+      if _G.AutoSaber and plr.Data.Level.Value >= 200 and not plr.Backpack:FindFirstChild("Saber") and not plr.Character:FindFirstChild("Saber") then
         if workspace.Map.Jungle.Final.Part.Transparency == 0 then
 	      if workspace.Map.Jungle.QuestPlates.Door.Transparency == 0 then
 		    if (CFrame.new(-1612.55884, 36.9774132, 148.719543, 0.37091279, 3.0717151e-09, -0.928667724, 3.97099491e-08, 1, 1.91679348e-08, 0.928667724, -4.39869794e-08, 0.37091279).Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 100 then
@@ -7296,7 +7059,7 @@ spawn(function()
   while __DIO_wait(1) do -- [FIX PERF 62] 0.3 -> 1 (yeu cau user: uu tien FPS; vong poll gated nen logic khong time-out)
     if _G.Auto_DonAcces then
       pcall(function()
-        if replicated.Remotes.CommF_:InvokeServer("GetUnlockables").FlamingoAccess == nil and __DIO_Level() >= 1500 then
+        if replicated.Remotes.CommF_:InvokeServer("GetUnlockables").FlamingoAccess == nil and plr.Data.Level.Value >= 1500 then
           FruitPrice = {}
 	      FruitStore = {}
 		  for i,v in next,replicated:WaitForChild("Remotes").CommF_:InvokeServer("GetFruits") do
@@ -7488,9 +7251,9 @@ spawn(function()
   pcall(function()
     while __DIO_wait(Sec) do
       if _G.Auto_Rainbow_Haki then
-        if (not __DIO_QuestVisible()) then
+        if plr.PlayerGui.Main.Quest.Visible == false then
           if _G.GetQFast then
-            if (not __DIO_QuestVisible()) then replicated.Remotes.CommF_:InvokeServer("HornedMan","Bet") end     
+            if plr.PlayerGui.Main.Quest.Visible == false then replicated.Remotes.CommF_:InvokeServer("HornedMan","Bet") end     
           else
             Rainbow1 = CFrame.new(-11892.0703125, 930.57672119141, -8760.1591796875)
             if (plr.Character.HumanoidRootPart.Position - Rainbow1.Position).Magnitude > 5 then -- [FIX PERF 24] CFrame== hang so khong bao gio khop -> step "Bet" khong bao gio chay
@@ -7500,34 +7263,34 @@ spawn(function()
               replicated.Remotes.CommF_:InvokeServer("HornedMan","Bet")
             end
           end
-          elseif __DIO_QuestVisible() and string.find(__DIO_QuestTitle(), "Stone") then
+          elseif plr.PlayerGui.Main.Quest.Visible and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Stone") then
             local v = GetConnectionEnemies("Stone")
             if v then
-              repeat __DIO_wait(0.25) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or (not __DIO_QuestVisible())
+              repeat __DIO_wait(0.25) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or plr.PlayerGui.Main.Quest.Visible == false
             else
               _tp(CFrame.new(-1086.11621, 38.8425903, 6768.71436, 0.0231462717, -0.592676699, 0.805107772, 2.03251839e-05, 0.805323839, 0.592835128, -0.999732077, -0.0137055516, 0.0186523199))
             end
-          elseif __DIO_QuestVisible() and string.find(__DIO_QuestTitle(), "Hydra Leader") then
+          elseif plr.PlayerGui.Main.Quest.Visible and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Hydra Leader") then
             local v = GetConnectionEnemies("Hydra Leader")
             if v then
-              repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or (not __DIO_QuestVisible())
+              repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or plr.PlayerGui.Main.Quest.Visible == false
             else
               replicated.Remotes.CommF_:InvokeServer("requestEntrance",Vector3.new(5643.45263671875, 1013.0858154296875, -340.51025390625))
               local framelong1 = Vector3.new(5643.45263671875, 1013.0858154296875, -340.51025390625)
               local framelong2 = CFrame.new(5821.89794921875, 1019.0950927734375, -73.71923065185547)
               if (plr.Character.HumanoidRootPart.Position - framelong1).Magnitude <= 5 then _tp(framelong2) end -- [FIX PERF 25] so sanh Vector3 == hang so khong bao gio khop
             end
-          elseif __DIO_QuestVisible() and string.find(__DIO_QuestTitle(), "Kilo Admiral") then
+          elseif plr.PlayerGui.Main.Quest.Visible and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Kilo Admiral") then
             local v = GetConnectionEnemies("Kilo Admiral")
             if v then
-              repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or (not __DIO_QuestVisible())
+              repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or plr.PlayerGui.Main.Quest.Visible == false
             else
               _tp(CFrame.new(2877.61743, 423.558685, -7207.31006, -0.989591599, -0, -0.143904909, -0, 1.00000012, -0, 0.143904924, 0, -0.989591479))
             end
-            elseif __DIO_QuestVisible() and string.find(__DIO_QuestTitle(), "Captain Elephant") then
+            elseif plr.PlayerGui.Main.Quest.Visible and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Captain Elephant") then
               local v = GetConnectionEnemies("Captain Elephant")
               if v then
-                repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki)until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or (not __DIO_QuestVisible())
+                repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki)until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or plr.PlayerGui.Main.Quest.Visible == false
               else
               local gamergayror1 = Vector3.new(-12471.169921875, 374.94024658203, -7551.677734375)
               local gamergayror2 = CFrame.new(-13376.7578125, 433.28689575195, -8071.392578125)
@@ -7537,10 +7300,10 @@ spawn(function()
                 _tp(gamergayror2)
               end
             end
-        elseif __DIO_QuestVisible() and string.find(__DIO_QuestTitle(), "Beautiful Pirate") then
+        elseif plr.PlayerGui.Main.Quest.Visible and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Beautiful Pirate") then
           local v = GetConnectionEnemies("Captain Elephant")
           if v then
-            repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or (not __DIO_QuestVisible())
+            repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or plr.PlayerGui.Main.Quest.Visible == false
           else
             replicated.Remotes.CommF_:InvokeServer("requestEntrance",Vector3.new(5314.54638671875, 22.562219619750977, -127.06755065917969))
           end
@@ -7647,21 +7410,21 @@ spawn(function()
       local Kv2Pos3 = CFrame.new(-10920.125, 624.20275878906, -10266.995117188)
       local Kv2Pos4 = CFrame.new(-13277.568359375, 370.34185791016, -7821.1572265625)
       local Kv2Pos5 = CFrame.new(-13493.12890625, 318.89553833008, -8373.7919921875)
-	  if __DIO_QuestVisible() and string.find(__DIO_QuestTitle(),"Defeat 50 Forest Pirates") then
+	  if plr.PlayerGui.Main.Quest.Visible and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text,"Defeat 50 Forest Pirates") then
 	    local v = GetConnectionEnemies("Forest Pirate")
         if v then
-	      repeat __DIO_wait(0.25) Attack.Kill(v,_G.AutoKenVTWO) until not _G.AutoKenVTWO or v.Humanoid.Health <= 0 or (not __DIO_QuestVisible())
+	      repeat __DIO_wait(0.25) Attack.Kill(v,_G.AutoKenVTWO) until not _G.AutoKenVTWO or v.Humanoid.Health <= 0 or plr.PlayerGui.Main.Quest.Visible == false
 	    else
 	      _tp(Kv2Pos4)
 	    end
-	  elseif __DIO_QuestVisible() then 
+	  elseif plr.PlayerGui.Main.Quest.Visible then 
 	    local v = GetConnectionEnemies("Captain Elephant")
 	    if v then
-          repeat __DIO_wait(0.25) Attack.Kill(v,_G.AutoKenVTWO) until not _G.AutoKenVTWO or v.Humanoid.Health <= 0 or (not __DIO_QuestVisible())
+          repeat __DIO_wait(0.25) Attack.Kill(v,_G.AutoKenVTWO) until not _G.AutoKenVTWO or v.Humanoid.Health <= 0 or plr.PlayerGui.Main.Quest.Visible == false
 	    else
 	      _tp(Kv2Pos5)
 	    end
-	  elseif (not __DIO_QuestVisible()) then
+	  elseif plr.PlayerGui.Main.Quest.Visible == false then
 	    replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress","Citizen") wait(.1)
 	    replicated.Remotes.CommF_:InvokeServer("StartQuest","CitizenQuest",1)
 	  end
@@ -7725,9 +7488,8 @@ end})
 spawn(function()
   while __DIO_wait(1) do -- [FIX PERF 62] 0.8 -> 1 (yeu cau user: uu tien FPS; vong poll gated nen logic khong time-out)
     pcall(function()
-      if _G.Bartilo_Quest and __DIO_Level() >= 850 then
-      local Qbart = __DIO_GetQuestUI() -- [U30 FIX] path cung -> helper co fallback
-                if not Qbart then return end
+      if _G.Bartilo_Quest and plr.Data.Level.Value >= 850 then
+      local Qbart = plr.PlayerGui.Main.Quest
         if replicated.Remotes.CommF_:InvokeServer("BartiloQuestProgress","Bartilo") == 0 then
           _G.Level = false
           if Qbart.Visible == true then
@@ -7736,7 +7498,7 @@ spawn(function()
               local x = GetConnectionEnemies(BartMon)
               if x then
                 repeat __DIO_wait(Sec)
-                  if not string.find(__DIO_QuestTitle(), "Swan Pirate")then replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
+                  if not string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Swan Pirate")then replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
                   else Attack.Kill(x,_G.Bartilo_Quest)end
                 until _G.Bartilo_Quest == false or not x.Parent or x.Humanoid.Health <= 0 or Qbart.Visible == false or not x:FindFirstChild("HumanoidRootPart")                  
               end
@@ -7794,11 +7556,11 @@ spawn(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.CitizenQuest then
-        if __DIO_Level() >= 1800 and replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress").KilledBandits == false then
-          if string.find(__DIO_QuestTitle(), "Forest Pirate") and string.find(__DIO_QuestTitle(), "50") and __DIO_QuestVisible() then
+        if plr.Data.Level.Value >= 1800 and replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress").KilledBandits == false then
+          if string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Forest Pirate") and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "50") and plr.PlayerGui.Main.Quest.Visible then
             local v = GetConnectionEnemies("Forest Pirate")
             if v then
-              repeat __DIO_wait(Sec) Attack.Kill(v,_G.CitizenQuest)until _G.CitizenQuest == false or not v.Parent or v.Humanoid.Health <= 0 or (not __DIO_QuestVisible())
+              repeat __DIO_wait(Sec) Attack.Kill(v,_G.CitizenQuest)until _G.CitizenQuest == false or not v.Parent or v.Humanoid.Health <= 0 or plr.PlayerGui.Main.Quest.Visible == false
             else
               _tp(CFrame.new(-13206.452148438, 425.89199829102, -7964.5537109375))
             end
@@ -7808,11 +7570,11 @@ spawn(function()
               wait(1.5) replicated.Remotes.CommF_:InvokeServer("StartQuest","CitizenQuest",1)
             end
           end
-        elseif __DIO_Level() >= 1800 and replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress").KilledBoss == false then
+        elseif plr.Data.Level.Value >= 1800 and replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress").KilledBoss == false then
           local v = GetConnectionEnemies("Captain Elephant")
-          if __DIO_QuestVisible() and string.find(__DIO_QuestTitle(), "Captain Elephant") and __DIO_QuestVisible() then
+          if plr.PlayerGui.Main.Quest.Visible and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Captain Elephant") and plr.PlayerGui.Main.Quest.Visible then
             if v then
-              repeat __DIO_wait(Sec) Attack.Kill(v,_G.CitizenQuest) until _G.CitizenQuest == false or v.Humanoid.Health <= 0 or not v.Parent or (not __DIO_QuestVisible())
+              repeat __DIO_wait(Sec) Attack.Kill(v,_G.CitizenQuest) until _G.CitizenQuest == false or v.Humanoid.Health <= 0 or not v.Parent or plr.PlayerGui.Main.Quest.Visible == false
             else
               _tp(CFrame.new(-13374.889648438, 421.27752685547, -8225.208984375))
             end
@@ -7823,7 +7585,7 @@ spawn(function()
               replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress","Citizen")
             end
           end
-        elseif __DIO_Level() >= 1800 and replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress","Citizen") == 2 then
+        elseif plr.Data.Level.Value >= 1800 and replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress","Citizen") == 2 then
           _tp(CFrame.new(-12512.138671875, 340.39279174805, -9872.8203125))
         end
       end
@@ -7841,7 +7603,7 @@ spawn(function()
   while __DIO_wait(Sec) do
     if _G.DummyMan then
       pcall(function()
-        if (not __DIO_QuestVisible()) then	
+        if plr.PlayerGui.Main.Quest.Visible == false then	
           local xxx = {[1] = "ArenaTrainer"}
 	      replicated:WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer(unpack(xxx))
         else
@@ -11726,8 +11488,7 @@ spawn(function()
             continue 
         end
 
-        local __thl = __DIO_HUD("TopHUDList") -- [U30 FIX] path cung -> helper
-        local gui = __thl and __thl:FindFirstChild("RaidTimer")
+        local gui = plr.PlayerGui.Main.TopHUDList.RaidTimer
         -- Tắt KillAura nếu Raid kết thúc (RaidTimer không hiện)
         if not gui or not gui.Visible then 
             _G.KillAuraFull = false
@@ -12326,12 +12087,12 @@ Tabs.Combat:AddToggle({
 spawn(function()
     while __DIO_wait(1) do -- [FIX PERF 62] 0.1 -> 1 (yeu cau user: uu tien FPS; vong poll gated nen logic khong time-out)
         if _G.AutoPlayerHunter then
-            if __DIO_QuestVisible() == false then
+            if plr.PlayerGui.Main.Quest.Visible == false then
                 __DIO_wait(0.5)
                 __SVC_RS.Remotes.CommF_:InvokeServer("PlayerHunter")
             else
                 for _, target in pairs(__SVC_WS.Characters:GetChildren()) do
-                    if string.find(__DIO_QuestTitle(), target.Name) then
+                    if string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, target.Name) then
                         repeat
                             __DIO_wait(0.25)
                             if AutoHaki then AutoHaki() end
@@ -13432,16 +13193,14 @@ Tabs.Misc:AddButton({
 Name = "Open Awakenings Expert", 
 Description = "",
 Callback = function()
-  local __aw = __DIO_HUD("AwakeningToggler") -- [U30 FIX]
-  if __aw then __aw.Visible = true else warn("[DIO] Khong tim thay AwakeningToggler (Update 30 doi HUD?)") end
+  plr.PlayerGui.Main.AwakeningToggler.Visible = true
 end})
 Tabs.Misc:AddButton({
 Name = "Open Title Selection", 
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("getTitles",true)
-  local __ti = __DIO_HUD("Titles") -- [U30 FIX]
-  if __ti then __ti.Visible = true else warn("[DIO] Khong tim thay Titles (Update 30 doi HUD?)") end
+  plr.PlayerGui.Main.Titles.Visible = true
 end})
 DisbleChat = Tabs.Misc:AddToggle({
 Name = "Disable Chat GUI", 
