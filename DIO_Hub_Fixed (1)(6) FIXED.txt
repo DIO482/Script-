@@ -802,6 +802,27 @@ local TweenInfoBring = TweenInfo.new(0.45, Enum.EasingStyle.Linear) -- [FIX PERF
 _G.BringRange = _G.BringRange or 180 -- [USER-EDIT] chinh tay user tu ban 99999: 300 -> 180 (giam VFX/FPS khi farm)
 _G.MaxBringMobs = _G.MaxBringMobs or 4 -- [USER-EDIT] chinh tay user: 6 -> 4
 
+-- [FIX AUDIT] IsRaidMob duoc goi o BringEnemy nhung CHUA tung duoc dinh nghia trong file
+-- (chi co type-guard nen khong crash, nhung gom quai raid van chay). Chen lai dinh nghia
+-- chuan tu Banana: kiem attribute raid hoac dang trong raid (RaidTimer hien) -> khong gom.
+IsRaidMob = function(mob)
+    if not mob then return false end
+    local ok, result = pcall(function()
+        if mob:GetAttribute("Raid") == true or mob:GetAttribute("IsRaidBoss") == true or mob:GetAttribute("RaidBoss") == true then
+            return true
+        end
+        local gui = plr and plr:FindFirstChild("PlayerGui")
+        local main = gui and gui:FindFirstChild("Main")
+        local topHud = main and main:FindFirstChild("TopHUDList")
+        local raidTimer = topHud and topHud:FindFirstChild("RaidTimer")
+        if raidTimer and raidTimer.Visible == true then
+            return true
+        end
+        return false
+    end)
+    if ok then return result end
+    return false
+end
 BringEnemy = function(Mon)
     if not _B then return end
     -- [FIX PERF 9] PHAN TICH: farm loop goi BringEnemy moi Sec=0.1s; moi lan goi tao den
@@ -5601,7 +5622,7 @@ Tabs.Settings:AddToggle({
     end
 })
 
-Spawn(function()
+spawn(function()
     while __DIO_wait(1) do
         if _G.AutoHopServer then
             pcall(function()
@@ -8834,7 +8855,7 @@ Callback = function()
         
         __DIO_wait(2)
 
-        tween(CFrame.new(28981.552734375, 14888.4267578125, - 120.245849609375))
+        _tp(CFrame.new(28981.552734375, 14888.4267578125, - 120.245849609375)) -- [FIX AUDIT] ham "tween" khong ton tai -> dung _tp cua hub
     end
 })
 Tabs.Race:AddButton({
@@ -11680,13 +11701,9 @@ Options = DungeonTables,
 Callback = function(Value)
   _G.SelectChip = Value
 end})
-Q = Tabs.Raids:AddToggle({
-Name = "Auto Select Dungeon Chip", 
-Description = "", 
-Default = false,
-Callback = function(Value)
-  _G.AutoSelectDungeon = Value
-end})
+-- [FIX AUDIT] da xoa toggle "Auto Select Dungeon Chip" (code chet: chi gan _G.AutoSelectDungeon,
+-- khong noi nao doc bien nay de quyet dinh mua chip). Dropdown "Select Chip" la nguon duy nhat:
+-- moi lenh mua chip dung dung _G.SelectChip ma dropdown ghi ra.
 Tabs.Raids:AddToggle({
     Name = "Get Fruit In Inventory Below 1M",
     Default = false,
@@ -11715,30 +11732,6 @@ spawn(function()
         end)
     end
 end)
-Tabs.Raids:AddButton({
-Name = "Buy Dungeon Chips [Beli]", 
-Description = "",
-Callback = function()
-  if GetBP("Special Microchip") then return end
-  __RaidBuyEnsure() -- [FIX CHIP-BUY-v2] bay den diem Start Raid roi moi mua
-  replicated.Remotes.CommF_:InvokeServer("RaidsNpc","Select",_G.SelectChip)
-end})
-Tabs.Raids:AddButton({
-Name = "Buy Dungeon Chips [Devil Fruit]", 
-Description = "",
-Callback = function()
-  if GetBP("Special Microchip") then return end
-  __RaidBuyEnsure() -- [FIX CHIP-BUY-v2] bay toi noi Start Raid truoc
-  -- [FIX FRUIT-LOOP] 1 lan an = DUNG 1 lan: bo 2 vong for long nhau (cu goi LoadFruit
-  -- hang chuc lan/1 click gay "lau fruit vo han"). Chi load fruit trung chip dang chon
-  -- (hoac re nhat) roi Select 1 lan.
-  local cand = __PickFruitForChip(490000)
-  if not cand then return end
-  replicated.Remotes.CommF_:InvokeServer("LoadFruit", tostring(cand))
-  replicated.Remotes.CommF_:InvokeServer("RaidsNpc","Select",_G.SelectChip)
-end})
-
-
 AutoChipBeli = Tabs.Raids:AddToggle({
     Name = "Auto Buy Chip [Beli]",
     Description = "",
