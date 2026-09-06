@@ -1506,6 +1506,12 @@ function CheckLegendaryItems()
     if CheckItem("God's Chalice") or CheckItem("Fist of Darkness") or CheckItem("Sweet Chalice") or CheckItem("Hallow Essence") or CheckItem("Flower1") then
         return true
     end
+    -- [FIX BYPASS-LEGENDARY] (yeu cau user) mo rong danh sach vat pham lam mat quyen bypass:
+    -- Flower2/Flower3 (hoa Tonton), chip cac loai + Core Brain (vu khi khong duoc lam roi khi
+    -- BypassTP nham spawn), de tranh mat/treo item.
+    if CheckItem("Flower2") or CheckItem("Flower3") or CheckItem("Special Microchip") or CheckItem("Chip") or CheckItem("Microchip") or CheckItem("Core Brain") then
+        return true
+    end
     return false
 end
 
@@ -1562,6 +1568,39 @@ function __DIO_InAreaCached(POS)
     return r
 end
 
+-- [FIX NEAR-TWEEN] Helper FPS-an-toan: co mob (workspace.Enemies) dang song trong ban kinh
+-- ~150 stud quanh diem pos hay khong? Cache 0.5s: _tp goi ~4 lan/s nhung chi quet Enemies
+-- 1 lan/0.5s, co break som khi tim thay -> khong gay GC/FPS tut.
+__DIO_MobNearT = 0
+__DIO_MobNearR = false
+function __DIO_MobNear(pos)
+    if pos == nil then return false end
+    if tick() - __DIO_MobNearT < 0.5 then
+        return __DIO_MobNearR
+    end
+    __DIO_MobNearT = tick()
+    local near = false
+    local en = workspace:FindFirstChild("Enemies")
+    if en then
+        local r2 = 150 * 150
+        local px, pz = pos.X, pos.Z
+        for _, e in pairs(en:GetChildren()) do
+            local hrp = e:FindFirstChild("HumanoidRootPart")
+            local hum = e:FindFirstChild("Humanoid")
+            if hrp and hum and hum.Health > 0 then
+                local dx = hrp.Position.X - px
+                local dz = hrp.Position.Z - pz
+                if dx * dx + dz * dz <= r2 then
+                    near = true
+                    break
+                end
+            end
+        end
+    end
+    __DIO_MobNearR = near
+    return near
+end
+
 function CanBypassTeleport(x)
     -- [FIX PERF 57] PHAN TICH (hot path tween+farm): ban cu goi InArea(x) TRUOC = quet 50-100
     -- Locations (FindFirstChild Mesh tung vung) MOI LAN _tp (4 lan/s khi farm), trong khi dieu
@@ -1577,8 +1616,15 @@ function CanBypassTeleport(x)
         or AreaName:find("Dimension") 
         or AreaName:find("Submerged") 
         or AreaName == "Sealed Cavern" 
+        or AreaName:lower():find("mirror") -- [FIX BYPASS-MIRROR] Mirror World luon tween thuong
         or AreaName:lower():find("under") 
         or CheckLegendaryItems() then
+        return false
+    end
+    
+    -- [FIX BYPASS-MIRROR] (yeu cau user) bat ky noi nao KHONG co diem respawn/spawn (PlayerSpawns)
+    -- gan dich den -> BypassTP khong co moc spawn de neo -> bat buoc tween thuong, khong bypass.
+    if not GetSpawnPoint(x) then
         return false
     end
     
@@ -1802,6 +1848,12 @@ _tp = function(target)
     -- cac loi _tp ke tiep o xa tu ve dung speed slider (speed tinh lai tung lan goi).
     -- Muon doi khoang cach "gan dich" thi sua so 150 ben duoi.
     if not (__humTween and __humTween.Sit) and distance <= 150 then
+        __speed = 600
+    end
+    -- [FIX NEAR-TWEEN] (yeu cau user) Neu bat toggle "Tween speed 600 if near" (Neartween):
+    -- khi dang tween di bo ma co mob gan (< 150 stud) -> day toc do len 600 de nhanh ra khoi
+    -- tam dan / khong bi quai can duong. Toggle tat -> giu nguyen hanh vi cu.
+    if _G.Neartween and not (__humTween and __humTween.Sit) and __DIO_MobNear(rootPart.Position) then
         __speed = 600
     end
     -- [FIX FPS 1] phan tich: moi loi _tp tao 1 tween MOI tren cung block "block" ma khong
@@ -5395,6 +5447,13 @@ Default = true,
 Callback = function(Value)
   _G.Seriality = Value
 end})
+Neartween = Tabs.Settings:AddToggle({
+Name = "Tween speed 600 if near", 
+Description = "Toc do tween = 600 khi co mob dang gan nguoi (mac dinh TAT)", 
+Default = false, 
+Callback = function(Value)
+  _G.Neartween = Value
+end})
 Bringmob = Tabs.Settings:AddToggle({
 Name = "Bring Mobs", 
 Description = "", 
@@ -5419,6 +5478,17 @@ Tabs.Settings:AddToggle({
 end 
 }) 
 -- [FIX LAG] slider chỉnh độ trễ Fast Attack (giây) - thay cho Rate 0.000000002 cũ
+Tabs.Settings:AddSlider({
+    Name = "Fast Attack Delay",
+    Min = 1,
+    Max = 30,
+    Default = 1,
+    Increment = 1,
+    Callback = function(Value)
+        -- 1..30 -> 0.01s..0.30s (Default 1 = 0.01s nhanh nhat ~100 don/s; 30 = 0.30s cham nhat)
+        FastAttackModule.Rate = math.clamp(Value, 1, 30) / 100
+    end
+})
 Tabs.Settings:AddDropdown({
     Name = "Mode Farm",
     Options = {"Normal", "Obrit", "Dodge"},
@@ -5458,17 +5528,7 @@ Tabs.Settings:AddSlider({
         _G.OrbitHeight = math.clamp(math.floor(Value + 0.5), 0, 60)
     end
 })
-Tabs.Settings:AddSlider({
-    Name = "Fast Attack Delay",
-    Min = 1,
-    Max = 30,
-    Default = 1,
-    Increment = 1,
-    Callback = function(Value)
-        -- 1..30 -> 0.01s..0.30s (Default 10 = 0.1s)
-        FastAttackModule.Rate = math.clamp(Value, 1, 30) / 100
-    end
-})
+
 -- [FIX MODEFARM 2/2] 
 Tabs.Settings:AddSlider({
     Name = "mobs Bring",
@@ -11675,6 +11735,12 @@ StartR = Tabs.Raids:AddToggle({
 })
 
 task.spawn(function()
+    -- [FIX RAID-START-ORDER] (yeu cau user) Auto Start Raid: KHONG fire prompt khi nguoi dang
+    -- o XA nut (ProximityPrompt chi an trong pham vi gan) -> truoc do phai tween toi dung vi tri
+    -- room-start CFrame.new(-5059.1748, 314.863464, -2923.36108) (World3 / Boat Castle), cho toi
+    -- noi (hoac het timeout) ROI MOI kich hoat RaidSummon2.Button.Main. Thoi tu tu khong trong raid.
+    -- World2 (CircleIsland) khong co CFrame user cung cap -> dung moc sat nut RaidSummon2 luon.
+    local __RAID_ROOM_START = CFrame.new(-5059.1748, 314.863464, -2923.36108)
     while __DIO_wait(Sec) do
         if not _G.Auto_StartRaid then continue end
 
@@ -11683,31 +11749,65 @@ task.spawn(function()
             local gui = plr:FindFirstChild("PlayerGui")
             local main = gui and gui:FindFirstChild("Main")
             local top = main and main:FindFirstChild("TopHUDList")
+            local raidTimer = top and top:FindFirstChild("RaidTimer")
 
-            if not top or top.RaidTimer.Visible then return end
+            -- Dang trong raid roi (RaidTimer hien) -> khong can start lai
+            if raidTimer and raidTimer.Visible then return end
 
+            -- Chua co chip -> chua du dieu kien mo raid
             if not GetBP("Special Microchip") then return end
 
+            -- Tim nut RaidSummon2 an toan theo tung world
+            local btn
             if World2 then
-                local btn = workspace.Map.CircleIsland.RaidSummon2.Button.Main
-                if btn then
-                    if btn:FindFirstChild("ProximityPrompt") then
-                        fireproximityprompt(btn.ProximityPrompt)
-                    elseif btn:FindFirstChild("ClickDetector") then
-                        fireclickdetector(btn.ClickDetector)
-                    end
+                local ci = workspace.Map and workspace.Map:FindFirstChild("CircleIsland")
+                local rs = ci and ci:FindFirstChild("RaidSummon2")
+                local bt = rs and rs:FindFirstChild("Button")
+                btn = bt and bt:FindFirstChild("Main")
+            elseif World3 then
+                local bc = workspace.Map and workspace.Map:FindFirstChild("Boat Castle")
+                local rs = bc and bc:FindFirstChild("RaidSummon2")
+                local bt = rs and rs:FindFirstChild("Button")
+                btn = bt and bt:FindFirstChild("Main")
+            end
+            if not btn then return end
+
+            local char = plr.Character
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            if not root then return end
+
+            -- Buoc 1: tween den vi tri dung truoc nut (diem room-start cua user khi o World3)
+            local startCF
+            if World3 then
+                startCF = __RAID_ROOM_START
+            else
+                local posPart = btn:IsA("BasePart") and btn or btn:FindFirstChild("Part") or btn:FindFirstChildWhichIsA("BasePart")
+                if posPart then
+                    startCF = posPart.CFrame * CFrame.new(0, 2, 0)
                 end
             end
 
-            if World3 then
-                local btn = workspace.Map["Boat Castle"].RaidSummon2.Button.Main
-                if btn then
-                    if btn:FindFirstChild("ProximityPrompt") then
-                        fireproximityprompt(btn.ProximityPrompt)
-                    elseif btn:FindFirstChild("ClickDetector") then
-                        fireclickdetector(btn.ClickDetector)
+            if startCF and (root.Position - startCF.Position).Magnitude > 10 then
+                _tp(startCF) -- tween truoc, tuyet doi khong fire prompt khi con xa
+                local t0 = tick()
+                repeat
+                    __DIO_wait(0.2)
+                    local c2 = plr.Character
+                    local r2 = c2 and c2:FindFirstChild("HumanoidRootPart")
+                    if (r2 and (r2.Position - startCF.Position).Magnitude <= 10) or (tick() - t0 > 8) then
+                        break
                     end
-                end
+                until false
+                __DIO_wait(0.2) -- cho phep server "nhan" nhan vat vao vung prompt
+            end
+
+            -- Buoc 2: da sat nut -> kich hoat prompt/click de mo raid
+            local prompt = btn:FindFirstChild("ProximityPrompt", true)
+            local clicker = btn:FindFirstChild("ClickDetector", true)
+            if prompt then
+                fireproximityprompt(prompt)
+            elseif clicker then
+                fireclickdetector(clicker)
             end
         end)
     end
@@ -12145,10 +12245,6 @@ task.spawn(function()
         end
     end
 end)
-
-
-
-
 
 Tabs.Combat:AddSection("Combat / AimBot")
 
