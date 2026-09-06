@@ -217,40 +217,85 @@ end
 -- 3 helper duoi day tra ve nil an toan thay vi nem loi, va TU DO tim UI quest o
 -- cac vi tri moi neu path cu khong con.
 -- ==========================================================================
+-- ==========================================================================
+-- [HOTFIX QUESTUI] LOI DO TOI GAY RA O BAN TRUOC - PHAN TICH THAT:
+--
+-- Ban truoc toi viet tang (3): gui:FindFirstChild("Quest", true) - tham so `true`
+-- la RECURSIVE, quet TOAN BO cay con cua moi ScreenGui. Trong Blox Fruits co RAT
+-- NHIEU node ten "Quest" khong phai khung quest chinh, vi du:
+--     Main.Quest              <- DUNG (khung quest that)
+--     ...SomeFrame.Quest      <- nut/icon/template, LUON Visible = true
+--     ...QuestList.Quest      <- item trong danh sach
+--
+-- Hau qua day chuyen:
+--   1) Neu Main.Quest ton tai nhung dang AN (chua nhan quest), tang (1) van tra ve
+--      dung node -> KHONG SAO. Nhung neu vi bat ky ly do gi tang (1) truot (Main
+--      chua load xong luc goi lan dau), tang (3) tom nham 1 node "Quest" khac.
+--   2) Node nham do bi CACHE VINH VIEN vao __DIO_QuestUICache (no van co .Parent
+--      nen cache khong bao gio bi lam moi).
+--   3) Node nham thuong Visible = true => __DIO_QuestVisible() LUON TRA TRUE
+--      => farm tuong "dang co quest" => KHONG BAO GIO di nhan nhiem vu nua.
+--   4) Vi ca 3 farm (Level/Cake/Bone) deu goi CHUNG helper nay -> hong DONG LOAT.
+--      Dung nhu trieu chung: "chi nhan quest" / "hong lan sang Cake va Bone".
+--
+-- SUA:
+--   * BO hoan toan tang (3) recursive - no doan mo va gay hai nhieu hon loi.
+--   * Chi chap nhan node co DUNG cau truc khung quest that (co Container hoac
+--      it nhat 1 TextLabel ben trong) -> loai nut/icon.
+--   * Cache co TTL 5s va tu huy khi node mat Parent -> khong khoa vinh vien.
+-- ==========================================================================
 __DIO_QuestUICache = nil
+__DIO_QuestUICacheT = 0
+
+local function __DIO_IsRealQuestFrame(node)
+    if not node or not node:IsA("GuiObject") then return false end
+    -- khung quest that co Container.QuestTitle.Title
+    local c = node:FindFirstChild("Container")
+    if c and c:FindFirstChild("QuestTitle") then return true end
+    -- hoac it nhat phai chua TextLabel (nut/icon thuong chi co ImageLabel)
+    for _, d in ipairs(node:GetDescendants()) do
+        if d:IsA("TextLabel") then return true end
+    end
+    return false
+end
+
 function __DIO_GetQuestUI()
-    -- cache con song thi dung lai (tranh quet UI moi lan goi)
-    if __DIO_QuestUICache and __DIO_QuestUICache.Parent then return __DIO_QuestUICache end
+    -- cache: con song VA chua qua han
+    if __DIO_QuestUICache and __DIO_QuestUICache.Parent
+       and (tick() - __DIO_QuestUICacheT) < 5 then
+        return __DIO_QuestUICache
+    end
+
     local pg = plr:FindFirstChild("PlayerGui")
     if not pg then return nil end
-    -- (1) path co dien
+
+    -- (1) path co dien - uu tien tuyet doi, KHONG kiem tra gi them
     local m = pg:FindFirstChild("Main")
     local q = m and m:FindFirstChild("Quest")
-    -- (2) U30 co the doi ten container HUD -> quet cac ScreenGui tim con ten "Quest"
+
+    -- (2) chi khi (1) truot: quet CON TRUC TIEP cua cac ScreenGui (KHONG recursive)
+    --     va bat buoc phai giong khung quest that.
     if not q then
         for _, gui in ipairs(pg:GetChildren()) do
             if gui:IsA("ScreenGui") then
                 local cand = gui:FindFirstChild("Quest")
-                if cand then q = cand break end
+                if __DIO_IsRealQuestFrame(cand) then q = cand break end
             end
         end
     end
-    -- (3) van khong thay -> tim sau hon 1 cap (HUD moi hay long them 1 frame)
-    if not q then
-        for _, gui in ipairs(pg:GetChildren()) do
-            if gui:IsA("ScreenGui") then
-                local cand = gui:FindFirstChild("Quest", true)
-                if cand and cand:IsA("GuiObject") then q = cand break end
-            end
-        end
-    end
+
     __DIO_QuestUICache = q
+    __DIO_QuestUICacheT = tick()
     return q
 end
 
 function __DIO_QuestVisible()
     local q = __DIO_GetQuestUI()
-    return (q ~= nil) and q.Visible == true
+    -- [HOTFIX] KHONG tim thay khung quest -> tra FALSE (coi nhu CHUA co quest).
+    -- Quan trong: false = farm se di NHAN QUEST (hanh vi an toan, tu phuc hoi).
+    -- Neu tra true thi farm tuong da co quest va dung im mai mai - dung loi vua roi.
+    if not q then return false end
+    return q.Visible == true
 end
 
 function __DIO_QuestTitle()
@@ -281,7 +326,9 @@ function __DIO_HUD(name)
     if pg then
         for _, gui in ipairs(pg:GetChildren()) do
             if gui:IsA("ScreenGui") then
-                local c = gui:FindFirstChild(name, true)
+                -- [HOTFIX] BO recursive (tham so true) - cung loi da lam hong QuestUI:
+                -- quet sau tom nham node trung ten o cho khac. Chi quet con truc tiep.
+                local c = gui:FindFirstChild(name)
                 if c then return c end
             end
         end
