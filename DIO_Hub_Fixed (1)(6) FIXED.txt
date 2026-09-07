@@ -159,6 +159,10 @@ pcall(function()
 end)
 
 _G.SaveData = _G.SaveData or {}
+-- [FIX SAVE-TOGGLE] master switch cua auto-save: toggle "Auto Save Serve old" (Settings tab)
+-- bat/tat viec ghi file moi khi doi cai dat. Tat = chi giu trong RAM (khong ghi file).
+-- mac dinh ON (nil -> true). SetSetting o duoi doc bien nay.
+_G.DIO_AutoSave = (_G.DIO_AutoSave ~= false)
 
 SaveSettings = function()
     if not writefile then return false end
@@ -188,7 +192,8 @@ end
 
 SetSetting = function(name, value)
     _G.SaveData[name] = value
-    pcall(SaveSettings)
+    -- [FIX SAVE-TOGGLE] chi ghi file khi nguoi dung CHUA tat "Auto Save Serve old"
+    if _G.DIO_AutoSave ~= false then pcall(SaveSettings) end
 end
 
 LoadSettings() -- nạp cài đặt đã lưu từ lần chạy trước
@@ -209,10 +214,10 @@ World1 = game.PlaceId == 2753915549 or game.PlaceId == 85211729168715
 World2 = game.PlaceId == 4442272183 or game.PlaceId == 79091703265657
 World3 = game.PlaceId == 7449423635 or game.PlaceId == 100117331123089
 Marines = function()
-      replicated.Remotes.CommF_:InvokeServer("SetTeam","Marines") 
+      replicated.Remotes.CommF_:InvokeServer("SetTeam2","Marines") 
 end
 Pirates = function()
-      replicated.Remotes.CommF_:InvokeServer("SetTeam","Pirates") 
+      replicated.Remotes.CommF_:InvokeServer("SetTeam2","Pirates") 
 end
  
 if World1 then
@@ -971,7 +976,7 @@ gg.__namecall = newcclosure(function(...)
     if tostring(method) == "FireServer" then
       if tostring(args[1]) == "RemoteEvent" then
         if tostring(args[2]) ~= "true" and tostring(args[2]) ~= "false" then
-          if (_G.FarmMastery_G and not SoulGuitar) or (_G.FarmMastery_Dev) or (_G.FarmBlazeEM) or (_G.Prehis_Skills) or (_G.SeaBeast1 or _G.FishBoat or _G.PGB or _G.Leviathan1 or _G.Complete_Trials) or (_G.AimMethod and ABmethod == "Aim Player") or (_G.AimMethod and ABmethod == "Nearest Aim") then
+          if (_G.FarmMastery_G and not SoulGuitar) or (_G.FarmMastery_Dev) or (_G.FarmBlazeEM) or (_G.Prehis_Skills) or (_G.SeaBeast1 or _G.FishBoat or _G.PGB or _G.Leviathan1 or _G.Complete_Trials) or (_G.AimMethod and ABmethod == "Aim Player") or (_G.AimMethod and ABmethod == "Nearest Aim") or (_G.DIO_SkillAim == true) then
             args[2] = MousePos
             return old(unpack(args))
           end
@@ -1110,6 +1115,44 @@ CheckLeviathan = function()
 end;
   return false
 end;
+
+-- [FIX FPS-FINAL-12] CACHE QUET QUAI BIEN cho cac loop find (Sail Boat / Frozen / Prehis /
+-- Mirage / Kitsune): truoc day moi loop khi lai thuyen goi CheckEnemiesBoat+CheckTerrorShark+
+-- CheckPirateGrandBrigade (MOI ham quet TOAN BO workspace.Enemies:GetChildren) moi 0.25s
+-- = ~12 full-scan/s LIEN TUC suot luc bay -> drop FPS deu khi bat bat ky toggle find nao
+-- (tat toggle = ngung scan ngay = FPS hoi 1-2s, dung trieu chung user do). Gio gop 1 luot
+-- quet / 0.5s cho tat ca ten bien lien quan -> giam ~24x (van phan ung du nhanh de tranh don).
+local __DIO_SeaScanT = 0
+local __DIO_SeaScanR = { fish = false, pgb = false, terror = false, shark = false, crew = false, piranha = false }
+local function __DIO_SeaScan()
+    if tick() - __DIO_SeaScanT < 0.5 then return __DIO_SeaScanR end
+    __DIO_SeaScanT = tick()
+    local r = { fish = false, pgb = false, terror = false, shark = false, crew = false, piranha = false }
+    local en = workspace:FindFirstChild("Enemies")
+    if en then
+        for _, v in ipairs(en:GetChildren()) do
+            local n = v.Name
+            if n == "FishBoat" then
+                local hh = v:FindFirstChild("Health")
+                if hh and hh.Value > 0 then r.fish = true end
+            elseif n == "PirateBrigade" or n == "PirateGrandBrigade" then
+                local hh = v:FindFirstChild("Health")
+                if hh and hh.Value > 0 then r.pgb = true end
+            elseif n == "Terrorshark" then
+                if Attack.Alive(v) then r.terror = true end
+            elseif n == "Shark" then
+                if Attack.Alive(v) then r.shark = true end
+            elseif n == "Piranha" then
+                if Attack.Alive(v) then r.piranha = true end
+            elseif n == "Fish Crew Member" or n == "Haunted Crew Member" then
+                if Attack.Alive(v) then r.crew = true end
+            end
+            if r.fish and r.pgb and r.terror and r.shark and r.crew and r.piranha then break end
+        end
+    end
+    __DIO_SeaScanR = r
+    return r
+end
 
 -- ==========================================================================
 -- [DODGE] NE DON SEA BEAST + TERROR SHARK
@@ -1560,7 +1603,7 @@ function CheckLegendaryItems()
     -- [FIX BYPASS-LEGENDARY] (yeu cau user) mo rong danh sach vat pham lam mat quyen bypass:
     -- Flower2/Flower3 (hoa Tonton), chip cac loai + Core Brain (vu khi khong duoc lam roi khi
     -- BypassTP nham spawn), de tranh mat/treo item.
-    if CheckItem("Flower2") or CheckItem("Flower3") or CheckItem("Special Microchip") or CheckItem("Chip") or CheckItem("Microchip") or CheckItem("Core Brain") then
+    if CheckItem("Flower2") or CheckItem("Flower3") or CheckItem("Special Microchip") or CheckItem("Chip") or CheckItem("Microchip") or CheckItem("Core Brain") or CheckItem("Cup") or CheckItem("Holy Torch") then
         return true
     end
     return false
@@ -1917,7 +1960,8 @@ _tp = function(target)
     -- (<=150 stud) la 600 NGAY CA KHI TAT toggle -> da go bo. TAT = luon dung Speed Tween.
     -- BAT = 600 khi (a) gan dich hoac (b) co mob gan nguoi (<150 stud); chi khi di bo (khong Sit),
     -- ngoi thuyen van dung BoatTweenSpeed rieng. Muon doi ban kinh thi sua so 150 ben duoi.
-    if _G.Neartween and not (__humTween and __humTween.Sit) then
+    if _G.Neartween and not (__humTween and __humTween.Sit)
+       and _G.ModeFarm ~= "Obrit" and _G.ModeFarm ~= "Dodge" then
         if distance <= 150 or __DIO_MobNear(rootPart.Position) then
             __speed = 600
         end
@@ -2921,10 +2965,26 @@ local function __DIO_GhostCheck(mob)
     end
 
     if elapsed >= 3 and not d.skill then
-        -- 3s không gây damage → bắn skill để phá ghost
+        -- [FIX SKILL-TOGGLE v2] 3s không gây damage:
+        --   * BAT  "Auto Use Skill Melee/Sword If lag Mob or Ghost Mob" (Settings) -> ban skill
+        --     pha ghost (aim dung con mob dang danh, xem FIX SKILL-AIM duoi).
+        --   * TAT   -> KHONG ban skill, nhung VAN TU DONG BO QUA ghost sau 6s (nhanh __DIO_GhostSkip
+        --     o tren, KHONG phu thuoc toggle nay). User yeu cau giu skip ngay ca khi tat toggle.
+        --   * d.skill chi dat = true khi THUC SU ban (khi tat thi de false de neu user bat toggle
+        --     giua khung 3-6s, vong sau se ban duoc; con skip 6s van chay).
+        if _G.AutoSkillGhost then
         d.skill = true
         task.spawn(function()  -- spawn riêng để không block farm loop
             pcall(function()
+                -- [FIX SKILL-AIM] aim vao CHINH con mob dang danh (truoc day chi SendKeyEvent,
+                -- con tro chuot co the dang o cho khac -> skill bay lech / khong trung).
+                -- Hook __namecall ben duoi rewrite toa do remote skill ve MousePos nay trong cua so nho.
+                local __aHRP = mob:FindFirstChild("HumanoidRootPart")
+                if __aHRP then
+                    MousePos = __aHRP.Position + Vector3.new(0, 2, 0)
+                    _G.DIO_SkillAim = true
+                    task.spawn(function() task.wait(0.7) _G.DIO_SkillAim = false end)
+                end
                 EquipWeapon(_G.SelectWeapon)
                 local eq = plr.Character and plr.Character:FindFirstChildOfClass("Tool")
                 local wt = eq and eq.ToolTip or "Melee"
@@ -2945,6 +3005,7 @@ local function __DIO_GhostCheck(mob)
                 end
             end)
         end)
+        end
     end
 
     return false  -- chưa xác nhận ghost, tiếp tục attack
@@ -5569,9 +5630,16 @@ Default = true,
 Callback = function(Value)
   _G.Seriality = Value
 end})
+SkilluserFarm = Tabs.Settings:AddToggle({
+Name = "Auto Use Skill Melee/Sword If lag Mob or Ghost Mob", 
+Description = "Bat = khi mob lag/ghost (3s khong hut damage khi dang danh) tu dong dung skill cua vu khi (Melee/Sword/...) AIM vao mob do", 
+Default = false,
+Callback = function(Value)
+  _G.AutoSkillGhost = Value
+end})
 Neartween = Tabs.Settings:AddToggle({
 Name = "Tween speed 600 if near", 
-Description = "Toc do tween = 600 khi co mob dang gan nguoi (mac dinh TAT)", 
+Description = "", 
 Default = false, 
 Callback = function(Value)
   _G.Neartween = Value
@@ -5698,7 +5766,13 @@ Tabs.Settings:AddSlider({
     end
 }) -- [FIXED] function đã thêm
 Tabs.Settings:AddSection("Settings / Configure")
-
+SaveSetting = Tabs.Settings:AddToggle({
+Name = "Auto Save Serve old", 
+Description = "Bat = tu dong ghi cai dat ra file khi doi toggle / Tat = chi giu trong RAM", 
+Default = true,
+Callback = function(Value)
+  _G.DIO_AutoSave = Value
+end})
 Tabs.Settings:AddToggle({
     Name = "Auto Hop Server with time",
     Default = false,
@@ -8420,7 +8494,8 @@ spawn(function()
             else            
               repeat __DIO_wait(0.25)
                 local targetDestination = CFrame.new(-10000000, 31, 37016.25)
-                if CheckEnemiesBoat() or CheckTerrorShark() or CheckPirateGrandBrigade() then
+                local __seaS = __DIO_SeaScan()
+                if __seaS.fish or __seaS.terror or __seaS.pgb then
                   _tp(CFrame.new(-10000000, 150, 37016.25))
                 else
                   _tp(CFrame.new(-10000000, 31, 37016.25))
@@ -9668,7 +9743,8 @@ spawn(function()
                     local seaCFrame = CFrame.new(-10000000, 31, 37016.25)
                     targetDestination = seaCFrame
 
-                    if CheckEnemiesBoat() or CheckTerrorShark() or CheckPirateGrandBrigade() then
+                    local __seaS = __DIO_SeaScan()
+                    if __seaS.fish or __seaS.terror or __seaS.pgb then
                         _tp(CFrame.new(-10000000, 150, 37016.25))
                     else
                         _tp(seaCFrame)
@@ -10078,11 +10154,11 @@ spawn(function()
     if _G.SailBoats then 
       pcall(function()        
         local myBoat = CheckBoat()
-        if not myBoat and not(CheckShark()and _G.Shark or CheckTerrorShark()and _G.TerrorShark or CheckFishCrew()and _G.MobCrew or CheckPiranha()and _G.Piranha)and not(CheckEnemiesBoat()and _G.FishBoat)and not(CheckSeaBeast()and _G.SeaBeast1)and not(_G.PGB and CheckPirateGrandBrigade())and not(_G.HCM and CheckHauntedCrew())and not(_G.Leviathan1 and CheckLeviathan())then
+        if not myBoat and not((_G.Shark and CheckShark()) or (_G.TerrorShark and CheckTerrorShark()) or (_G.MobCrew and CheckFishCrew()) or (_G.Piranha and CheckPiranha()))and not((_G.FishBoat and CheckEnemiesBoat()))and not((_G.SeaBeast1 and CheckSeaBeast()))and not(_G.PGB and CheckPirateGrandBrigade())and not(_G.HCM and CheckHauntedCrew())and not(_G.Leviathan1 and CheckLeviathan())then
           local buyBoatCFrame = CFrame.new(-16927.451, 9.086, 433.864)
           TeleportToTarget(buyBoatCFrame)
           if (buyBoatCFrame.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 then replicated.Remotes.CommF_:InvokeServer("BuyBoat", _G.SelectedBoat) end
-        elseif myBoat and not(CheckShark()and _G.Shark or CheckTerrorShark()and _G.TerrorShark or CheckFishCrew()and _G.MobCrew or CheckPiranha()and _G.Piranha)and not(CheckEnemiesBoat()and _G.FishBoat)and not(CheckSeaBeast()and _G.SeaBeast1)and not(_G.PGB and CheckPirateGrandBrigade())and not(_G.HCM and CheckHauntedCrew())and not(_G.Leviathan1 and CheckLeviathan())then
+        elseif myBoat and not((_G.Shark and CheckShark()) or (_G.TerrorShark and CheckTerrorShark()) or (_G.MobCrew and CheckFishCrew()) or (_G.Piranha and CheckPiranha()))and not((_G.FishBoat and CheckEnemiesBoat()))and not((_G.SeaBeast1 and CheckSeaBeast()))and not(_G.PGB and CheckPirateGrandBrigade())and not(_G.HCM and CheckHauntedCrew())and not(_G.Leviathan1 and CheckLeviathan())then
           if plr.Character.Humanoid.Sit == false then
             local boatSeatCFrame = myBoat.VehicleSeat.CFrame * CFrame.new(0, 1, 0)
             _tp(boatSeatCFrame)
@@ -10096,12 +10172,13 @@ spawn(function()
             elseif _G.DangerSc == "Lv Infinite" then CFrameSelectedZone = CFrame.new(-10000000, 31, 37016.25)
             end           
             repeat __DIO_wait(0.25) 
-              if (not _G.FishBoat and CheckEnemiesBoat()) or (not _G.PGB and CheckPirateGrandBrigade()) or (not _G.TerrorShark and CheckTerrorShark()) then
+              local __seaS = __DIO_SeaScan()
+              if (not _G.FishBoat and __seaS.fish) or (not _G.PGB and __seaS.pgb) or (not _G.TerrorShark and __seaS.terror) then
                 _tp(CFrameSelectedZone * CFrame.new(0,150,0))
               else
                 _tp(CFrameSelectedZone)
               end           
-            until _G.SailBoats==false or(CheckShark()and _G.Shark or CheckTerrorShark()and _G.TerrorShark or CheckFishCrew()and _G.MobCrew or CheckPiranha()and _G.Piranha)or CheckSeaBeast()and _G.SeaBeast1 or CheckEnemiesBoat()and _G.FishBoat or _G.Leviathan1 and CheckLeviathan() or _G.HCM and CheckHauntedCrew() or _G.PGB and CheckPirateGrandBrigade() or plr.Character:WaitForChild("Humanoid").Sit==false plr.Character.Humanoid.Sit = false
+            until _G.SailBoats==false or ((_G.Shark and __seaS.shark) or (_G.TerrorShark and __seaS.terror) or (_G.MobCrew and __seaS.crew) or (_G.Piranha and __seaS.piranha))or (_G.SeaBeast1 and CheckSeaBeast()) or (_G.FishBoat and __seaS.fish) or (_G.Leviathan1 and CheckLeviathan()) or (_G.HCM and __seaS.crew) or (_G.PGB and __seaS.pgb) or plr.Character:WaitForChild("Humanoid").Sit==false plr.Character.Humanoid.Sit = false
           end
         end
       end)
@@ -10301,7 +10378,8 @@ spawn(function()
             else
               local targetDestination = CFrame.new(-10000000, 31, 37016.25)              
               repeat __DIO_wait(0.25) 
-                if CheckEnemiesBoat() or CheckTerrorShark() or CheckPirateGrandBrigade() then
+                local __seaS = __DIO_SeaScan()
+                if __seaS.fish or __seaS.terror or __seaS.pgb then
                   _tp(CFrame.new(-10000000, 150, 37016.25))
                 else
                   _tp(CFrame.new(-10000000, 31, 37016.25))
@@ -10762,7 +10840,8 @@ spawn(function()
             _tp(boatSeatCFrame)
           else                         
             repeat __DIO_wait(0.25) 
-              if CheckEnemiesBoat() or CheckPirateGrandBrigade() or CheckTerrorShark() then
+              local __seaS = __DIO_SeaScan()
+              if __seaS.fish or __seaS.pgb or __seaS.terror then
                 _tp(CFrame.new(5433, 150, 290))
               else
                 _tp(CFrame.new(5433, 35, 290))
