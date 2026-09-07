@@ -1207,30 +1207,36 @@ end
 -- Watcher: chi chay khi dang bat mot trong cac toggle bien
 task.spawn(function()
     while task.wait(0.1) do   -- [FIX FPS-SEA-4] 20Hz -> 10Hz (0.05): moi nhịp quet _WorldOrigin 2 lan
-        -- [FIX FPS-SEA-4] early-gate RE: neu KHONG co con quai bien nao dang song thi khong can
-        -- quet _WorldOrigin tim dan. Kiem tra 2 container con (SeaBeasts + Enemies) truoc.
-        local __has = false
-        local __sb = workspace:FindFirstChild("SeaBeasts")
-        if __sb and #__sb:GetChildren() > 0 then __has = true end
-        if not __has then
-            local __en = workspace:FindFirstChild("Enemies")
-            if __en then
-                for ___, __e in pairs(__en:GetChildren()) do
-                    local __n = __e.Name
-                    if __n == "Terrorshark" or __n == "FishBoat" or __n == "PirateBrigade" or __n == "PirateGrandBrigade" then
-                        __has = true
-                        break
+        -- [FIX FPS-SEA-6] GATE TRUOC: neu KHONG bat Dodge + khong co toggle bien nao thi
+        -- BO QUA NGAY (0 lan scan). Truoc day doan early-scan nam TRUOC gate -> quet SeaBeasts
+        -- + Enemies 10 lan/s VO DIEU KIEN du tat het -> chinh la nguon lag "bat toggle nao cung
+        -- nang" ma toi da vo y them vao.
+        if not _G.DodgeSeaBeast or __DIO_Dodging
+           or not (_G.SeaBeast1 or _G.TerrorShark or _G.Leviathan1 or _G.Shark or _G.Piranha) then
+            -- khong can lam gi
+        else
+            local __has = false
+            local __sb = workspace:FindFirstChild("SeaBeasts")
+            if __sb and #__sb:GetChildren() > 0 then __has = true end
+            if not __has then
+                local __en = workspace:FindFirstChild("Enemies")
+                if __en then
+                    for ___, __e in pairs(__en:GetChildren()) do
+                        local __n = __e.Name
+                        if __n == "Terrorshark" or __n == "FishBoat" or __n == "PirateBrigade" or __n == "PirateGrandBrigade" then
+                            __has = true
+                            break
+                        end
                     end
                 end
             end
-        end
-        if _G.DodgeSeaBeast and not __DIO_Dodging and __has
-           and (_G.SeaBeast1 or _G.TerrorShark or _G.Leviathan1 or _G.Shark or _G.Piranha) then
-            pcall(function()
-                if __DIO_DodgeSeabeast() or __DIO_TerrorDodge() then
-                    __DIO_DoDodge(tonumber(_G.DodgeHeight) or 200)
-                end
-            end)
+            if __has then
+                pcall(function()
+                    if __DIO_DodgeSeabeast() or __DIO_TerrorDodge() then
+                        __DIO_DoDodge(tonumber(_G.DodgeHeight) or 200)
+                    end
+                end)
+            end
         end
     end
 end)
@@ -1417,8 +1423,12 @@ task.spawn(function()
                     end
                 end
             end
+            -- [FIX FPS-FINAL-1] khi dang NGOI THUYEN (find Leviathan/Prehis/Kitsune/Frozen):
+            -- bo qua quet CanCollide nhan vat moi 0.1s (vo ich khi ngoi thuyen, chi ton CPU).
+            local __sitNow = a.Character and a.Character:FindFirstChildOfClass("Humanoid")
+            __sitNow = __sitNow and __sitNow.Sit
             local c = a.Character
-            if c and tick() - __DIO_BlockNoClipLast >= 0.1 then
+            if c and not __sitNow and tick() - __DIO_BlockNoClipLast >= 0.1 then
                 __DIO_BlockNoClipLast = tick()
                 for _, e in ipairs(c:GetChildren()) do
                     if e:IsA("BasePart") and e.CanCollide then e.CanCollide = false end
@@ -1428,8 +1438,11 @@ task.spawn(function()
             __restored = true
             local c = a.Character
             if c then
-                for _, e in ipairs(c:GetChildren()) do
-                    if e:IsA("BasePart") and not e.CanCollide then e.CanCollide = true end
+                local __h2 = c:FindFirstChildOfClass("Humanoid")
+                if not (__h2 and __h2.Sit) then -- khi ngoi thuyen khong can sua CanCollide
+                    for _, e in ipairs(c:GetChildren()) do
+                        if e:IsA("BasePart") and not e.CanCollide then e.CanCollide = true end
+                    end
                 end
             end
         end
@@ -1839,7 +1852,12 @@ _tp = function(target)
     do
         local __needEnt = false
         pcall(function()
-            if (gg.Position - rootPart.Position).Magnitude > 1500
+            -- [FIX FPS-FINAL-3] khi NGOI THUYEN (dang lai boat fly find Leviathan/Frozen/
+            -- Prehis/Kitsune) KHONG goi requestEntrance: boat di bang block-tween, remote moi
+            -- 2s toi toa do xa (vd -10000000,...) vo ich va co the xung dot voi co che bay.
+            local __sitTP = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
+            if not (__sitTP and __sitTP.Sit)
+               and (gg.Position - rootPart.Position).Magnitude > 1500
                and tick() - (__DIO_LastReqEnt or 0) > 2 then
                 __DIO_LastReqEnt = tick()
                 __needEnt = true
@@ -2022,6 +2040,14 @@ spawn(function()
     pcall(function()
       if _G.SailBoat_Hydra or _G.WardenBoss or _G.AutoFactory or _G.HighestMirage or _G.HCM or _G.PGB or _G.Leviathan1 or _G.UPGDrago or _G.Complete_Trials or _G.TpDrago_Prehis or _G.BuyDrago or _G.AutoFireFlowers or _G.DT_Uzoth or _G.AutoBerry or _G.Prefully or _G.Prehis_Find or _G.Prehis_Skills or _G.Prehis_DB or _G.Prehis_DE or _G.FarmBlazeEM or _G.Dojoo or _G.CollectPresent or _G.AutoLawKak or _G.TpLab or _G.AutoPhoenixF or _G.AutoFarmChest or _G.AutoHytHallow or _G.LongsWord or _G.BlackSpikey or _G.AutoHolyTorch or _G.TrainDrago  or _G.AutoSaber or _G.FarmMastery_Dev or _G.CitizenQuest or _G.AutoEctoplasm or _G.KeysRen or _G.Auto_Rainbow_Haki or _G.obsFarm or _G.AutoBigmom or _G.Doughv2 or _G.AuraBoss or _G.Raiding or _G.Auto_Cavender or _G.TpPly or _G.Bartilo_Quest or _G.Level or _G.FarmEliteHunt or _G.AutoZou or _G.AutoFarm_Bone or getgenv().AutoMaterial or _G.CraftVM or _G.FrozenTP or _G.ShotHL or _G.TPDoor or _G.AcientOne or _G.AutoFarmNear or _G.AutoRaidCastle or _G.DarkBladev3 or _G.AutoFarmRaid or _G.Auto_Cake_Prince or _G.Addealer or _G.TPNpc or _G.TwinHook or _G.FindMirage or _G.FrozenDimension or _G.FarmChestM or _G.Shark or _G.TerrorShark or _G.Piranha or _G.MobCrew or _G.SeaBeast1 or _G.FishBoat or _G.AutoPole or _G.AutoPoleV2 or _G.Auto_SuperHuman or _G.AutoDeathStep or _G.Auto_SharkMan_Karate or _G.Auto_Electric_Claw or _G.AutoDragonTalon or _G.Auto_Def_DarkCoat or _G.Auto_God_Human or _G.Auto_Tushita or _G.AutoMatSoul or _G.AutoKenVTWO or _G.AutoSerpentBow or _G.AutoFMon or _G.Auto_Soul_Guitar or _G.TPGEAR or _G.AutoSaw or _G.AutoTridentW2 or _G.AutoEvoRace or _G.AutoGetQuestBounty or _G.MarinesCoat or _G.TravelDres or _G.Defeating or _G.DummyMan or _G.Auto_Yama or _G.Auto_SwanGG or _G.SwanCoat or _G.AutoEcBoss or _G.Auto_Mink or _G.Auto_Human or _G.Auto_Skypiea or _G.Auto_Fish or _G.CDK_TS or _G.CDK_YM or _G.CDK or _G.AutoFarmGodChalice or _G.AutoFistDarkness or _G.AutoMiror or _G.Teleport or _G.AutoKilo or _G.AutoGetUsoap or _G.Praying or _G.TryLucky or _G.AutoColShad or _G.AutoUnHaki or _G.Auto_DonAcces or _G.AutoRipIngay or _G.DragoV3 or _G.DragoV1 or _G.SailBoats or NextIs or _G.FarmGodChalice or _G.IceBossRen or senth or senth2 or _G.Lvthan or _G.beasthunter or _G.DangerLV or _G.Relic123 or _G.tweenKitsune or _G.Collect_Ember or _G.AutofindKitIs or _G.snaguine or _G.TwFruits or _G.tweenKitShrine or _G.Tp_LgS or _G.Tp_MasterA or _G.tweenShrine or _G.FarmMastery_G or _G.FarmMastery_S or _G.FarmBoss or _G.AutoFarmAllBoss or _G.AutoFishSlap or _G.FarmTyrant or _G.FarmPhaBinh or _G.AutoSpawnCP or _G.AutoBerryH or _G.AutoChestBP or _G.FarmEliteHop or _G.AutoHop_Dough or _G.AutoDoughKing or _G.AutoAttackDoughKing or _G.AutoChipFruit or _G.AutoChipBeli or _G.StartEvent or _G.AutoMysticIsland or _G.AutoPlayerHunter or _G.SafeMode or _G.AutoKillMob or _G.AutoStartPrehistoric or _G.AutoUnHaki or _G.AutoFarmIsland or _G.AutoFarmDungeon or _G.AutoFarmCandy or _G.AutoTP_Gift or _G.AutoTPGift or _G.AutoTPAndCollect or _G.MasterAutoLevel or _G.MasterAutoCandy or _G.TPFloor1 or _G.TPFloor2 or _G.TPFloor3 or _G.TPFloor4 or _G.FarmEliteH or _G.Safemode or _G.Greybeard or _G.ResetPH then -- [FIX FLYBUSY-FLAG] 4 toggle co loop rieng nhung khong nam trong cond list -> stomper stomp shouldTween moi 0.1s -> khong bao gio bay (cung benh BuyMelee cu)          
        shouldTween = true
+        -- [FIX FPS-FINAL-2] khi NGOI THUYEN bay (find Leviathan/Frozen/Prehis/Kitsune): chi can
+        -- shouldTween=true de mover keo block. KHONG gan BodyClip (BodyVelocity chong lai chuyen
+        -- dong thuyen moi physics step) + KHONG gan Highlight + KHONG quet CanCollide -> giam nang
+        -- nhat khi treo lai thuyen ra bien.
+        local __stompHum = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
+        if __stompHum and __stompHum.Sit then
+            return
+        end
         if not plr.Character.HumanoidRootPart:FindFirstChild("BodyClip") then
           local Noclip = Instance.new("BodyVelocity")
           Noclip.Name = "BodyClip"
@@ -2717,19 +2743,18 @@ spawn(function()
 end)
 
 local TyrantStatus = Tabs.Status:AddParagraph("Boss Spawn", "")
+local __prevTyrant = nil -- [FIX FPS-FINAL-6] SetDesc chi khi DOI (UI khong ve lai moi 1s)
 spawn(function()
     pcall(function()
         while __DIO_wait(1) do
-            if workspace.Enemies:FindFirstChild("Tyrant of the Skies") then
-                TyrantStatus:SetDesc("✅")
-            else
-                TyrantStatus:SetDesc("❌")
-            end
+            local __tTxt = workspace.Enemies:FindFirstChild("Tyrant of the Skies") and "✅" or "❌"
+            if __tTxt ~= __prevTyrant then __prevTyrant = __tTxt TyrantStatus:SetDesc(__tTxt) end
         end
     end)
 end)
 
 local FullMoonCheck = Tabs.Status:AddParagraph("Full Moon", "")
+local __prevMoon = nil -- [FIX FPS-FINAL-7] SetDesc chi khi DOI
 
 task.spawn(function()
     while __DIO_wait(1) do
@@ -2748,7 +2773,7 @@ task.spawn(function()
             moonStatus = "Moon: 1/5"
         end
         
-        FullMoonCheck:SetDesc(moonStatus)
+        if moonStatus ~= __prevMoon then __prevMoon = moonStatus FullMoonCheck:SetDesc(moonStatus) end -- [FIX FPS-FINAL-7]
     end
 end)
 
@@ -3643,7 +3668,11 @@ spawn(function()
                             and v:FindFirstChild("HumanoidRootPart")
                             and v.Humanoid.Health > 0 then                                
                                 repeat
-                                    __SVC_RUN.Heartbeat:Wait()
+                                    -- [FIX FPS-FINAL-8] Heartbeat:Wait() = 60Hz Attack.Kill khi bat
+                                    -- Auto Kill Mob (600-1800 lan/phut goi EquipWeapon/BringEnemy/_tp)
+                                    -- trong khi moi loop kill khac trong hub chay 0.25s. 10Hz van la
+                                    -- "attack lien tuc" (kill nhanh nhu cu) nhung giam 6x churn CPU.
+                                    __DIO_wait(0.1)
                                     Attack.Kill(v,_G.AutoKillMob)
                                 until not _G.AutoKillMob or not v.Parent or v.Humanoid.Health <= 0                                
                             end
@@ -3988,11 +4017,14 @@ end)
 Tabs.Main:AddSection("Farm Elite Hunter")
 
 local Process = Tabs.Main:AddParagraph("Elites Process", "")
+__EliteProg = "" -- [FIX FPS-FINAL-4] cache progress: chi 1 loop goi remote EliteHunter, loop con lai doc cache
 spawn(function()
     local __prevElite = nil -- [FIX PERF 31] SetDesc chi khi gia tri DOI (ui khong ve lai voi cung chuoi)
     while __DIO_wait(2) do -- [FIX FPS 2] 0.1s -> 2s: cu goi remote EliteHunter 10 lan/s ca khi treo
         pcall(function()    
-            local __v = "Elite Progress : " .. replicated.Remotes.CommF_:InvokeServer("EliteHunter", "Progress")
+            local __r = replicated.Remotes.CommF_:InvokeServer("EliteHunter", "Progress")
+            if __r then __EliteProg = tostring(__r) end
+            local __v = "Elite Progress : " .. tostring(__EliteProg)
             if __v ~= __prevElite then __prevElite = __v Process:SetDesc(__v) end
         end)
     end
@@ -4001,16 +4033,15 @@ end)
 local EliteHunter = Tabs.Main:AddParagraph("Elite Spawn", "Status: ")
 spawn(function()
     local previousStatus = ""
-    while __DIO_wait(1) do
+    while __DIO_wait(2) do -- [FIX FPS-FINAL-4] 1s -> 2s + KHONG goi remote nua (doc __EliteProg)
         local currentStatus = (__SVC_RS:FindFirstChild("Diablo") or 
                                __SVC_RS:FindFirstChild("Deandre") or 
                                __SVC_RS:FindFirstChild("Urban") or 
                                __SVC_WS.Enemies:FindFirstChild("Diablo") or 
                                __SVC_WS.Enemies:FindFirstChild("Deandre") or 
                                __SVC_WS.Enemies:FindFirstChild("Urban")) and '✅' or '❌'
-        local progress = __SVC_RS.Remotes.CommF_:InvokeServer("EliteHunter", "Progress")
         if currentStatus ~= previousStatus then
-            EliteHunter:SetDesc("Status: " .. currentStatus .. " | Killed: " .. progress)
+            EliteHunter:SetDesc("Status: " .. currentStatus .. " | Killed: " .. tostring(__EliteProg))
             previousStatus = currentStatus
         end
     end
@@ -4949,12 +4980,18 @@ Tabs.Main:AddSection("Tyrant of the Skies")
 local EyeStatus = Tabs.Main:AddParagraph("Check Status Eyes", "")
 
 function Check_Eye()
-    local e = workspace.Map.TikiOutpost.IslandModel
+    -- [FIX FPS-FINAL-9] nil-guard: chi o Sea 3 + TikiOutpost moi co IslandModel. Truoc day
+    -- index truc tiep -> o Sea 1/2 hoac khi map chua spawn, loop status nem error moi giay.
+    local mapW = workspace:FindFirstChild("Map")
+    local tiki = mapW and mapW:FindFirstChild("TikiOutpost")
+    local islandM = tiki and tiki:FindFirstChild("IslandModel")
+    if not islandM then return 0, false end
+    local e = islandM
     local eyes = {
         e.Eye1,
         e.Eye2,
-        e.IslandChunks.E.Eye3,
-        e.IslandChunks.E.Eye4
+        e.IslandChunks and e.IslandChunks.E and e.IslandChunks.E.Eye3,
+        e.IslandChunks and e.IslandChunks.E and e.IslandChunks.E.Eye4
     }
 
     local count = 0
@@ -4968,11 +5005,14 @@ function Check_Eye()
     return count, isFull
 end
 
+local __prevEye = nil -- [FIX FPS-FINAL-9] SetDesc chi khi DOI (text "Eyes: N/4" it doi)
 task.spawn(function()
     local alerted = false
     while __DIO_wait(1) do
-        local current, full = Check_Eye()
-        EyeStatus:SetDesc("Eyes: " .. current .. "/4")
+        local ok, current, full = pcall(Check_Eye)
+        if not ok then current, full = 0, false end
+        local __eTxt = "Eyes: " .. tostring(current) .. "/4"
+        if __eTxt ~= __prevEye then __prevEye = __eTxt EyeStatus:SetDesc(__eTxt) end
 
         if full and not alerted then
             alerted = true
@@ -5184,12 +5224,18 @@ Tabs.Main:AddSection("Farm Boss")
 		end
 		})
 
+-- [FIX FPS-FINAL-10] Auto Farm Boss truoc day spawn 1 loop MOI moi lan bat toggle -> bat/tat
+-- nhieu lan = nhieu loop farm chong nhau cung danh boss (CPU x2,x3 + spam remote + tranh _tp)
+-- = dung trieu chung "cang choi cang lag". Gio chi spawn DUNG 1 thread; bat/tat chi doi gate.
+local __DIO_FarmBossThr = false
 FarmBoss = Tabs.Main:AddToggle({
     Name = "Auto Farm Boss",
     Description = "",
     Default = false,
     Callback = function(value)
         _G.FarmBoss = value
+        if value and not __DIO_FarmBossThr then
+            __DIO_FarmBossThr = true
         spawn(function()
             while __DIO_wait(Sec) do
                 if _G.FarmBoss then
@@ -5251,6 +5297,7 @@ FarmBoss = Tabs.Main:AddToggle({
                 end
             end
         end)
+    end
     end
 })
 
@@ -5868,17 +5915,26 @@ spawn(function()
   end
 end)      
 
+__DIO_AFKConn = nil -- [FIX FPS-FINAL-11] giu 1 connection duy nhat (xem callback)
 Tabs.Settings:AddToggle({
     Name = "Anti AFK",
     Default = true,
     Callback = function(Value)
-        if Value then
+        -- [FIX FPS-FINAL-11] TRUOC DAY: moi lan bat toggle Anti AFK lai them 1 connection
+        -- Idled vinh vien (Default=true -> mo hop/replay cung connect). Bat/tat 50 lan = 50
+        -- connection cung fire khi Idled -> gom nhan vat nhieu lan + leak. Gio: bat = connect
+        -- 1 lan, tat = disconnect. Game da IsLoaded (file da wait o dau) nen bo repeat cho.
+        if Value and not __DIO_AFKConn then
             local vu = __SVC_VU
-            repeat wait() until game:IsLoaded()
-            __SVC_PLR.LocalPlayer.Idled:Connect(function()
+            __DIO_AFKConn = __SVC_PLR.LocalPlayer.Idled:Connect(function()
                 vu:Button2Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
                 wait(1)
                 vu:Button2Up(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
+            end)
+        elseif not Value and __DIO_AFKConn then
+            pcall(function()
+                __DIO_AFKConn:Disconnect()
+                __DIO_AFKConn = nil
             end)
         end
     end
@@ -14107,6 +14163,10 @@ end
 function FastAttackModule.ExecuteFastAttack()
     local character = plr.Character
     if not character then return end
+    -- [FIX FPS-SEA-7] khi NGOI THUYEN (Sit) thi khong danh fast attack: return ngay, khong
+    -- phai quet Enemies tim target moi 0.03s trong luc lai thuyen tim Leviathan/Frozen.
+    local __humFA = character:FindFirstChildOfClass("Humanoid")
+    if __humFA and (__humFA.Sit or __humFA.Health <= 0) then return end
     if not __DIO_VolleyGate(math.max(FastAttackModule.Rate or 0.1, 0.01)) then return end
     local tool = character:FindFirstChildOfClass("Tool")
     if not tool then return end
@@ -14130,10 +14190,16 @@ end
 -- [FIX FAST-V2] Vong lap DUY NHAT cua he fast attack (thay StartMainLoops 2 vong cu)
 task.spawn(function()
     while true do
+        -- [FIX FPS-FINAL-5] khi TAT Fast Attack/Seriality thi ngu 0.25s thay vi quay 33 lan/s
+        -- (truoc day vong while true ngu theo Rate 0.03 ca khi vo hoat dong = 33 thread-wake/s
+        -- vinh vien cho khong lam gi -> GC/fiber churn nhe nhung lien tuc khi treo lau).
+        -- Khi BAT van dung Rate cu (slider "Fast Attack Delay" van la nguon toc do duy nhat).
         if FastAttackModule.Enabled and _G.Seriality then
             pcall(function() FastAttackModule.ExecuteFastAttack() end)
+            __DIO_wait(math.max(FastAttackModule.Rate or 0.1, 0.01))
+        else
+            __DIO_wait(0.25)
         end
-        __DIO_wait(math.max(FastAttackModule.Rate or 0.1, 0.01))
     end
 end)
 -- [FIX FAST-V2] (StartMainLoops cu da bo - vong duy nhat nam trong khoi FAST-V2 ben tren)
