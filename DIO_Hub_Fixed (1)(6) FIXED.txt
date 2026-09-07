@@ -165,6 +165,10 @@ _G.SaveData = _G.SaveData or {}
 _G.DIO_AutoSave = (_G.DIO_AutoSave ~= false)
 
 SaveSettings = function()
+    -- [FIX SAVE-TOGGLE-2B] HARD GATE tai dung diem ghi file duy nhat: khi toggle
+    -- "Auto Save Serve old" = TAT thi KHONG ghi file duoi bat ky hoan canh nao (SetSetting,
+    -- timer, vong lap khac). LoadSettings (chi DOC) khong bao gio di qua day.
+    if _G.DIO_AutoSave == false then return false end
     if not writefile then return false end
     local ok = pcall(function()
         writefile(SaveFileName, __SVC_HTTP:JSONEncode(_G.SaveData))
@@ -193,10 +197,34 @@ end
 SetSetting = function(name, value)
     _G.SaveData[name] = value
     -- [FIX SAVE-TOGGLE] chi ghi file khi nguoi dung CHUA tat "Auto Save Serve old"
+    -- [FIX SAVE-TOGGLE-2C] (bug user bao: "TAT Auto Save van ghi setting") — ngoai 2A/2B,
+    -- con 1 lo hong thu tu: wrapper UI goi SetSetting TRUOC khi Callback cua toggle chay
+    -- (_G.DIO_AutoSave = Value) nen luot CHINH TAT toggle van ghi file 1 lan cuoi (flag van
+    -- true tai thoi diem SetSetting). Sua: neu chinh chinh cai toggle chu quan nay thi cap
+    -- nhat flag NGAY tai day — Tat (false) = khong ghi file lan nao (kể cả luot vua tat),
+    -- Bat (true) = ghi lai ON de lan sau load dung trang thai.
+    if name == "UI/Settings/Auto Save Serve old" then
+        _G.DIO_AutoSave = (value == true)
+        if value ~= true then return end
+    end
     if _G.DIO_AutoSave ~= false then pcall(SaveSettings) end
 end
 
 LoadSettings() -- nạp cài đặt đã lưu từ lần chạy trước
+
+-- [FIX SAVE-TOGGLE-2A] (bug user bao: "Auto Save TAT nhung van tu ghi setting")
+-- Root-cause: flag _G.DIO_AutoSave chi duoc (a) khoi tao = true (dong ~165) va (b) doi lai
+-- trang thai da luu SAU 3 giay khi wrapper replay Callback(saved) cua toggle. Trong ~3 giay dau
+-- sau khi load, flag van = true => bat ky toggle nao duoc chinh som trong cua so do deu ghi file,
+-- DU nguoi dung da de Auto Save = OFF o phien truoc (file da luu key = false). 
+-- Fix: doc TRANG THAI DA LUU cua chinh toggle nay TU FILE ngay sau LoadSettings (key dung =
+-- key wrapper sinh ra: "UI/Settings/Auto Save Serve old") va ap vao flag ngay lap tuc.
+do
+    local __savedAS = _G.SaveData and _G.SaveData["UI/Settings/Auto Save Serve old"]
+    if __savedAS ~= nil then
+        _G.DIO_AutoSave = (__savedAS == true)
+    end
+end
 
 repeat 
     task.wait() 
@@ -542,14 +570,19 @@ end
 -- ==========================================================================
 task.spawn(function()
     local lastT = tick()
-    while task.wait() do
+    while true do -- [FIX CHUNK1-B] yield do nhanh (xem duoi)
         local now = tick()
         local dt = now - lastT
         lastT = now
 
         local mode = _G.ModeFarm
         if (mode ~= "Obrit" and mode ~= "Dodge") or __DIO_Dodging then
-            -- khong o mode dieu khien, hoac dang ne don Sea Beast -> nhuong quyen
+            -- khong o mode dieu khien (Normal), hoac dang ne don Sea Beast -> nhuong quyen.
+            -- [FIX CHUNK1-C] truoc day nhanh rong + task.wait() o dau vong = 60 lan/s vinh
+            -- vien tu khi load du khi KHONG dung Obrit/Dodge. Ngu 0.2s (Kill dang ky target
+            -- theo nhinp Sec=0.25s nen tre 0.2s khong mat phan ung).
+            lastT = tick()
+            __DIO_wait(0.2)
         else
             pcall(function()
                 local mdl = __DIO_CurTarget
@@ -606,6 +639,7 @@ task.spawn(function()
                     __DIO_Block.CFrame = goal
                 end
             end)
+            task.wait() -- [FIX CHUNK1-D] chi chay moi frame khi dang o Obrit/Dodge
         end
     end
 end)
@@ -649,7 +683,8 @@ local Attack = {}
 			BringEnemy()
 			EquipWeapon(_G.SelectWeapon)
 			local Equipped = game.Players.LocalPlayer.Character:FindFirstChildOfClass("Tool")
-			local ToolTip = Equipped.ToolTip
+			-- [FIX CHUNK1-A] nil-guard: khi khong cam Tool (respawn / chi tay khong), truoc day loi o day giua ham Kill -> pcall nuot, bo luon _tp di chuyen.
+			local ToolTip = Equipped and Equipped.ToolTip
 			if ToolTip == "Blox Fruit" then
 				_tp(__DIO_FarmPos(model, 10, 0, 90)) -- [FIX MODEFARM] cao do/obrit theo slider
 			else
@@ -678,7 +713,8 @@ local Attack = {}
 			BringEnemy()
 			EquipWeapon(_G.SelectWeapon)
 			local Equipped = game.Players.LocalPlayer.Character:FindFirstChildOfClass("Tool")
-			local ToolTip = Equipped.ToolTip
+			-- [FIX CHUNK1-A] nil-guard: khi khong cam Tool (respawn / chi tay khong), truoc day loi o day giua ham Kill -> pcall nuot, bo luon _tp di chuyen.
+			local ToolTip = Equipped and Equipped.ToolTip
 			if ToolTip == "Blox Fruit" then
 				_tp(__DIO_FarmPos(model, 10, 0, 90)) -- [FIX MODEFARM] cao do/obrit theo slider
 			else
@@ -707,7 +743,8 @@ local Attack = {}
 			BringEnemy()
 			EquipWeapon(_G.SelectWeapon)
 			local Equipped = game.Players.LocalPlayer.Character:FindFirstChildOfClass("Tool")
-			local ToolTip = Equipped.ToolTip
+			-- [FIX CHUNK1-A] nil-guard: khi khong cam Tool (respawn / chi tay khong), truoc day loi o day giua ham Kill -> pcall nuot, bo luon _tp di chuyen.
+			local ToolTip = Equipped and Equipped.ToolTip
 			if ToolTip == "Blox Fruit" then
 				_tp(__DIO_FarmPos(model, 10, 0, 90)) -- [FIX MODEFARM] cao do/obrit theo slider
 			else
@@ -1385,18 +1422,25 @@ getInfinity_Ability = function(Method, Var)
         if ((typeof(gc) == "function") and (getfenv(gc).script == plr.Character.Soru)) then
           for _, v in next, getupvalues(gc) do
             if (typeof(v) == "table") then
-              repeat wait(Sec) v.LastUse = 0 until not Var or not (plr.Character and plr.Character:FindFirstChild("Humanoid")) or (plr.Character.Humanoid.Health <= 0) -- [FIX PERF 30] nil-guard
+              -- [FIX AUDIT-L6] Dieu kien thoat cu `not Var` doc bien Var CAPTURED luc toggle BAT
+              -- (chi goi ham nay khi Value=true) -> TAT toggle (_G.InfSoru=false) khong bao gio
+              -- lam thoat loop: Soru INF dinh "khong the tat" toi khi chet/respawn. Chuyen sang
+              -- doc _G.InfSoru (global, callback TAT set false) -> loop tu thoat ngay sau khi tat.
+              repeat wait(Sec) v.LastUse = 0 until not _G.InfSoru or not (plr.Character and plr.Character:FindFirstChild("Humanoid")) or (plr.Character.Humanoid.Health <= 0) -- [FIX AUDIT-L6][FIX PERF 30]
             end
           end
         end
       end
     end    
-  elseif Method == "Energy" and Var then
+  elseif Method == "Energy" then
     -- [FIX PERF 67] moi lan bat toggle tao 1 connection MOI (bat 10 lan = 10 ket noi tinh Energy);
     -- ngat ket noi cu truoc khi tao moi.
     pcall(function() if __DIO_EnergyConn then __DIO_EnergyConn:Disconnect() __DIO_EnergyConn = nil end end)
+    if not Var then return end -- [FIX AUDIT-L6] goi voi false = tat ngay (connection da duoc huy o tren)
     __DIO_EnergyConn = plr.Character.Energy.Changed:connect(function()
-      if Var then plr.Character.Energy.Value = Energy end 
+      -- [FIX AUDIT-L6] Closure cu doc Var CAPTURED = true khi bat -> TAT toggle (infEnergy=false)
+      -- van reset Energy vo han (khong tat duoc). Doc global infEnergy: TAT = dung ghi de ngay lap tuc.
+      if infEnergy then plr.Character.Energy.Value = Energy end
     end)
   elseif Method == "Observation" and Var then
     local VisionRadius = plr.VisionRadius
@@ -2261,7 +2305,7 @@ QuestB = function()
 						Qdata = nil;
 						PosQBoss = CFrame.new(3677.08203125, 62.751937866211, -3144.8332519531)
 						PosB = CFrame.new(3677.08203125, 62.751937866211, -3144.8332519531)
-					elseif _G.FindBoss == "Cursed Captaim" then
+					elseif _G.FindBoss == "Cursed Captain" then -- [FIX AUDIT-L1] typo cu "Cursed Captaim" -> khong bao gio match voi boss that (Cursed Captain) nen Find Boss auto-quest cho boss nay chet (bMon/Qname khong set)
 						bMon = "Cursed Captain"
 						Qdata = nil;
 						PosQBoss = CFrame.new(916.928589, 181.092773, 33422)
@@ -2786,7 +2830,7 @@ spawn(function()
     end
 end)
 
-local TyrantStatus = Tabs.Status:AddParagraph("Boss Spawn", "")
+local TyrantStatus = Tabs.Status:AddParagraph("Tyrant Of The Skies", "")
 local __prevTyrant = nil -- [FIX FPS-FINAL-6] SetDesc chi khi DOI (UI khong ve lai moi 1s)
 spawn(function()
     pcall(function()
@@ -3462,6 +3506,12 @@ spawn(function()
   end
 end)
 
+-- [FIX CHUNK2-B] Auto Chest Bypass: TRUOC DAY moi lan BAT toggle lai Connect CharacterAdded 1 lan
+-- + tao state rieng -> bat/tat nhieu lan = nhieu connection tich luy; sau respawn moi connection
+-- chay 1 loop cung set RootPart.CFrame -> cac loop gianh nhau teleport. Gio: 1 connection duy nhat
+-- (module-level) + 1 co busy chung -> toi da 1 loop dang chay bat ke bat/tat bao nhieu lan.
+local __DIO_ChestBPBusy = false
+local __DIO_ChestBPConn = nil
 ChestBP = Tabs.Main:AddToggle({
     Name = "Auto Chest Bypass", 
     Description = "",
@@ -3471,7 +3521,6 @@ ChestBP = Tabs.Main:AddToggle({
 
         if Value then
             local LocalPlayer = __SVC_PLR.LocalPlayer
-            local IsFarming = false
             local UncheckedChests = {}
             local FirstRun = true
 
@@ -3508,8 +3557,8 @@ ChestBP = Tabs.Main:AddToggle({
             end
 
             local function runChestLoop()
-                if IsFarming then return end
-                IsFarming = true
+                if __DIO_ChestBPBusy then return end
+                __DIO_ChestBPBusy = true
 
                 task.spawn(function()
                     while _G.AutoChestBP and LocalPlayer.Character and LocalPlayer.Character.Parent do
@@ -3520,17 +3569,18 @@ ChestBP = Tabs.Main:AddToggle({
                         end
                         __DIO_wait(0.3) -- [FIX PERF 47] 0.1 -> 0.3: set thuang RootPart.CFrame 10 lan/s thanh ~3 lan/s du de bat chest
                     end
-                    IsFarming = false
+                    __DIO_ChestBPBusy = false
                 end)
             end
 
-            LocalPlayer.CharacterAdded:Connect(function()
-                getCharacter()
-                __DIO_wait(0.5)
-                if _G.AutoChestBP then
-                    runChestLoop()
-                end
-            end)
+            if not __DIO_ChestBPConn then
+                __DIO_ChestBPConn = LocalPlayer.CharacterAdded:Connect(function()
+                    task.wait(0.5)
+                    if _G.AutoChestBP then
+                        runChestLoop()
+                    end
+                end)
+            end
 
             runChestLoop()
         end
@@ -3658,7 +3708,7 @@ Tabs.Main:AddSection("Farm Mob")
 if World1 then
     Tabs.Main:AddDropdown({
         Name = "Select Mob",
-        Default = Bandit,
+        Default = "Bandit",
         Options = {
             "Bandit", "Monkey", "Gorilla", "Pirate", "Brute",
             "Desert Bandit", "Desert Officer", "Snow Bandit", "Snowman",
@@ -3676,7 +3726,7 @@ end
 if World2 then
     Tabs.Main:AddDropdown({
         Name = "Select Mob",
-        Default = Raider,
+        Default = "Raider",
         Options = {
             "Raider", "Mercenary", "Swan Pirate", "Factory Staff",
             "Marine Lieutenant", "Marine Captain", "Zombie", "Vampire",
@@ -4063,6 +4113,10 @@ task.spawn(function()
                     __DIO_wait(0.25)
                     _tp(v.HumanoidRootPart.CFrame * CFrame.new(0,10,0))
                     Attack.Kill(v, true)
+                    -- [FIX CHUNK2-C] TRUOC DAY khong co __DIO_GhostCheck o engine nay -> neu gap
+                    -- mob ghost (khong hut dame) repeat danh mai mai den khi tat toggle. Giong cac
+                    -- engine khac: 3s -> skill (neu bat), 6s -> skip mob nay, vong ngoai chon mob khac.
+                    if __DIO_GhostCheck(v) then break end
                 until not _G.AutoFarmIsland
                    or not v.Parent
                    or v.Humanoid.Health <= 0
@@ -4192,17 +4246,22 @@ local function HopServer()
 	local TPS = __SVC_TP
 	local Api = "https://games.roblox.com/v1/games/"
 	local PlaceID = game.PlaceId
-	local Servers = {}
-	local Cursor = ""
 	local foundServer = false
-
+	-- [FIX AUDIT-L7] LOOP VO HAN CU: `Cursor = nextPageCursor or ""` roi `until not Cursor` ->
+	-- chuoi rong "" la TRUTHY nen khi het trang (nextPageCursor = nil) hoac API loi thi vong
+	-- quet lai page 1 VO HAN (FarmEliteH dang Cooldown + server full = treo toggle + spam
+	-- HTTP khong gioi han). Gio: cursor = nil o cuoi list de thoat dung; cap 8 trang; ngu
+	-- 0.3s giua cac fetch (khong quay vong 0s khi API loi).
+	local Cursor = nil
+	local attempts = 0
 	repeat
+		attempts = attempts + 1
 		local success, result = pcall(function()
-			return game:HttpGet(Api .. PlaceID .. "/servers/Public?sortOrder=Asc&limit=100&cursor=" .. Cursor)
+			return game:HttpGet(Api .. PlaceID .. "/servers/Public?sortOrder=Asc&limit=100" .. (Cursor and ("&cursor=" .. Cursor) or ""))
 		end)
 		if success and result then
 			local data = Http:JSONDecode(result)
-			if data.data then
+			if data and data.data then
 				for _, v in pairs(data.data) do
 					if v.playing < v.maxPlayers and v.id ~= game.JobId then
 						foundServer = true
@@ -4210,10 +4269,11 @@ local function HopServer()
 						break
 					end
 				end
-				Cursor = data.nextPageCursor or ""
+				Cursor = data.nextPageCursor
 			end
 		end
-	until not Cursor or foundServer
+		if not foundServer then __DIO_wait(0.3) end
+	until foundServer or attempts >= 8 or not Cursor
 end
 
 
@@ -5431,8 +5491,8 @@ local posMastery = {"Cake","Bone"}
 local Mastery_Config = Tabs.Main:AddDropdown({
 Name = "Choose Island",
 		Description = "",
-		Options = posMastery,
-		Default = Bone,
+        Options = posMastery,
+        Default = "Bone", -- [FIX CHUNK2-D] thieu ngoac kep -> doc global undefined (nil)
 		Callback = function(Value)
   SelectIsland = Value
 end})
@@ -5574,22 +5634,28 @@ spawn(function()
           for _, v in next, GetInventoryCached() do -- [FIX PERF 63] invoke truc tiep 4 lan/s khi farm kiem mastery -> cache 2s (nen getInventory KHONG NEN goi trong loop)          
             if type(v) == "table" then
               if v.Type == "Sword" then
-                SwordName = v.Name
-                if tonumber(v.Mastery) >= 1 or tonumber(v.Mastery) <= 599 then
-                  local v = GetConnectionEnemies(mastery1)
-                  if GetBP(SwordName) then                    
-		            if v then
-                      repeat __DIO_wait(0.25) Attack.Sword(v,_G.FarmMastery_S) until _G.FarmMastery_S == false or not v.Parent or v.Humanoid.Health <= 0		                  
-		            else
-		              _tp(CFrame.new(-1943.676513671875, 251.5095672607422, -12337.880859375)) 
-		            end                    
+                -- [FIX AUDIT-L2] dieu kien cu "tonumber(v.Mastery) >= 1 or tonumber(v.Mastery) <= 599"
+                -- LUON DUNG (bat ky mastery 0..600+ deu thoa mot trong 2 ve) nen khong bao gio chay
+                -- nhanh bo qua; va nhanh "elseif >=600 ... return nil" se THOAT LUON function khi gap
+                -- kiem da max => Auto Mastery All Sword chi train DUNG con kiem dau tien trong inventory,
+                -- khong bao gio chuyen sang kiem khac. Sua: chi train kiem co mastery < 600; kiem >= 600
+                -- thi bo qua va xet kiem ke tiep.
+                local __m = tonumber(v.Mastery) or 0
+                if __m < 600 then
+                  SwordName = v.Name
+                  local vm = GetConnectionEnemies(mastery1)
+                  if GetBP(SwordName) then
+                    if vm then
+                      repeat __DIO_wait(0.25) Attack.Sword(vm,_G.FarmMastery_S) until _G.FarmMastery_S == false or not vm.Parent or vm.Humanoid.Health <= 0
+                    else
+                      _tp(CFrame.new(-1943.676513671875, 251.5095672607422, -12337.880859375))
+                    end
                   else
-                    replicated.Remotes.CommF_:InvokeServer("LoadItem",SwordName)   
-                  end   
-              elseif tonumber(v.Mastery) >= 600 then
-                if GetBP(SwordName) then return nil else replicated.Remotes.CommF_:InvokeServer("LoadItem",SwordName) end       
-              end
-                break
+                    replicated.Remotes.CommF_:InvokeServer("LoadItem",SwordName)
+                  end
+                  break
+                end
+                -- kiem da >= 600 mastery: bo qua, xet kiem tiep theo
               end
             end         
           end
@@ -5597,22 +5663,24 @@ spawn(function()
           for _, v in next, GetInventoryCached() do -- [FIX PERF 63] invoke truc tiep 4 lan/s khi farm kiem mastery -> cache 2s (nen getInventory KHONG NEN goi trong loop)          
             if type(v) == "table" then
               if v.Type == "Sword" then
-                SwordName = v.Name
-                if tonumber(v.Mastery) >= 1 or tonumber(v.Mastery) <= 599 then
-                  local v = GetConnectionEnemies(mastery2)
-                  if GetBP(SwordName) then                    
-		            if v then
-                      repeat __DIO_wait(0.25) Attack.Sword(v,_G.FarmMastery_S) until _G.FarmMastery_S == false or not v.Parent or v.Humanoid.Health <= 0		                  
-		            else
-		              _tp(CFrame.new(-9495.6806640625, 453.58624267578125, 5977.3486328125)) 
-		            end                    
+                -- [FIX AUDIT-L2] (gio nhu kieu Cake ben tren: chi train kiem mastery < 600,
+                -- bo qua kiem da >= 600 de "All Sword" co the chuyen sang kiem ke tiep)
+                local __m = tonumber(v.Mastery) or 0
+                if __m < 600 then
+                  SwordName = v.Name
+                  local vm = GetConnectionEnemies(mastery2)
+                  if GetBP(SwordName) then
+                    if vm then
+                      repeat __DIO_wait(0.25) Attack.Sword(vm,_G.FarmMastery_S) until _G.FarmMastery_S == false or not vm.Parent or vm.Humanoid.Health <= 0
+                    else
+                      _tp(CFrame.new(-9495.6806640625, 453.58624267578125, 5977.3486328125))
+                    end
                   else
-                    replicated.Remotes.CommF_:InvokeServer("LoadItem",SwordName)   
-                  end   
-                elseif tonumber(v.Mastery) >= 600 then
-                  if GetBP(SwordName) then return nil else replicated.Remotes.CommF_:InvokeServer("LoadItem",SwordName) end       
+                    replicated.Remotes.CommF_:InvokeServer("LoadItem",SwordName)
+                  end
+                  break
                 end
-                break
+                -- kiem da >= 600 mastery: bo qua, xet kiem tiep theo
               end
             end         
           end
@@ -5668,6 +5736,8 @@ Tabs.Settings:AddToggle({
 end 
 }) 
 -- [FIX LAG] slider chỉnh độ trễ Fast Attack (giây) - thay cho Rate 0.000000002 cũ
+FastAttackModule = FastAttackModule or {} -- [FIX CHUNK2-A] khai bao SOM (slider o day gan Rate truoc khi
+                                                   -- khoi FastAttackModule day du o cuoi file -> khong bi nil khi replay/kéo som)
 Tabs.Settings:AddSlider({
     Name = "Fast Attack Delay",
     Min = 1,
@@ -5975,15 +6045,25 @@ Default = false,
 Callback = function(Value)
   RemoveDamage = Value
 end})
+-- [FIX FPS-FINAL-13] TRUOC DAY: vong nay khi toggle TAT (default) van ghi lai Enabled=true cho
+-- 2 GUI moi 0.25s = redundant property write 8 lan/s vinh vien tu khi load. Chi ghi khi DOI.
+local __DIO_NotifyPrev = nil
 spawn(function()
   while __DIO_wait(Sec) do
     pcall(function()
+      local __dc = replicated.Assets and replicated.Assets.GUI and replicated.Assets.GUI.DamageCounter
+      local __nt = plr.PlayerGui and plr.PlayerGui:FindFirstChild("Notifications")
       if RemoveDamage then
-        replicated.Assets.GUI.DamageCounter.Enabled = false
-        plr.PlayerGui.Notifications.Enabled = false
-	  else
-        replicated.Assets.GUI.DamageCounter.Enabled = true
-        plr.PlayerGui.Notifications.Enabled = true
+        if __dc and __dc.Enabled ~= false then __dc.Enabled = false end
+        if __nt and __nt.Enabled ~= false then __nt.Enabled = false end
+        __DIO_NotifyPrev = false
+      else
+        local __needRestore = (__DIO_NotifyPrev == nil) or (__DIO_NotifyPrev == false)
+        if __needRestore then
+          if __dc and __dc.Enabled ~= true then __dc.Enabled = true end
+          if __nt and __nt.Enabled ~= true then __nt.Enabled = true end
+        end
+        __DIO_NotifyPrev = true
       end
     end)
   end
@@ -6401,7 +6481,7 @@ spawn(function()
           if workspace.Map.Ice.Door.CanCollide == true and workspace.Map.Ice.Door.Transparency == 0 then
             replicated.Remotes.CommF_:InvokeServer("DressrosaQuestProgress","Detective")
 		    EquipWeapon("Key")
-		    repeat __DIO_wait(0.25) _tp(CFrame.new(1347.7124, 37.3751602, -1325.6488)) until not _G.TravelDres or (Root.Position == CFrame.new(1347.7124, 37.3751602, -1325.6488).Position)
+		    repeat __DIO_wait(0.25) _tp(CFrame.new(1347.7124, 37.3751602, -1325.6488)) until not _G.TravelDres or (Root.Position - CFrame.new(1347.7124, 37.3751602, -1325.6488)).Magnitude <= 5
 	      elseif workspace.Map.Ice.Door.CanCollide == false and workspace.Map.Ice.Door.Transparency == 1 then
             if Enemies:FindFirstChild("Ice Admiral") then
               for _,xz in pairs(Enemies:GetChildren()) do
@@ -6441,7 +6521,11 @@ spawn(function()
                 if v then
                   repeat __DIO_wait(0.25) Attack.Kill(v,_G.AutoZou) until not _G.AutoZou or not v.Parent or v.Humanoid.Health <= 0
                   Check = 2
-                  repeat __DIO_wait(0.25)replicated.Remotes.CommF_:InvokeServer("F_","TravelZou")until Check == 1                   
+                  -- [FIX FPS-FINAL-14a] TRUOC DAY: `until Check == 1` ma Check khong bao gio = 1
+                  -- -> repeat VÔ HẠN goi remote F_/TravelZou moi 0.25s (spam 4 remote/s mai mai).
+                  -- Them gate toggle + timeout 8s de khong the ket mai.
+                  local __zouT = tick()
+                  repeat __DIO_wait(0.25) replicated.Remotes.CommF_:InvokeServer("F_","TravelZou") until not _G.AutoZou or Check == 1 or tick() - __zouT > 8
                 else
                   replicated.Remotes.CommF_:InvokeServer("F_","ZQuestProgress","Check") wait(.1)
                   replicated.Remotes.CommF_:InvokeServer("F_","ZQuestProgress","Begin")
@@ -6669,6 +6753,8 @@ GetFirePlacard = function(Number,Side)
     fireclickdetector(workspace.Map["Haunted Castle"]["Placard"..Number][Side].ClickDetector)
   end
 end
+-- [FIX CHUNK2-E] cac `until zN == _zN` cua step Trophies/Table KHONG co gate toggle ->
+-- neu puzzle ket, tat toggle khong dung duoc fiber + van fireclickdetector mai. Them `or not _G.Auto_Soul_Guitar`.
 spawn(function()
   repeat __DIO_wait(0.25) until _G.Auto_Soul_Guitar
   while __DIO_wait(Sec) do
@@ -6717,42 +6803,42 @@ spawn(function()
                if z1 and _z1 then
                  fireclickdetector(workspace.Map["Haunted Castle"].Tablet.Segment1:FindFirstChild("ClickDetector"))
                end
-             until z1 == _z1
+             until z1 == _z1 or not _G.Auto_Soul_Guitar
             repeat wait()
               local z2 = getRT(2)
               local _z2 = getT(3)
               if z2 and _z2 then
                 fireclickdetector(workspace.Map["Haunted Castle"].Tablet.Segment3:FindFirstChild("ClickDetector"))
               end
-            until z2 == _z2
+            until z2 == _z2 or not _G.Auto_Soul_Guitar
           repeat wait()
             local z3 = getRT(3)
             local _z3 = getT(4)
             if z3 and _z3 then
               fireclickdetector(workspace.Map["Haunted Castle"].Tablet.Segment4:FindFirstChild("ClickDetector"))
             end
-          until z3 == _z3
+          until z3 == _z3 or not _G.Auto_Soul_Guitar
           repeat wait()
             local z4 = getRT(4)
             local _z4 = getT(7)
             if z4 and _z4 then
               fireclickdetector(workspace.Map["Haunted Castle"].Tablet.Segment7:FindFirstChild("ClickDetector"))
             end
-          until z4 == _z4
+          until z4 == _z4 or not _G.Auto_Soul_Guitar
         repeat wait()
           local z5 = getRT(5)
           local _z5 = getT(10)
           if z5 and _z5 then
             fireclickdetector(workspace.Map["Haunted Castle"].Tablet.Segment10:FindFirstChild("ClickDetector"))    
           end
-        until z5 == _z5
+        until z5 == _z5 or not _G.Auto_Soul_Guitar
         repeat wait()    
           fireclickdetector(workspace.Map["Haunted Castle"].Tablet.Segment2:FindFirstChild("ClickDetector"))
           fireclickdetector(workspace.Map["Haunted Castle"].Tablet.Segment5:FindFirstChild("ClickDetector"))
           fireclickdetector(workspace.Map["Haunted Castle"].Tablet.Segment6:FindFirstChild("ClickDetector"))
           fireclickdetector(workspace.Map["Haunted Castle"].Tablet.Segment8:FindFirstChild("ClickDetector"))
           fireclickdetector(workspace.Map["Haunted Castle"].Tablet.Segment9:FindFirstChild("ClickDetector"))       
-        until workspace.Map["Haunted Castle"].Tablet.Segment2.Line.Rotation.Z == 0 or workspace.Map["Haunted Castle"].Tablet.Segment5.Line.Rotation.Z == 0 or workspace.Map["Haunted Castle"].Tablet.Segment6.Line.Rotation.Z == 0 or workspace.Map["Haunted Castle"].Tablet.Segment8.Line.Rotation.Z == 0 or workspace.Map["Haunted Castle"].Tablet.Segment9.Line.Rotation.Z == 0
+        until workspace.Map["Haunted Castle"].Tablet.Segment2.Line.Rotation.Z == 0 or workspace.Map["Haunted Castle"].Tablet.Segment5.Line.Rotation.Z == 0 or workspace.Map["Haunted Castle"].Tablet.Segment6.Line.Rotation.Z == 0 or workspace.Map["Haunted Castle"].Tablet.Segment8.Line.Rotation.Z == 0 or workspace.Map["Haunted Castle"].Tablet.Segment9.Line.Rotation.Z == 0 or not _G.Auto_Soul_Guitar
           elseif replicated.Remotes.CommF_:InvokeServer("GuitarPuzzleProgress","Check").Pipes == false then
             Quest1 = false;
             Quest2 = false;
@@ -6805,7 +6891,7 @@ spawn(function()
 		  elseif GetM("Dark Fragment") < 1 then
 		    if _G.AutoMatSoul and World2 then
 		      local black = GetConnectionEnemies("Darkbeard")
-		      if black then repeat __DIO_wait(Sec) Attack.Kill(black, _G.AutoMatSoul)until _G.AutoMatSoul or black.Humanoid.Health <= 0
+		      if black then repeat __DIO_wait(Sec) Attack.Kill(black, _G.AutoMatSoul)until not _G.AutoMatSoul or black.Humanoid.Health <= 0 -- [FIX AUDIT-L3] dao dieu kien: `until _G.AutoMatSoul` (toggle ON) lam thoat sau DUNG 1 luot, con khi toggle TAT thi condition false => loop khong bao gio dung lai cho toi khi boss chet
 		      else _tp(CFrame.new(3798.4575195313, 13.826690673828, -3399.806640625))
 		      end
 		    else replicated.Remotes.CommF_:InvokeServer("TravelDressrosa")
@@ -7547,7 +7633,7 @@ spawn(function()
           if not workspace.Enemies:FindFirstChild("Darkbeard") then
             _tp(CFrame.new(3677.08203125, 62.751937866211, -3144.8332519531))
           elseif GetConnectionEnemies("Darkbeard") and GetBP("Fist of Darkness") >= 1 then
-            repeat __DIO_wait(0.25) _tp(CFrame.new(-5719.36376953125, 48.50590515136719, -782.9759521484375)) until not _G.DarkBladev3 or (Root.Position == CFrame.new(-5719.36376953125, 48.50590515136719, -782.9759521484375).Position)
+            repeat __DIO_wait(0.25) _tp(CFrame.new(-5719.36376953125, 48.50590515136719, -782.9759521484375)) until not _G.DarkBladev3 or (Root.Position - CFrame.new(-5719.36376953125, 48.50590515136719, -782.9759521484375)).Magnitude <= 5
             fireclickdetector(workspace.Map.GraveIsland.Mountain.Rocks.Button.ClickDetector)
           end         
         else
@@ -7597,7 +7683,7 @@ spawn(function()
           _tp(CFrame.new(3677.08203125, 62.751937866211, -3144.8332519531))
         elseif GetConnectionEnemies("Darkbeard") then
           local v = GetConnectionEnemies("Darkbeard")          
-		  if v then repeat __DIO_wait(0.25)Attack.Kill(v,_G.Auto_Def_DarkCoat)until _G.Auto_Def_DarkCoat == false or not v.Parent or v.Humanoid.Helath <= 0 end
+		  if v then repeat __DIO_wait(0.25)Attack.Kill(v,_G.Auto_Def_DarkCoat)until _G.Auto_Def_DarkCoat == false or not v.Parent or v.Humanoid.Health <= 0 end -- [FIX AUDIT-L4] `Helath` la typo: property nil -> `nil <= 0` loi moi vong, pcall nuot => repeat chi chay 1 Attack.Kill moi giay va khong bao gio nhan dien boss chet
         elseif not GetBP("Fist of Darkness") and not GetConnectionEnemies("Darkbeard") then
           repeat wait(.1) _G.AutoFarmChest = true until not _G.Auto_Def_DarkCoat or GetBP("Fist of Darkness") or GetConnectionEnemies("Darkbeard") _G.AutoFarmChest = false
         end
@@ -7858,7 +7944,10 @@ spawn(function()
               end
             end
         elseif plr.PlayerGui.Main.Quest.Visible and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Beautiful Pirate") then
-          local v = GetConnectionEnemies("Captain Elephant")
+          -- [FIX AUDIT-L4] copy-paste: cac nhanh quest text khac deu goi dung ten boss (Stone/Hydra Leader/Kilo Admiral/Captain Elephant);
+          -- nhanh "Beautiful Pirate" goi nham GetConnectionEnemies("Captain Elephant") -> tim nham boss khong ton tai o island do,
+          -- khong bao gio giet duoc con tinh diem quest va spam requestEntrance moi giay. Chinh sang "Beautiful Pirate".
+          local v = GetConnectionEnemies("Beautiful Pirate")
           if v then
             repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or plr.PlayerGui.Main.Quest.Visible == false
           else
@@ -8017,7 +8106,7 @@ spawn(function()
 	    end	  
 	  end  	    	    
 	    if plr.Backpack:FindFirstChild("Banana") and plr.Backpack:FindFirstChild("Apple") and plr.Backpack:FindFirstChild("Pineapple") or plr:FindFirstChild("Banana") and plr:FindFirstChild("Apple") and plr:FindFirstChild("Pineapple") then
-	      repeat __DIO_wait(0.25) _tp(Kv2Pos1) until _G.AutoKenVTWO or (plr.Character.HumanoidRootPart.Position - Kv2Pos1.Position).Magnitude <= 5 -- [FIX PERF 27] CFrame== hang so khong bao gio thoat repeat
+	      repeat __DIO_wait(0.25) _tp(Kv2Pos1) until not _G.AutoKenVTWO or (plr.Character.HumanoidRootPart.Position - Kv2Pos1.Position).Magnitude <= 5 -- [FIX PERF 27] CFrame== hang so khong bao gio thoat repeat; [FIX AUDIT-L3] dao dieu kien: `until _G.AutoKenVTWO` khi toggle ON thoat sau 1 luot tp (chua toi noi), khi TAT thi tp tiep mai
 		  replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress","Citizen")	    			 
 	    end
 	      if plr.Backpack:FindFirstChild("Fruit Bowl") or plr.Character:FindFirstChild("Fruit Bowl") then
@@ -8060,7 +8149,7 @@ spawn(function()
                 until _G.Bartilo_Quest == false or not x.Parent or x.Humanoid.Health <= 0 or Qbart.Visible == false or not x:FindFirstChild("HumanoidRootPart")                  
               end
             else
-              _tp(CFrame.nee(970.369446, 142.653198, 1217.3667, 0.162079468, -4.85452638e-08, -0.986777723, 1.03357589e-08, 1, -4.74980872e-08, 0.986777723, -2.50063148e-09, 0.162079468))
+              _tp(CFrame.new(970.369446, 142.653198, 1217.3667, 0.162079468, -4.85452638e-08, -0.986777723, 1.03357589e-08, 1, -4.74980872e-08, 0.986777723, -2.50063148e-09, 0.162079468)) -- [FIX CHUNK2-F] typo CFrame.nee -> CFrame.new (loi index-nil bi pcall nuot => nhánh fallback chưa từng chạy)
             end
           else
             repeat __DIO_wait(0.25) 
@@ -8420,7 +8509,7 @@ spawn(function()
            if GetM("Vampire Fang") >= 20 and GetM("Demonic Wisp") >= 20 and GetM("Dark Fragment") <= 1 then
              if World2 then
                local n = GetConnectionEnemies("Darkbeard")
-		       if n then repeat __DIO_wait(Sec) Attack.Kill(black,_G.Snaguine) until _G.Snaguine or black.Humanoid.Health <= 0 or not black.Parent
+		       if n then repeat __DIO_wait(Sec) Attack.Kill(n,_G.Snaguine) until not _G.Snaguine or n.Humanoid.Health <= 0 or not n.Parent -- [FIX AUDIT-L3] (a) dung bien `n` da khai bao: `black` la global nil (chi co `local black` trong scope spawn khac) => Attack.Kill(nil) vo tac dung + `black.Humanoid` loi moi giay bi pcall nuot = khong bao gio danh Darkbeard o nhanh Sanguine; (b) dao dieu kien `until _G.Snaguine` nhu tren
 		      else _tp(CFrame.new(3798.4575195313, 13.826690673828, -3399.806640625))
 		      end
 		    else replicated.Remotes.CommF_:InvokeServer("TravelDressrosa")
@@ -9488,14 +9577,14 @@ spawn(function()
         if workspace.Map:FindFirstChild("DracoTrial") then
           replicated.Remotes.DracoTrial:InvokeServer()                  
           wait(.5)
-          repeat __DIO_wait(0.25) _tp(CFrame.new(-39934.9765625, 10685.359375, 22999.34375)) until not _G.Relic123 or (Root.Position == CFrame.new(-39934.9765625, 10685.359375, 22999.34375).Position)
-          repeat __DIO_wait(0.25) _tp(CFrame.new(-40511.25390625, 9376.4013671875, 23458.37890625)) until not _G.Relic123 or (Root.Position == CFrame.new(-40511.25390625, 9376.4013671875, 23458.37890625).Position)
+          repeat __DIO_wait(0.25) _tp(CFrame.new(-39934.9765625, 10685.359375, 22999.34375)) until not _G.Relic123 or (Root.Position - CFrame.new(-39934.9765625, 10685.359375, 22999.34375)).Magnitude <= 5
+          repeat __DIO_wait(0.25) _tp(CFrame.new(-40511.25390625, 9376.4013671875, 23458.37890625)) until not _G.Relic123 or (Root.Position - CFrame.new(-40511.25390625, 9376.4013671875, 23458.37890625)).Magnitude <= 5
           wait(2.5)
-          repeat __DIO_wait(0.25) _tp(CFrame.new(-39914.65625, 10685.384765625, 23000.177734375)) until not _G.Relic123 or (Root.Position == CFrame.new(-39914.65625, 10685.384765625, 23000.177734375).Position)
-          repeat __DIO_wait(0.25) _tp(CFrame.new(-40045.83203125, 9376.3984375, 22791.287109375)) until not _G.Relic123 or (Root.Position == CFrame.new(-40045.83203125, 9376.3984375, 22791.287109375).Position)
+          repeat __DIO_wait(0.25) _tp(CFrame.new(-39914.65625, 10685.384765625, 23000.177734375)) until not _G.Relic123 or (Root.Position - CFrame.new(-39914.65625, 10685.384765625, 23000.177734375)).Magnitude <= 5
+          repeat __DIO_wait(0.25) _tp(CFrame.new(-40045.83203125, 9376.3984375, 22791.287109375)) until not _G.Relic123 or (Root.Position - CFrame.new(-40045.83203125, 9376.3984375, 22791.287109375)).Magnitude <= 5
           wait(2.5)
-          repeat __DIO_wait(0.25) _tp(CFrame.new(-39908.5, 10685.4052734375, 22990.04296875)) until not _G.Relic123 or (Root.Position == CFrame.new(-39908.5, 10685.4052734375, 22990.04296875).Position)
-          repeat __DIO_wait(0.25) _tp(CFrame.new(-39609.5, 9376.400390625, 23472.94335975)) until not _G.Relic123 or (Root.Position == CFrame.new(-39609.5, 9376.400390625, 23472.94335975).Position) 
+          repeat __DIO_wait(0.25) _tp(CFrame.new(-39908.5, 10685.4052734375, 22990.04296875)) until not _G.Relic123 or (Root.Position - CFrame.new(-39908.5, 10685.4052734375, 22990.04296875)).Magnitude <= 5
+          repeat __DIO_wait(0.25) _tp(CFrame.new(-39609.5, 9376.400390625, 23472.94335975)) until not _G.Relic123 or (Root.Position - CFrame.new(-39609.5, 9376.400390625, 23472.94335975)).Magnitude <= 5 
         else
           local drago = workspace.Map.PrehistoricIsland:FindFirstChild("TrialTeleport")
           if drago and drago:IsA("Part") then _tp(CFrame.new(drago.Position)) end        
@@ -10483,7 +10572,11 @@ Tabs.SeaEvent:AddSection("Frozen Dimension Event")
 local SPYING = Tabs.SeaEvent:AddParagraph("Spy Status", "")
 spawn(function()
     local __prevSpy = nil -- [FIX PERF 31] SetDesc chi khi gia tri DOI (ui khong ve lai voi cung chuoi)
-    while __DIO_wait(1.5) do -- [FIX FPS 2] 0.2s -> 1.5s: giam remote InfoLeviathan khi treo
+    while __DIO_wait(3) do -- [FIX FPS 2] 0.2s -> 1.5s: giam remote InfoLeviathan khi treo
+                           -- [FIX FROZEN-FLY-V2] 1.5s -> 3s: InfoLeviathan chi la remote DOC trang thai
+                           -- (cap nhat chu "Spy Leviathan : x"), khong tham gia phat hien Frozen Dimension
+                           -- (phat hien = scan dao 1.5s trong loop bay) -> giam 1/2 luong remote khi
+                           -- treo tim Leviathan lau.
         pcall(function()
             -- [FIX FROZEN-FLY] Gate remote: chi goi InfoLeviathan khi dang "Auto Find Frozen
             -- Dimension" bat. Truoc day loop nay goi remote VO DIEU KIEN moi 1.5s ca khi khong
@@ -10611,6 +10704,26 @@ task.spawn(function()
                         local lastIslandScan = 0
                         local __frozenDanger = false -- [FIX FROZEN-FLY] cache do quai bien (throttle 1.2s)
                         local __frozenDangerT = 0
+                        -- [FIX FROZEN-FLY-V2] (bug user bao: Find Frozen chay lien tuc 10-15 phut tut FPS ~15,
+                        -- CA 2 mode bay deu bi -> loai nguon "do quai bien" (chi co mode Y=300), nguon chung nam
+                        -- trong may bay duy tri:
+                        --   1) `_tp(CFrame.new(-10000000,...))` cach bo dem ~10 trieu stud, toc ~300 stud/s
+                        --      => tween "Playing" ~9 TIENG. Watcher khong cancel khi nguoi NGOI (FIX FPS-SEA-2)
+                        --      nen glue 60Hz keo ca bo thuyen (CFrame-teleport tung frame) loi mai ra bien xa
+                        --      = churn physics/CFrame/streaming suot phien, khong bao gio dung lai.
+                        --   2) Fly-engine giu BodyVelocity+BodyGyro (MaxForce 1e5) va ghi root.CFrame +
+                        --      stabilizer.CFrame moi 0.45s vinh vien = 1 trang thai nang truot dai.
+                        -- FIX: (a) vung "??" (Sea Danger 6 — noi Frozen Dimension spawn) chi can cach bo ~
+                        --          50.000 stud; qua do thi NEO: ngung loi tiep toi -1e7, giu do cao ngay do.
+                        --      (b) khi neo: destroy BodyGyro (stabilizer) — chi giu BodyVelocity chong roi.
+                        --      (c) dead-band: chi ghi root.CFrame/_tp khi Y lech > 2 stud (khi da on dinh
+                        --          thi ~0 write/cycle; tween nho/khong co, het glue keo lien tuc ra xa).
+                        --      (d) scan dao 1.5s GIU NGUYEN — phat hien spawn van ngay; khi spawn xuat hien,
+                        --          loop break → ngoai kia _tp toi dao nhu cu.
+                        local __FROZEN_DOCK = Vector3.new(-16927.451, 0, 433.864) -- cho mua/bo thuyen (Tiki)
+                        local __FROZEN_CAP2 = 50000 * 50000 -- binh phuong de khoi sqrt moi cycle
+                        local __parked = false
+                        local __gyroDone = false
 
                         pcall(function()
                             repeat
@@ -10625,7 +10738,34 @@ task.spawn(function()
                                     break
                                 end
 
-                                stabilizer.CFrame = CFrame.new(root.Position, Vector3.new(-10000000, root.Position.Y, 37016.25))
+                                -- [FIX FROZEN-FLY-V2] xac dinh trang thai neo (da vao vung ??):
+                                -- chi bay/truot tiep KHI con can di toi vung sau; qua cap thi dung loi.
+                                if not __parked then
+                                    local __rx, __rz = root.Position.X, root.Position.Z
+                                    local __dx = __rx - __FROZEN_DOCK.X
+                                    local __dz = __rz - __FROZEN_DOCK.Z
+                                    if __dx * __dx + __dz * __dz > __FROZEN_CAP2 then
+                                        __parked = true
+                                        -- CANCEL tween -1e7 dang "Playing" (watcher khong cancel khi ngoi)
+                                        -- neu khong block van loi tiep 300 stud/s va glue keo thuyen theo.
+                                        pcall(function()
+                                            if __DIO_LastTween then
+                                                __DIO_LastTween:Cancel()
+                                                __DIO_LastTween = nil
+                                            end
+                                        end)
+                                    end
+                                end
+                                if __parked and not __gyroDone then
+                                    __gyroDone = true
+                                    pcall(function()
+                                        if stabilizer then stabilizer:Destroy() stabilizer = nil end
+                                    end)
+                                end
+
+                                if stabilizer then -- chi con khi con dang bay toi vung sau
+                                    stabilizer.CFrame = CFrame.new(root.Position, Vector3.new(-10000000, root.Position.Y, 37016.25))
+                                end
 
                                 -- [FIX FROZEN-FLY] chon do cao bay theo che do:
                                 local targetY
@@ -10649,8 +10789,22 @@ task.spawn(function()
                                 end
 
                                 local newY = root.Position.Y + (targetY - root.Position.Y) * 0.3
-                                root.CFrame = CFrame.new(root.Position.X, newY, root.Position.Z)
-                                _tp(CFrame.new(-10000000, newY, 37016.25))
+                                -- [FIX FROZEN-FLY-V2] dead-band: chi ghi CFrame khi Y lech > 2 stud —
+                                -- khi da on dinh thi KHONG write/cycle nua (het churn root.CFrame 0.45s).
+                                local __yDrift = math.abs(newY - root.Position.Y) > 2
+                                if __parked then
+                                    -- neo tai vung ??: giu do cao, KHONG loi tiep ra xa (-1e7 vo ich:
+                                    -- tween 9 tieng khong bao gio den noi; Frozen spawn ngay tai vung nay).
+                                    if __yDrift then
+                                        root.CFrame = CFrame.new(root.Position.X, newY, root.Position.Z)
+                                        _tp(CFrame.new(root.Position.X, newY, root.Position.Z))
+                                    end
+                                else
+                                    if __yDrift then
+                                        root.CFrame = CFrame.new(root.Position.X, newY, root.Position.Z)
+                                    end
+                                    _tp(CFrame.new(-10000000, newY, 37016.25))
+                                end
 
                                 -- GIẢM TẢI FPS: Quét tìm đảo mỗi 1.5 giây một lần ngay trong lặp
                                 if tick() - lastIslandScan >= 1.5 then
@@ -12607,10 +12761,17 @@ task.spawn(function()
                     end
                     return target
                 end
+                -- [FIX AUDIT-L5] `Mag`/`dist` chi la local TRONG closestplayer, ngoai repeat la global nil
+                -- -> `Mag > dist` loi moi vong, pcall nuot sau DUNG 1 lan set camera/giay (camera aim gan nhu chet).
+                -- Sua: lay target moi vong qua closestplayer(), nil-guard Character/HRP, thoat khi tat toggle.
                 repeat
                     task.wait()
-                    camera.CFrame = CFrame.new(camera.CFrame.Position, closestplayer().Character.HumanoidRootPart.Position)
-                until _G.AimCam == false or Mag > dist
+                    if not _G.AimCam then break end
+                    local __aimT = closestplayer()
+                    if __aimT and __aimT.Character and __aimT.Character:FindFirstChild("HumanoidRootPart") then
+                        camera.CFrame = CFrame.new(camera.CFrame.Position, __aimT.Character.HumanoidRootPart.Position)
+                    end
+                until not _G.AimCam
             end
         end)
     end
@@ -13772,12 +13933,22 @@ Callback = function()
      local Raw = game:HttpGet(_servers .. ((cursor and "&cursor="..cursor) or ""))
      return Http:JSONDecode(Raw)
    end
-   local Server, Next; repeat
-   local Servers = ListServers(Next)
-   Server = Servers.data[1]
-   Next = Servers.nextPageCursor
-  until Server
-  TPS:TeleportToPlaceInstance(_place,Server.id,plr)
+   -- [FIX AUDIT-L7] LOOP VO HAN CU (`until Server` khong gioi han): neu data[1] luon nil
+   -- (server rong / API loi) thi nut bam treo + spam HTTP mai. Gio: cap 8 trang, thoat khi
+   -- het cursor (ket thuc danh sach), nil-guard data.
+   local Server, Next
+   local tries = 0
+   repeat
+     tries = tries + 1
+     local ok, Servers = pcall(ListServers, Next)
+     if ok and Servers and Servers.data then
+       Server = Servers.data[1]
+       Next = Servers.nextPageCursor
+     else
+       Next = nil
+     end
+   until Server or tries >= 8 or not Next
+   if Server then TPS:TeleportToPlaceInstance(_place,Server.id,plr) end
 end})
 
 Tabs.Misc:AddButton({
@@ -13874,7 +14045,7 @@ Callback = function(Value)
   if  _G.Rechat == true then
     local StarterGui = game:GetService('StarterGui')
     StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Chat, false)    
-  elseif _G.chat == false then
+  else -- [FIX CHUNK2-I] truoc day `elseif _G.chat == false` (bien sai ten, luon nil) -> bat lai chat khong bao gio chay
     local StarterGui = game:GetService('StarterGui')
     StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Chat, true)    
   end
@@ -13970,10 +14141,46 @@ rtxM = Tabs.Hop:AddToggle({
 Name = "Turn on RTX Mode", 
 Description = "", 
 Default = false,
+-- [FIX CHUNK2-G] TRUOC DAY: vong `while _G.RTXMode` o NGAY trong Callback -> khi BAT, callback
+-- khong tra ve (loop vo han). Neu library goi callback tren thread UI thi nhan nut ON xong khong
+-- bam duoc gi nua (phai reload) va restore khi tat khong chay (condition while bi false -> nhay ra
+-- truoc doan restore o cuoi vong). Gio: callback nhe, vong chay trong task.spawn rieng; restore
+-- + xoa effect chay CA khi bam TAT lan khi vong tu thoat.
 Callback = function(Value)
   _G.RTXMode = Value
   local a = game.Lighting
-  for _, __oldcc in ipairs(a:GetChildren()) do -- [FIX PERF 65] ban cu tao 2 effect MOI moi lan bat -> leak; xoa cai cu truoc
+
+  local function __DIO_RTXRevert()
+    pcall(function()
+      a.Ambient = OldAmbient or Color3.new(0, 0, 0)
+      a.Brightness = OldBrightness or 1
+      a.ColorShift_Top = OldColorShift_Top or Color3.new(0, 0, 0)
+      if OldBrightnessc ~= nil then for _, __cc in ipairs(a:GetChildren()) do
+          if __cc.Name == "__DIO_RTX_CC" then
+            if __cc.Contrast ~= nil and __cc.Brightness ~= nil then
+              __cc.Contrast = OldContrastc; __cc.Brightness = OldBrightnessc
+              __cc.TintColor = OldTintColorc
+            end
+          end
+        end end
+      a.FogEnd = 2500
+      if plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+        local __pl = plr.Character.HumanoidRootPart:FindFirstChild("PointLight")
+        if __pl then __pl:Destroy() end
+      end
+      for _, __cc in ipairs(a:GetChildren()) do
+        if __cc.Name == "__DIO_RTX_CC" then __cc:Destroy() end
+      end
+    end)
+  end
+
+  if not _G.RTXMode then
+    __DIO_RTXRevert() -- tat: restore ngay
+    return
+  end
+
+  -- bat: xoa effect cu (neu sot) roi tao 2 effect moi
+  for _, __oldcc in ipairs(a:GetChildren()) do
     if __oldcc.Name == "__DIO_RTX_CC" then __oldcc:Destroy() end
   end
   local c = Instance.new("ColorCorrectionEffect", a)
@@ -13985,33 +14192,28 @@ Callback = function(Value)
   OldBrightnessc = c.Brightness
   OldContrastc = c.Contrast
   OldTintColorc = c.TintColor
-  OldTintColore = e.TintColor    
-  if not _G.RTXMode then return end
-  while _G.RTXMode do __DIO_wait(1) -- [FIX PERF 65] wait() = 60 lan/s set Lighting + FindChild; 1 lan/s du vi Lighting khong tu reset
-    a.Ambient = Color3.fromRGB(33, 33, 33)
-    a.Brightness = 0.3
-    c.Brightness = 0.176
-    c.Contrast = 0.39
-    c.TintColor = Color3.fromRGB(217, 145, 57)
-    game.Lighting.FogEnd = 999
-    if plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and not plr.Character.HumanoidRootPart:FindFirstChild("PointLight") then -- [FIX PERF 65] nil-guard chet/respawn
-      local a2 = Instance.new("PointLight")
-      a2.Parent = plr.Character.HumanoidRootPart
-      a2.Range = 15
-      a2.Color = Color3.fromRGB(217, 145, 57)
+  OldTintColore = e.TintColor
+
+  task.spawn(function()
+    while _G.RTXMode do
+      __DIO_wait(1) -- [FIX PERF 65] wait() 60 lan/s -> 1 lan/s du vi Lighting khong tu reset
+      pcall(function()
+        a.Ambient = Color3.fromRGB(33, 33, 33)
+        a.Brightness = 0.3
+        c.Brightness = 0.176
+        c.Contrast = 0.39
+        c.TintColor = Color3.fromRGB(217, 145, 57)
+        a.FogEnd = 999
+        if plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and not plr.Character.HumanoidRootPart:FindFirstChild("PointLight") then -- nil-guard chet/respawn
+          local a2 = Instance.new("PointLight")
+          a2.Parent = plr.Character.HumanoidRootPart
+          a2.Range = 15
+          a2.Color = Color3.fromRGB(217, 145, 57)
+        end
+      end)
     end
-    if not _G.RTXMode then
-      a.Ambient = OldAmbient
-      a.Brightness = OldBrightness
-      a.ColorShift_Top = OldColorShift_Top
-      c.Contrast = OldContrastc
-      c.Brightness = OldBrightnessc
-      c.TintColor = OldTintColorc
-      e.TintColor = OldTintColore
-      game.Lighting.FogEnd = 2500
-      plr.Character.HumanoidRootPart:FindFirstChild("PointLight"):Destroy()
-    end
-  end
+    __DIO_RTXRevert() -- vong tu thoat (flag tat): restore lan cuoi
+  end)
 end
 })
 Tabs.Hop:AddButton({
@@ -14092,7 +14294,7 @@ DayN = Tabs.Misc:AddDropdown({
 Name = "Select Time",
 Description = "",
 Options = {"Day", "Night"},
-Default = Day,
+Default = "Day", -- [FIX CHUNK2-D] thieu ngoac kep -> doc global undefined (nil)
 Callback = function(Value)
   _G.SelectDN = Value
 end})
@@ -14203,7 +14405,8 @@ task.spawn(function()
     end)
   end)
 end)
-FastAttackModule = {} -- [SAVE SETTING] GLOBAL: slider "Fast Attack Delay" van dieu khien toc do qua Rate
+FastAttackModule = FastAttackModule or {} -- [SAVE SETTING] GLOBAL: slider "Fast Attack Delay" van dieu khien toc do qua Rate
+-- [FIX CHUNK2-A] neu slider da set Rate (replay/save) thi KHONG ghi de bang default 0.03
 -- [FIX FAST-V3] Dong bo voi script "fast moi cuc ngan" lan 2 cua user:
 --   * Range 75 (truoc 60) · diem hit = HumanoidRootPart (truoc Head-or-HRP) · fire RegisterHit TRUC TIEP
 --     (bo duong SendHitsToServer) — dung 1-1 nhu script user da tu test.
@@ -14211,7 +14414,7 @@ FastAttackModule = {} -- [SAVE SETTING] GLOBAL: slider "Fast Attack Delay" van d
 --     moi diem hit them = server tra them VFX (ly do FPS teo ngay tu dau; muon tang sua so 6 nay);
 --     (b) vong __DIO_wait(Rate) duy nhat thay cho RunService.Heartbeat per-frame (60Hz) — sau khi
 --     BOOT-FIX, Rate 0.03 chay dung ~33 don/s that, muon nhanh nua keo slider "Fast Attack Delay" xuong 1.
-FastAttackModule.Rate = 0.03
+FastAttackModule.Rate = FastAttackModule.Rate or 0.03
 FastAttackModule.Enabled = true
 
 local __FA_attackEvent, __FA_hitEvent
@@ -14283,7 +14486,11 @@ task.spawn(function()
 end)
 -- [FIX FAST-V2] (StartMainLoops cu da bo - vong duy nhat nam trong khoi FAST-V2 ben tren)
 
-local function getBeastHunter()
+-- [FIX CHUNK2-H] "Shot Leviathan Heart [Beta]" (L~10795) goi getBeastHunter/getLeviathanHeart
+-- NHUNG 2 ham nay dinh nghia `local` o CUOI file -> tai noi goi chung la global nil -> feature
+-- khong bao gio chay (pcall nuot moi giay). Chuyen thanh GLOBAL de noi goi (chay sau khi load
+-- xong file) thay duoc ham.
+getBeastHunter = function()
     local character = LocalPlayer.Character
     if not character or not character:FindFirstChild("HumanoidRootPart") then return nil end
     local hrp = character.HumanoidRootPart
@@ -14300,7 +14507,7 @@ local function getBeastHunter()
     return nil
 end
 
-local function getLeviathanHeart()
+getLeviathanHeart = function()
     for _, obj in pairs(Workspace:GetDescendants()) do
         if obj:IsA("Model") and string.find(obj.Name, "Leviathan Heart") then
             local root = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
