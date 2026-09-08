@@ -10610,274 +10610,38 @@ Tabs.SeaEvent:AddToggle({
     end
 })
 
--- [FIX FROZEN-FLY] Dropdown chon che do bay khi Find Frozen / tim Leviathan.
---  * "Y = 300 if have Sea event" = che do cu: dò quái bien (TerrorShark/SeaBeast/FishBoat/PGB)
---    de bay cao 300 khi co sea event, ha ~150 khi khong (dò quái duoc throttle 1.2s).
---  * "Y = 160" = che do nhe: boat LUON giu do cao 160, KHONG chay logic dò quái bien
---    (khong scan Enemies/SeaBeasts lien tuc -> het nguyen nhan lag khi chi can fly).
-FrozenFlyMode = Tabs.SeaEvent:AddDropdown({
-    Name = "Fly Mode Frozen",
-    Description = "Y = 300 if have Sea event / Y = 160 luon giu do cao",
-    Options = {"Y = 300 if have Sea event", "Y = 160"},
-    Default = "Y = 160",
-    Callback = function(Value)
-        _G.FrozenFlyMode = Value
-    end
-})
-
-task.spawn(function()
-    local flyingActive = false
-
-    while __DIO_wait(1) do
-        if _G.FrozenDimension and not flyingActive then
-            pcall(function()
-                if not plr.Character or not plr.Character:FindFirstChild("HumanoidRootPart") then return end
-
-                -- GHÉP THẲNG TÌM ĐẢO (Không quét sâu rùa bò để giữ 100% FPS)
-                local targetIsland = nil
-                local locations = workspace:FindFirstChild("_WorldOrigin") and workspace["_WorldOrigin"]:FindFirstChild("Locations")
-                
-                if locations then
-                    for _, name in ipairs({"Frozen Dimension", "LeviathanGate", "Leviathan Island"}) do
-                        targetIsland = locations:FindFirstChild(name)
-                        if targetIsland then break end
-                    end
-                end
-                
-                if not targetIsland and workspace:FindFirstChild("Map") then
-                    for _, name in ipairs({"Frozen Dimension", "LeviathanGate", "Leviathan Island"}) do
-                        targetIsland = workspace.Map:FindFirstChild(name)
-                        if targetIsland then break end
-                    end
-                end
-
-                if not targetIsland then
-                    local myBoat = CheckBoat()
-                    if not myBoat then
-                        local buyBoatCFrame = CFrame.new(-16927.451, 9.086, 433.864)
-                        TeleportToTarget(buyBoatCFrame)
-                        __DIO_wait(2)
-                        if not plr.Character or not plr.Character:FindFirstChild("HumanoidRootPart") then return end
-                        if (buyBoatCFrame.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 then
-                            replicated.Remotes.CommF_:InvokeServer("BuyBoat", _G.SelectedBoat)
-                        end
-                    else
-                        local vehicleSeat = myBoat:FindFirstChildOfClass("VehicleSeat")
-                        if not vehicleSeat then return end
-
-                        local humanoid = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
-                        if not humanoid then return end
-
-                        if humanoid.SeatPart ~= vehicleSeat then
-                            if not humanoid.Sit then
-                                _tp(vehicleSeat.CFrame * CFrame.new(0, 1, 0))
-                            end
-                            return
-                        end
-
-                        local root = myBoat.PrimaryPart or vehicleSeat
-
-                        -- Cất động cơ gốc & Dọn dẹp Y-Lock cũ
-                        local originalMovers = {}
-                        for _, v in ipairs(root:GetChildren()) do
-                            if v.Name == "BoatYLock" then
-                                v:Destroy()
-                            elseif v:IsA("BodyVelocity") or v:IsA("BodyPosition") or v:IsA("BodyGyro") or v:IsA("LinearVelocity") or v:IsA("AngularVelocity") then
-                                table.insert(originalMovers, {Obj = v, Parent = v.Parent})
-                                v.Parent = nil
-                            end
-                        end
-
-                        local antiGravity = Instance.new("BodyVelocity")
-                        antiGravity.MaxForce = Vector3.new(1e5, 1e5, 1e5)
-                        antiGravity.Velocity  = Vector3.new(0, 0, 0)
-                        antiGravity.Parent    = root
-
-                        local stabilizer = Instance.new("BodyGyro")
-                        stabilizer.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
-                        stabilizer.D         = 500
-                        stabilizer.CFrame    = root.CFrame
-                        stabilizer.Parent    = root
-
-                        flyingActive = true
-                        local isIslandSpawned = false
-                        local lastIslandScan = 0
-                        local __frozenDanger = false -- [FIX FROZEN-FLY] cache do quai bien (throttle 1.2s)
-                        local __frozenDangerT = 0
-                        -- [FIX FROZEN-FLY-V2] (bug user bao: Find Frozen chay lien tuc 10-15 phut tut FPS ~15,
-                        -- CA 2 mode bay deu bi -> loai nguon "do quai bien" (chi co mode Y=300), nguon chung nam
-                        -- trong may bay duy tri:
-                        --   1) `_tp(CFrame.new(-10000000,...))` cach bo dem ~10 trieu stud, toc ~300 stud/s
-                        --      => tween "Playing" ~9 TIENG. Watcher khong cancel khi nguoi NGOI (FIX FPS-SEA-2)
-                        --      nen glue 60Hz keo ca bo thuyen (CFrame-teleport tung frame) loi mai ra bien xa
-                        --      = churn physics/CFrame/streaming suot phien, khong bao gio dung lai.
-                        --   2) Fly-engine giu BodyVelocity+BodyGyro (MaxForce 1e5) va ghi root.CFrame +
-                        --      stabilizer.CFrame moi 0.45s vinh vien = 1 trang thai nang truot dai.
-                        -- FIX: (a) vung "??" (Sea Danger 6 — noi Frozen Dimension spawn) chi can cach bo ~
-                        --          50.000 stud; qua do thi NEO: ngung loi tiep toi -1e7, giu do cao ngay do.
-                        --      (b) khi neo: destroy BodyGyro (stabilizer) — chi giu BodyVelocity chong roi.
-                        --      (c) dead-band: chi ghi root.CFrame/_tp khi Y lech > 2 stud (khi da on dinh
-                        --          thi ~0 write/cycle; tween nho/khong co, het glue keo lien tuc ra xa).
-                        --      (d) scan dao 1.5s GIU NGUYEN — phat hien spawn van ngay; khi spawn xuat hien,
-                        --          loop break → ngoai kia _tp toi dao nhu cu.
-                        local __FROZEN_DOCK = Vector3.new(-16927.451, 0, 433.864) -- cho mua/bo thuyen (Tiki)
-                        local __FROZEN_CAP2 = 50000 * 50000 -- binh phuong de khoi sqrt moi cycle
-                        local __parked = false
-                        local __gyroDone = false
-
-                        pcall(function()
-                            repeat
-                                __DIO_wait(0.45) -- [FIX FPS-SEA-3] 0.15 -> 0.45: giam churn stabilizer/root.CFrame khi treo tim Leviathan/Frozen
-
-                                if not _G.FrozenDimension then break end
-                                if not plr.Character or not plr.Character:FindFirstChild("HumanoidRootPart") then break end
-                                if not root or not root.Parent then break end
-
-                                local curHum = plr.Character:FindFirstChildOfClass("Humanoid")
-                                if not curHum or curHum.SeatPart ~= vehicleSeat then
-                                    break
-                                end
-
-                                -- [FIX FROZEN-FLY-V2] xac dinh trang thai neo (da vao vung ??):
-                                -- chi bay/truot tiep KHI con can di toi vung sau; qua cap thi dung loi.
-                                if not __parked then
-                                    local __rx, __rz = root.Position.X, root.Position.Z
-                                    local __dx = __rx - __FROZEN_DOCK.X
-                                    local __dz = __rz - __FROZEN_DOCK.Z
-                                    if __dx * __dx + __dz * __dz > __FROZEN_CAP2 then
-                                        __parked = true
-                                        -- CANCEL tween -1e7 dang "Playing" (watcher khong cancel khi ngoi)
-                                        -- neu khong block van loi tiep 300 stud/s va glue keo thuyen theo.
-                                        pcall(function()
-                                            if __DIO_LastTween then
-                                                __DIO_LastTween:Cancel()
-                                                __DIO_LastTween = nil
-                                            end
-                                        end)
-                                    end
-                                end
-                                if __parked and not __gyroDone then
-                                    __gyroDone = true
-                                    pcall(function()
-                                        if stabilizer then stabilizer:Destroy() stabilizer = nil end
-                                    end)
-                                end
-
-                                if stabilizer then -- chi con khi con dang bay toi vung sau
-                                    stabilizer.CFrame = CFrame.new(root.Position, Vector3.new(-10000000, root.Position.Y, 37016.25))
-                                end
-
-                                -- [FIX FROZEN-FLY] chon do cao bay theo che do:
-                                local targetY
-                                if _G.FrozenFlyMode ~= "Y = 160" then
-                                    -- che do "Y = 300 if have Sea event": do quai bien NHUNG throttle
-                                    -- 1.2s (truoc day mo do moi 0.45s -> scan Enemies/SeaBeasts lien tuc,
-                                    -- chinh la thu nghiem "chay remote/lap nhieu" gay lag).
-                                    if tick() - __frozenDangerT >= 1.2 then
-                                        __frozenDangerT = tick()
-                                        __frozenDanger = false
-                                        if CheckTerrorShark and CheckTerrorShark() then __frozenDanger = true
-                                        elseif CheckSeaBeast and CheckSeaBeast() then __frozenDanger = true
-                                        elseif CheckEnemiesBoat and CheckEnemiesBoat() then __frozenDanger = true
-                                        elseif CheckPirateGrandBrigade and CheckPirateGrandBrigade() then __frozenDanger = true end
-                                    end
-                                    targetY = __frozenDanger and 300 or 150
-                                else
-                                    -- che do "Y = 160": thuyen LUON giu 160, khong can do quai bien
-                                    -- (0 lan scan) -> toi uu nhat khi chi can fly tim Frozen/Leviathan.
-                                    targetY = 160
-                                end
-
-                                local newY = root.Position.Y + (targetY - root.Position.Y) * 0.3
-                                -- [FIX FROZEN-FLY-V2] dead-band: chi ghi CFrame khi Y lech > 2 stud —
-                                -- khi da on dinh thi KHONG write/cycle nua (het churn root.CFrame 0.45s).
-                                local __yDrift = math.abs(newY - root.Position.Y) > 2
-                                if __parked then
-                                    -- neo tai vung ??: giu do cao, KHONG loi tiep ra xa (-1e7 vo ich:
-                                    -- tween 9 tieng khong bao gio den noi; Frozen spawn ngay tai vung nay).
-                                    if __yDrift then
-                                        root.CFrame = CFrame.new(root.Position.X, newY, root.Position.Z)
-                                        _tp(CFrame.new(root.Position.X, newY, root.Position.Z))
-                                    end
-                                else
-                                    if __yDrift then
-                                        root.CFrame = CFrame.new(root.Position.X, newY, root.Position.Z)
-                                    end
-                                    _tp(CFrame.new(-10000000, newY, 37016.25))
-                                end
-
-                                -- GIẢM TẢI FPS: Quét tìm đảo mỗi 1.5 giây một lần ngay trong lặp
-                                if tick() - lastIslandScan >= 1.5 then
-                                    lastIslandScan = tick()
-                                    
-                                    local locs = workspace:FindFirstChild("_WorldOrigin") and workspace["_WorldOrigin"]:FindFirstChild("Locations")
-                                    if locs then
-                                        for _, name in ipairs({"Frozen Dimension", "LeviathanGate", "Leviathan Island"}) do
-                                            if locs:FindFirstChild(name) then
-                                                isIslandSpawned = true
-                                                break
-                                            end
-                                        end
-                                    end
-                                    
-                                    if not isIslandSpawned and workspace:FindFirstChild("Map") then
-                                        for _, name in ipairs({"Frozen Dimension", "LeviathanGate", "Leviathan Island"}) do
-                                            if workspace.Map:FindFirstChild(name) then
-                                                isIslandSpawned = true
-                                                break
-                                            end
-                                        end
-                                    end
-                                end
-
-                            until isIslandSpawned
-                        end)
-
-                        -- ====== HẠ CẢNH AN TOÀN - CHỐNG MẤT THUYỀN ======
-                        pcall(function()
-                            if root and root.Parent then
-                                local yLock = Instance.new("BodyPosition")
-                                yLock.Name = "BoatYLock"
-                                yLock.MaxForce = Vector3.new(0, math.huge, 0)
-                                yLock.Position = Vector3.new(0, 35, 0) 
-                                yLock.D = 800
-                                yLock.Parent = root
-
-                                if root.Position.Y > 50 then
-                                    root.CFrame = CFrame.new(root.Position.X, 40, root.Position.Z)
-                                end
-                            end
-                        end)
-                        -- ===============================================
-
-                        -- CLEANUP: Xóa mover tạm & Khôi phục lại động cơ cũ
-                        if antiGravity then antiGravity:Destroy() end
-                        if stabilizer then stabilizer:Destroy() end
-
-                        pcall(function()
-                            if root and root.Parent then
-                                root.Velocity = Vector3.new(0, 0, 0)
-                                root.RotVelocity = Vector3.new(0, 0, 0)
-                                
-                                for _, moverData in ipairs(originalMovers) do
-                                    if moverData.Obj and moverData.Obj.Parent == nil then
-                                        moverData.Obj.Parent = moverData.Parent
-                                    end
-                                end
-                            end
-                        end)
-
-                        flyingActive = false
-                    end 
+spawn(function()
+  while __DIO_wait(1) do -- [FIX PERF 62] 0.1 -> 1 (yeu cau user: uu tien FPS; vong poll gated nen logic khong time-out)
+    if _G.FrozenDimension then 
+      pcall(function()
+        if not workspace["_WorldOrigin"].Locations:FindFirstChild("Frozen Dimension", true) then                
+          local myBoat = CheckBoat()
+          if not myBoat then
+            local buyBoatCFrame = CFrame.new(-16927.451, 9.086, 433.864)
+            TeleportToTarget(buyBoatCFrame)
+            if (buyBoatCFrame.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 then replicated.Remotes.CommF_:InvokeServer("BuyBoat", _G.SelectedBoat) end
+          else
+            if plr.Character.Humanoid.Sit == false then
+              local boatSeatCFrame = myBoat.VehicleSeat.CFrame * CFrame.new(0, 1, 0)
+              _tp(boatSeatCFrame)
+            else            
+              repeat __DIO_wait(0.25)
+                local targetDestination = CFrame.new(-10000000, 31, 37016.25)
+                local __seaS = __DIO_SeaScan()
+                if __seaS.fish or __seaS.pgb or __seaS.shark or __seaS.terror or __seaS.piranha __seaS.crew then
+                  _tp(CFrame.new(-10000000, 150, 37016.25))
                 else
-                    local targetPos = targetIsland:FindFirstChild("Center") or targetIsland.PrimaryPart
-                    if targetPos then
-                        _tp(targetPos.CFrame * CFrame.new(0, 300, 0))
-                    end
+                  _tp(CFrame.new(-10000000, 150, 37016.25))
                 end
-            end)
+              until not _G.FrozenDimension or (targetDestination.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 or workspace["_WorldOrigin"].Locations:FindFirstChild("Frozen Dimension") or plr.Character.Humanoid.Sit == false plr.Character.Humanoid.Sit = false
+            end
+          end
+        else
+          _tp(workspace.Map.LeviathanGate.Center.CFrame*CFrame.new(0,300,0))
         end
+      end)
     end
+  end
 end)
 Tabs.SeaEvent:AddToggle({
 Name = "Auto Teleport Frozen Dimension", 
