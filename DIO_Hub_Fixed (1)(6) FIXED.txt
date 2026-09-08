@@ -10628,7 +10628,7 @@ spawn(function()
               repeat __DIO_wait(0.25)
                 local targetDestination = CFrame.new(-10000000, 31, 37016.25)
                 local __seaS = __DIO_SeaScan()
-                if __seaS.fish or __seaS.pgb or __seaS.shark or __seaS.terror or __seaS.piranha __seaS.crew then
+                if __seaS.fish or __seaS.pgb or __seaS.shark or __seaS.terror or __seaS.piranha or __seaS.crew then
                   _tp(CFrame.new(-10000000, 150, 37016.25))
                 else
                   _tp(CFrame.new(-10000000, 150, 37016.25))
