@@ -4175,9 +4175,10 @@ spawn(function()
         pcall(function()
             if _G.FarmEliteHunt then
                 local questGui = plr.PlayerGui.Main.Quest
-                local questTitle = questGui.Container.QuestTitle.Title.Text
+                local __qE1 = __DIO_GetCurrentQuest() -- [FIX QUEST-FN] doc quest qua ham dung chung (nil-safe)
+                local questTitle = __qE1.QuestText or ""
 
-                if not questGui.Visible then
+                if not __qE1.IsActive then
                     
                     local result = replicated.Remotes.CommF_:InvokeServer("EliteHunter")
                     if result == nil or string.find(result, "Cooldown") then
@@ -4282,10 +4283,11 @@ spawn(function()
 		pcall(function()
 			if _G.FarmEliteH then
 				local questGui = plr.PlayerGui.Main.Quest
-				local questTitle = questGui.Container.QuestTitle.Title.Text
+				local __qE2 = __DIO_GetCurrentQuest() -- [FIX QUEST-FN] doc quest qua ham dung chung (nil-safe)
+				local questTitle = __qE2.QuestText or ""
 
 				
-				if not questGui.Visible then
+				if not __qE2.IsActive then
 					local result = replicated.Remotes.CommF_:InvokeServer("EliteHunter")
 					if result == nil or string.find(result, "Cooldown") then
 					
@@ -5362,7 +5364,8 @@ FarmBoss = Tabs.Main:AddToggle({
                 if _G.FarmBoss then
                     pcall(function()
                         local HasQuest = QuestBeta()[2] ~= nil and QuestBeta()[3] ~= nil
-                        local QuestTitle = plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text
+                        local __qB = __DIO_GetCurrentQuest() -- [FIX QUEST-FN] doc quest qua ham dung chung (nil-safe)
+                        local QuestTitle = __qB.QuestText or ""
 
                        
                         if _G.AcceptQuestBoss and HasQuest then
@@ -5370,12 +5373,12 @@ FarmBoss = Tabs.Main:AddToggle({
                                 replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
                             end
 
-                            if plr.PlayerGui.Main.Quest.Visible == false then
+                            if not __qB.IsActive then -- [FIX QUEST-FN]
                                 _tp(QuestBeta()[5])
                                 if (Root.Position - QuestBeta()[5].Position).Magnitude <= 5 then
                                     replicated.Remotes.CommF_:InvokeServer("StartQuest", QuestBeta()[3], QuestBeta()[2])
                                 end
-                            elseif plr.PlayerGui.Main.Quest.Visible then
+                            elseif __qB.IsActive then -- [FIX QUEST-FN]
                                 if workspace.Enemies:FindFirstChild(QuestBeta()[1]) then
                                     for i, v in pairs(workspace.Enemies:GetChildren()) do
                                         if Attack.Alive(v) and v.Name == QuestBeta()[1] then
@@ -6573,7 +6576,8 @@ spawn(function()
             end
           else
             if replicated.Remotes.CommF_:InvokeServer("BartiloQuestProgress","Bartilo") == 0 then
-              if string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Swan Pirates") and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "50") and plr.PlayerGui.Main.Quest.Visible then                
+              local __qZ = __DIO_GetCurrentQuest() -- [FIX QUEST-FN] doc quest qua ham dung chung (nil-safe)
+              if __qZ.IsActive and string.find(__qZ.QuestText, "Swan Pirates", 1, true) and string.find(__qZ.QuestText, "50", 1, true) then
                 local v = GetConnectionEnemies("Swan Pirate")
                 if v then
                   pcall(function() repeat __DIO_wait(0.25) Attack.Kill(v,_G.AutoZou) until not v.Parent or v.Humanoid.Health <= 0 or _G.AutoZou == false or plr.PlayerGui.Main.Quest.Visible == false end)                    
@@ -7894,7 +7898,8 @@ spawn(function()
   pcall(function()
     while __DIO_wait(Sec) do
       if _G.Auto_Rainbow_Haki then
-        if plr.PlayerGui.Main.Quest.Visible == false then
+        local __qH = __DIO_GetCurrentQuest() -- [FIX QUEST-FN] doc quest qua ham dung chung (nil-safe)
+        if not __qH.IsActive then
           if _G.GetQFast then
             if plr.PlayerGui.Main.Quest.Visible == false then replicated.Remotes.CommF_:InvokeServer("HornedMan","Bet") end     
           else
@@ -7906,14 +7911,14 @@ spawn(function()
               replicated.Remotes.CommF_:InvokeServer("HornedMan","Bet")
             end
           end
-          elseif plr.PlayerGui.Main.Quest.Visible and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Stone") then
+          elseif __qH.IsActive and string.find(__qH.QuestText, "Stone", 1, true) then -- [FIX QUEST-FN]
             local v = GetConnectionEnemies("Stone")
             if v then
               repeat __DIO_wait(0.25) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or plr.PlayerGui.Main.Quest.Visible == false
             else
               _tp(CFrame.new(-1086.11621, 38.8425903, 6768.71436, 0.0231462717, -0.592676699, 0.805107772, 2.03251839e-05, 0.805323839, 0.592835128, -0.999732077, -0.0137055516, 0.0186523199))
             end
-          elseif plr.PlayerGui.Main.Quest.Visible and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Hydra Leader") then
+          elseif __qH.IsActive and string.find(__qH.QuestText, "Hydra Leader", 1, true) then -- [FIX QUEST-FN]
             local v = GetConnectionEnemies("Hydra Leader")
             if v then
               repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or plr.PlayerGui.Main.Quest.Visible == false
@@ -7923,14 +7928,14 @@ spawn(function()
               local framelong2 = CFrame.new(5821.89794921875, 1019.0950927734375, -73.71923065185547)
               if (plr.Character.HumanoidRootPart.Position - framelong1).Magnitude <= 5 then _tp(framelong2) end -- [FIX PERF 25] so sanh Vector3 == hang so khong bao gio khop
             end
-          elseif plr.PlayerGui.Main.Quest.Visible and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Kilo Admiral") then
+          elseif __qH.IsActive and string.find(__qH.QuestText, "Kilo Admiral", 1, true) then -- [FIX QUEST-FN]
             local v = GetConnectionEnemies("Kilo Admiral")
             if v then
               repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or plr.PlayerGui.Main.Quest.Visible == false
             else
               _tp(CFrame.new(2877.61743, 423.558685, -7207.31006, -0.989591599, -0, -0.143904909, -0, 1.00000012, -0, 0.143904924, 0, -0.989591479))
             end
-            elseif plr.PlayerGui.Main.Quest.Visible and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Captain Elephant") then
+            elseif __qH.IsActive and string.find(__qH.QuestText, "Captain Elephant", 1, true) then -- [FIX QUEST-FN]
               local v = GetConnectionEnemies("Captain Elephant")
               if v then
                 repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki)until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or plr.PlayerGui.Main.Quest.Visible == false
@@ -7943,7 +7948,7 @@ spawn(function()
                 _tp(gamergayror2)
               end
             end
-        elseif plr.PlayerGui.Main.Quest.Visible and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Beautiful Pirate") then
+        elseif __qH.IsActive and string.find(__qH.QuestText, "Beautiful Pirate", 1, true) then -- [FIX QUEST-FN]
           -- [FIX AUDIT-L4] copy-paste: cac nhanh quest text khac deu goi dung ten boss (Stone/Hydra Leader/Kilo Admiral/Captain Elephant);
           -- nhanh "Beautiful Pirate" goi nham GetConnectionEnemies("Captain Elephant") -> tim nham boss khong ton tai o island do,
           -- khong bao gio giet duoc con tinh diem quest va spam requestEntrance moi giay. Chinh sang "Beautiful Pirate".
@@ -8040,6 +8045,33 @@ spawn(function()
     end)
   end
 end)
+-- [FIX QUEST-FN] Ham doc quest DUNG duong dan UI (Main.Quest.Container.QuestTitle.Title.Text),
+-- nil-safe toan bo; UI quest khong co o "TaskName"/"Task" nao het: ten quai nam trong CAU QuestTitle
+-- (vd "Defeat 50 Forest Pirates"); quest xong => frame tu an => check hoan thanh = Quest.Visible == false.
+__DIO_GetCurrentQuest = function()
+  local __ok, __res = pcall(function()
+    local __main = plr and plr.PlayerGui and plr.PlayerGui:FindFirstChild("Main")
+    local __q = __main and __main:FindFirstChild("Quest")
+    if not (__q and __q.Visible) then return { IsActive = false } end
+    local __t = __q:FindFirstChild("Container")
+    __t = __t and __t:FindFirstChild("QuestTitle")
+    __t = __t and __t:FindFirstChild("Title")
+    local __text = (__t and __t.Text) or ""
+    local __req, __mob = __text:match("^Defeat%s+(%d+)%s+(.+)$")
+    if not __req then __mob = __text:match("^Defeat%s+(.+)$") end
+    return { IsActive = true, QuestText = __text, MobTarget = __mob or __text, Required = tonumber(__req), Done = false }
+  end)
+  return (__ok and __res) or { IsActive = false }
+end
+-- [FIX QUEST-FN] Ham RIENG cho quest "Defeat 50 Forest Pirates" (Auto Observation V2 / Auto Done Citizen).
+__DIO_ForestQuest50 = function()
+  local __q = __DIO_GetCurrentQuest()
+  if __q.IsActive and __q.QuestText ~= "" and string.find(__q.QuestText, "Defeat 50 Forest Pirates", 1, true) then
+    return { IsActive = true, QuestText = __q.QuestText }
+  end
+  return { IsActive = false }
+end
+
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Observation V2", 
 Description = "", 
@@ -8056,21 +8088,22 @@ spawn(function()
       local Kv2Pos3 = CFrame.new(-10920.125, 624.20275878906, -10266.995117188)
       local Kv2Pos4 = CFrame.new(-13277.568359375, 370.34185791016, -7821.1572265625)
       local Kv2Pos5 = CFrame.new(-13493.12890625, 318.89553833008, -8373.7919921875)
-	  if plr.PlayerGui.Main.Quest.Visible and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text,"Defeat 50 Forest Pirates") then
+	  local __fq = __DIO_ForestQuest50() -- [FIX QUEST-FN] ham rieng doc quest "Defeat 50 Forest Pirates", nil-safe
+	  if __fq.IsActive then
 	    local v = GetConnectionEnemies("Forest Pirate")
         if v then
 	      repeat __DIO_wait(0.25) Attack.Kill(v,_G.AutoKenVTWO) until not _G.AutoKenVTWO or v.Humanoid.Health <= 0 or plr.PlayerGui.Main.Quest.Visible == false
 	    else
 	      _tp(Kv2Pos4)
 	    end
-	  elseif plr.PlayerGui.Main.Quest.Visible then 
+	  elseif __DIO_GetCurrentQuest().IsActive then -- [FIX QUEST-FN]
 	    local v = GetConnectionEnemies("Captain Elephant")
 	    if v then
           repeat __DIO_wait(0.25) Attack.Kill(v,_G.AutoKenVTWO) until not _G.AutoKenVTWO or v.Humanoid.Health <= 0 or plr.PlayerGui.Main.Quest.Visible == false
 	    else
 	      _tp(Kv2Pos5)
 	    end
-	  elseif plr.PlayerGui.Main.Quest.Visible == false then
+	  elseif not __DIO_GetCurrentQuest().IsActive then -- [FIX QUEST-FN]
 	    replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress","Citizen") wait(.1)
 	    replicated.Remotes.CommF_:InvokeServer("StartQuest","CitizenQuest",1)
 	  end
@@ -8144,7 +8177,7 @@ spawn(function()
               local x = GetConnectionEnemies(BartMon)
               if x then
                 repeat __DIO_wait(Sec)
-                  if not string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Swan Pirate")then replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
+                  if not string.find(__DIO_GetCurrentQuest().QuestText or "", "Swan Pirate", 1, true)then replicated.Remotes.CommF_:InvokeServer("AbandonQuest") -- [FIX QUEST-FN] doc quest qua ham dung chung (nil-safe)
                   else Attack.Kill(x,_G.Bartilo_Quest)end
                 until _G.Bartilo_Quest == false or not x.Parent or x.Humanoid.Health <= 0 or Qbart.Visible == false or not x:FindFirstChild("HumanoidRootPart")                  
               end
@@ -8203,7 +8236,8 @@ spawn(function()
     pcall(function()
       if _G.CitizenQuest then
         if plr.Data.Level.Value >= 1800 and replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress").KilledBandits == false then
-          if string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Forest Pirate") and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "50") and plr.PlayerGui.Main.Quest.Visible then
+          local __fqC = __DIO_ForestQuest50() -- [FIX QUEST-FN] ham rieng quest Forest 50 (nil-safe, UI doi cung khong bao loi)
+          if __fqC.IsActive then
             local v = GetConnectionEnemies("Forest Pirate")
             if v then
               repeat __DIO_wait(Sec) Attack.Kill(v,_G.CitizenQuest)until _G.CitizenQuest == false or not v.Parent or v.Humanoid.Health <= 0 or plr.PlayerGui.Main.Quest.Visible == false
@@ -8218,7 +8252,8 @@ spawn(function()
           end
         elseif plr.Data.Level.Value >= 1800 and replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress").KilledBoss == false then
           local v = GetConnectionEnemies("Captain Elephant")
-          if plr.PlayerGui.Main.Quest.Visible and string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, "Captain Elephant") and plr.PlayerGui.Main.Quest.Visible then
+          local __qCE = __DIO_GetCurrentQuest() -- [FIX QUEST-FN] doc quest qua ham dung chung (nil-safe)
+          if __qCE.IsActive and string.find(__qCE.QuestText, "Captain Elephant", 1, true) then
             if v then
               repeat __DIO_wait(Sec) Attack.Kill(v,_G.CitizenQuest) until _G.CitizenQuest == false or v.Humanoid.Health <= 0 or not v.Parent or plr.PlayerGui.Main.Quest.Visible == false
             else
@@ -12663,12 +12698,13 @@ Tabs.Combat:AddToggle({
 spawn(function()
     while __DIO_wait(1) do -- [FIX PERF 62] 0.1 -> 1 (yeu cau user: uu tien FPS; vong poll gated nen logic khong time-out)
         if _G.AutoPlayerHunter then
-            if plr.PlayerGui.Main.Quest.Visible == false then
+            local __qP = __DIO_GetCurrentQuest() -- [FIX QUEST-FN] doc quest qua ham dung chung (nil-safe)
+            if not __qP.IsActive then
                 __DIO_wait(0.5)
                 __SVC_RS.Remotes.CommF_:InvokeServer("PlayerHunter")
             else
                 for _, target in pairs(__SVC_WS.Characters:GetChildren()) do
-                    if string.find(plr.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text, target.Name) then
+                    if __qP.QuestText and string.find(__qP.QuestText, target.Name, 1, true) then -- [FIX QUEST-FN]
                         repeat
                             __DIO_wait(0.25)
                             if AutoHaki then AutoHaki() end
