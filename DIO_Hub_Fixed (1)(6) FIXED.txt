@@ -1553,7 +1553,6 @@ sea3 = (game.PlaceId == 7449423635 or game.PlaceId == 100117331123089)
 
 local Settings = {
     ["Tween Speed"] = 350,
-    ["Bypass Teleport"] = false,
     ["Up Y"] = false,
     ["Up Y When Low Health"] = false,
     ["Same Y"] = false
@@ -1615,59 +1614,7 @@ function InArea(POS)
     return {Name = ""}
 end
 
-function GetSpawnPoint(x)
-    local Spawns = workspace:FindFirstChild("_WorldOrigin") 
-        and workspace._WorldOrigin:FindFirstChild("PlayerSpawns") 
-        and workspace._WorldOrigin.PlayerSpawns:FindFirstChild("Pirates")
-    if not Spawns then return end
-    
-    for i,v in next, Spawns:GetChildren() do
-        if v:FindFirstChild("Part") and (v.Part.Position - x.Position).Magnitude <= 2500 then
-            return v
-        end
-    end
-end
-function CheckLegendaryItems()
-    local function CheckItem(ITEM_NAME)
-        for i,v in next, LocalPlayer.Backpack:GetChildren() do
-            if v:IsA('Tool') and (v.Name == ITEM_NAME or string.find(v.Name, ITEM_NAME)) then 
-                return v 
-            end
-        end
-        for i,v in next, LocalPlayer.Character:GetChildren() do
-            if v:IsA('Tool') and (v.Name == ITEM_NAME or string.find(v.Name, ITEM_NAME)) then 
-                return v 
-            end
-        end
-    end
-    
-    if CheckItem("God's Chalice") or CheckItem("Fist of Darkness") or CheckItem("Sweet Chalice") or CheckItem("Hallow Essence") or CheckItem("Flower1") then
-        return true
-    end
-    -- [FIX BYPASS-LEGENDARY] (yeu cau user) mo rong danh sach vat pham lam mat quyen bypass:
-    -- Flower2/Flower3 (hoa Tonton), chip cac loai + Core Brain (vu khi khong duoc lam roi khi
-    -- BypassTP nham spawn), de tranh mat/treo item.
-    if CheckItem("Flower2") or CheckItem("Flower3") or CheckItem("Special Microchip") or CheckItem("Chip") or CheckItem("Microchip") or CheckItem("Core Brain") or CheckItem("Cup") or CheckItem("Holy Torch") then
-        return true
-    end
-    return false
-end
-
-function WaitForHumanoid()
-    local Character = LocalPlayer.Character
-    if not Character then return nil end
-    
-    local Humanoid = Character:FindFirstChild("Humanoid")
-    if Humanoid then return Humanoid end
-    
-    local timeout = tick() + 5
-    while tick() < timeout do
-        Humanoid = Character:FindFirstChild("Humanoid")
-        if Humanoid then return Humanoid end
-        __DIO_wait(0.1)
-    end
-    return nil
-end
+-- [REMOVED] Bypass Teleport: game da fix -> xoa toan bo (CanBypassTeleport/GetBypassCFrame/BypassTP/GetSpawnPoint/CheckLegendaryItems/WaitForHumanoid + toggle UI). Teleport chay tween thuong.
 
 function checkinventory(v)
     -- [FIX PERF 56] PHAN TICH (hot path tween+farm): ham nay INVOKE "getInventory" TRUC TIEP
@@ -1737,88 +1684,6 @@ function __DIO_MobNear(pos)
     end
     __DIO_MobNearR = near
     return near
-end
-
-function CanBypassTeleport(x)
-    -- [FIX PERF 57] PHAN TICH (hot path tween+farm): ban cu goi InArea(x) TRUOC = quet 50-100
-    -- Locations (FindFirstChild Mesh tung vung) MOI LAN _tp (4 lan/s khi farm), trong khi dieu
-    -- kien re nhat la khoang cach <= 3500 (farm cung bai chi chay nhanh nay va return false NGAY).
-    -- Doi thu tu khong doi ket qua boolean (false neu bat ky dieu kien nao sai).
-    if GetDistance(x.Position) <= 3500 then
-        return false
-    end
-    local AreaName = __DIO_InAreaCached(x).Name
-    if AreaName == "" then return false end
-    
-    if not Settings["Bypass Teleport"] 
-        or AreaName:find("Dimension") 
-        or AreaName:find("Submerged") 
-        or AreaName == "Sealed Cavern" 
-        or AreaName:lower():find("mirror") -- [FIX BYPASS-MIRROR] Mirror World luon tween thuong
-        or AreaName:lower():find("under") 
-        or CheckLegendaryItems() then
-        return false
-    end
-    
-    -- [FIX BYPASS-MIRROR] (yeu cau user) bat ky noi nao KHONG co diem respawn/spawn (PlayerSpawns)
-    -- gan dich den -> BypassTP khong co moc spawn de neo -> bat buoc tween thuong, khong bypass.
-    if not GetSpawnPoint(x) then
-        return false
-    end
-    
-    if LocalPlayer.Data and LocalPlayer.Data.LastSpawnPoint and LocalPlayer.Data.LastSpawnPoint.Value == "SubmergedIsland" then 
-        return false 
-    end
-    
-    return true
-end
-
-function GetBypassCFrame(x)
-    local Max = math.huge
-    local Pos
-    local Spawns = workspace._WorldOrigin.PlayerSpawns.Pirates:GetChildren()
-    local HRP = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not HRP then return nil end
-    
-    for i,v in next, Spawns do
-        if v:FindFirstChild("Part") then
-            if (x.Position - HRP.Position).Magnitude >= 3000 
-            and GetSpawnPoint(v.Part) ~= GetSpawnPoint(HRP) 
-            and (v.Part.Position - HRP.Position).Magnitude <= 10000 
-            and (v.Part.Position - x.Position).Magnitude <= Max then
-                Max = (v.Part.Position - x.Position).Magnitude
-                Pos = v
-            end
-        end
-    end
-    return Pos
-end
-
-function BypassTP(Target, __SkipCanCheck)
-    -- [FIX PERF 58] PHAN TICH: ban cu kiem tra CanBypassTeleport (InArea quet Locations + GetDistance)
-    -- LAN THU HAI va goi GetBypassCFrame DU CACH o day. Caller _tp vua kiem CanBypassTeleport roi
-    -- -> truyen __SkipCanCheck = true de bo qua; GetBypassCFrame chi goi dung 1 lan.
-    local Character = LocalPlayer.Character
-    if not Character then return end
-    
-    local Humanoid = WaitForHumanoid()
-    if not Humanoid or Humanoid.Health <= 0 then return end
-    
-    local TargetTP = nil
-    if __SkipCanCheck or CanBypassTeleport(Target) then
-        TargetTP = GetBypassCFrame(Target)
-    end
-    if TargetTP and TargetTP:FindFirstChild("Part") then -- [FIX PERF 58]
-            Character.LastSpawnPoint.Disabled = true
-            ReplicatedStorage.Remotes.CommF_:InvokeServer("SetLastSpawnPoint", TargetTP.Name)
-            ReplicatedStorage.Remotes.CommF_:InvokeServer("SetSpawnPoint")
-            Character:PivotTo(TargetTP.Part.CFrame)
-            Humanoid:ChangeState(15)
-            
-            repeat 
-                task.wait() 
-            until LocalPlayer.Character and WaitForHumanoid() and WaitForHumanoid().Health > 0
-    end
 end
 
 function totopofgreattree()
@@ -1920,13 +1785,6 @@ _tp = function(target)
     local character = plr.Character
     if not character or not character:FindFirstChild("HumanoidRootPart") then return end
     local rootPart = character.HumanoidRootPart
-    
-    pcall(function()
-        if CanBypassTeleport(gg) then
-            BypassTP(gg, true) -- [FIX PERF 58] caller da kiem, khong kiem lai (tiet kiem 2 quet moi lan)
-            __DIO_wait(0.5)
-        end
-    end)
     
     -- [FIX FPS-A] NGUON DROP FPS SO 1: requestentrance() duoc goi trong MOI lan _tp (~4 lan/s
     -- khi farm, 286 diem goi _tp trong hub). Ham do: (a) tao 1 TABLE MOI 4-10 Vector3 moi lan
@@ -5722,14 +5580,6 @@ Default = true,
 Callback = function(Value)
   _B = Value
 end})
-Tabs.Settings:AddToggle({
-	Name = "Bypass Teleport", 
-	Description = "", 
-	Default = false, 
-	Callback = function(Value) 
-	  Settings["Bypass Teleport"] = Value
-end
-}) 
 Tabs.Settings:AddToggle({
 	Name = "Up Y When Low Health", 
 	Description = "", -- [FIX-SYNTAX] thieu phau, loi san co trong ban user gui (chua compile qua)
@@ -11024,46 +10874,6 @@ DevEsp = function()
 end
 
 
-flowerEsp = function()
-    for i,v in pairs(workspace:GetChildren()) do
-        pcall(function()
-            if v.Name == "Flower2" or v.Name == "Flower1" then
-                if FlowerESP then 
-                    if not v:FindFirstChild('NameEsp'..Number) then
-                        local bill = Instance.new('BillboardGui',v)
-                        bill.Name = 'NameEsp'..Number
-                        bill.ExtentsOffset = Vector3.new(0, 1, 0)
-                        bill.Size = UDim2.new(1,200,1,30)
-                        bill.Adornee = v
-                        bill.AlwaysOnTop = true
-                        local name = Instance.new('TextLabel',bill)
-                        name.Font = Enum.Font.Code
-                        name.FontSize = "Size14"
-                        name.TextWrapped = true
-                        name.Size = UDim2.new(1,0,1,0)
-                        name.TextYAlignment = 'Top'
-                        name.BackgroundTransparency = 1
-                        name.TextStrokeTransparency = 0.5
-                        name.TextColor3 = Color3.fromRGB(88, 214, 252)
-                        if v.Name == "Flower1" then 
-                            name.Text = ("Blue Flower" ..' \n'.. round((plr.Character.Head.Position - v.Position).Magnitude/3) ..' M')
-                        elseif v.Name == "Flower2" then
-                            name.Text = ("Red Flower" ..' \n'.. round((plr.Character.Head.Position - v.Position).Magnitude/3) ..' M')
-                        end
-                    else
-                        v['NameEsp'..Number].TextLabel.Text = (v.Name ..'   \n'.. round((plr.Character.Head.Position - v.Position).Magnitude/3) ..' M')
-                    end
-                else
-                    if v:FindFirstChild('NameEsp'..Number) then
-                        v:FindFirstChild('NameEsp'..Number):Destroy()
-                    end
-                end
-            end   
-        end)
-    end
-end
-
-
 EventIslandEsp = function()
     for i, v in pairs(workspace._WorldOrigin.Locations:GetChildren()) do
         pcall(function()
@@ -11088,42 +10898,6 @@ EventIslandEsp = function()
                         name.Text = (v.Name .. "   \n" .. round((plr.Character.Head.Position - v.Position).Magnitude / 3) .. " M")
                     else
                         v.NameEsp.TextLabel.Text = v.Name .. "   \n" .. round((plr.Character.Head.Position - v.Position).Magnitude / 3) .. " M"
-                    end
-                end
-            else
-                if v:FindFirstChild("NameEsp") then
-                    v:FindFirstChild("NameEsp"):Destroy()
-                end
-            end
-        end)
-    end
-end
-
-
-gearEsp = function()
-    for _,v in pairs(workspace.Map.MysticIsland:GetDescendants()) do
-        pcall(function()
-            if ESPGear then
-                if v.Name == "Part" and v.Material == Enum.Material.Neon then
-                    if not v:FindFirstChild("NameEsp") then
-                        local bill = Instance.new("BillboardGui", v)
-                        bill.Name = "NameEsp"
-                        bill.ExtentsOffset = Vector3.new(0, 1, 0)
-                        bill.Size = UDim2.new(1, 200, 1, 30)
-                        bill.Adornee = v
-                        bill.AlwaysOnTop = true
-                        local name = Instance.new("TextLabel", bill)
-                        name.Font = "Code"
-                        name.FontSize = "Size14"
-                        name.TextWrapped = true
-                        name.Size = UDim2.new(1, 0, 1, 0)
-                        name.TextYAlignment = "Top"
-                        name.BackgroundTransparency = 1
-                        name.TextStrokeTransparency = 0.5
-                        name.TextColor3 = Color3.fromRGB(80, 245, 245)
-                        name.Text = ("Gear" .."   \n" .. round((plr.Character.Head.Position - v.Position).Magnitude / 3).. " M")
-                    else
-                        v["NameEsp"].TextLabel.Text =("Gear" .."   \n" .. round((plr.Character.Head.Position - v.Position).Magnitude / 3).. " M")
                     end
                 end
             else
@@ -11327,88 +11101,7 @@ ChestEsp = function()
 end
 
 
-berriesEsp = function()
-    if BerryEsp then
-        local CollectionService = __SVC_CS
-        local BerryBushes = CollectionService:GetTagged("BerryBush")
-        for _, Bush in ipairs(BerryBushes) do
-            pcall(function()
-                local bushPosition = Bush.Parent:GetPivot().Position
-                for _, BerryName in pairs(Bush:GetAttributes()) do
-                    if BerryName then
-                        local espPartName = "BerryEspPart_" .. BerryName .. "_" .. tostring(bushPosition)
-                        local existingEsp = workspace:FindFirstChild(espPartName)
-                        
-                        if not existingEsp then
-                            existingEsp = Instance.new("Part")
-                            existingEsp.Name = espPartName
-                            existingEsp.Transparency = 1
-                            existingEsp.Size = Vector3.new(1, 1, 1)
-                            existingEsp.Anchored = true
-                            existingEsp.CanCollide = false
-                            existingEsp.Parent = workspace
-                            existingEsp.CFrame = CFrame.new(bushPosition)
-                        end
-                        
-                        if not existingEsp:FindFirstChild("NameEsp") then
-                            local nameEsp = Instance.new("BillboardGui", existingEsp)
-                            nameEsp.Name = "NameEsp"
-                            nameEsp.ExtentsOffset = Vector3.new(0, 1, 0)
-                            nameEsp.Size = UDim2.new(0, 200, 0, 30)
-                            nameEsp.Adornee = existingEsp
-                            nameEsp.AlwaysOnTop = true
-                            
-                            local nameLabel = Instance.new("TextLabel", nameEsp)
-                            nameLabel.Font = Enum.Font.Code
-                            nameLabel.TextSize = 14
-                            nameLabel.TextWrapped = true
-                            nameLabel.Size = UDim2.new(1, 0, 1, 0)
-                            nameLabel.TextYAlignment = Enum.TextYAlignment.Top
-                            nameLabel.BackgroundTransparency = 1
-                            nameLabel.TextStrokeTransparency = 0.5
-                            nameLabel.TextColor3 = Color3.fromRGB(80, 245, 245)
-                        end
-                        
-                        local nameEsp = existingEsp:FindFirstChild("NameEsp")
-                        local distance = (plr.Character.Head.Position - bushPosition).Magnitude / 3
-                        if nameEsp then
-                            nameEsp.TextLabel.Text = ('[' .. BerryName .. ']' .. " " .. math.round(distance) .. " M")
-                        end
-                    end
-                end
-            end)
-        end
-    else
-        for _, v in ipairs(workspace:GetChildren()) do
-            if v:IsA("Part") and v.Name:match("BerryEspPart_.*") then
-                v:Destroy()
-            end
-        end
-    end
-end
-
-Tabs.Esp:AddToggle({
-    Name = "Esp Berry",
-    Description = "",
-    Default = false,
-    Callback = function(Value)
-        BerryEsp = Value
-        if not Value then
-            for _, v in ipairs(workspace:GetChildren()) do
-                if v:IsA("Part") and v.Name:match("BerryEspPart_.*") then
-                    v:Destroy()
-                end
-            end
-        else
-            task.spawn(function()
-                while BerryEsp do
-pcall(berriesEsp) -- [FIX PERF 28] pcall: helper dung plr.Character.Head -> nhan vat chet la thread ESP chet im lang
-                    __DIO_wait(0.4) -- [FIX FPS 4] moi frame -> 0.4s
-                end
-            end)
-        end
-    end
-})
+-- [REMOVED] Esp Berry / Esp Flower / Esp Gear: da xoa toggle + helper (berriesEsp/flowerEsp/gearEsp) theo yeu cau.
 
 Tabs.Esp:AddToggle({
     Name = "Esp Player",
@@ -11512,31 +11205,6 @@ pcall(LocationEsp) -- [FIX PERF 28] pcall: helper dung plr.Character.Head -> nha
 })
 
 Tabs.Esp:AddToggle({
-    Name = "Esp Flower",
-    Description = "",
-    Default = false,
-    Callback = function(Value)
-        FlowerESP = Value
-        if not Value then
-            for i,v in pairs(workspace:GetChildren()) do
-                pcall(function()
-                    if (v.Name == "Flower2" or v.Name == "Flower1") and v:FindFirstChild('NameEsp'..Number) then
-                        v:FindFirstChild('NameEsp'..Number):Destroy()
-                    end
-                end)
-            end
-        else
-            task.spawn(function()
-                while FlowerESP do
-pcall(flowerEsp) -- [FIX PERF 28] pcall: helper dung plr.Character.Head -> nhan vat chet la thread ESP chet im lang
-                    __DIO_wait(0.4) -- [FIX FPS 4] moi frame -> 0.4s
-                end
-            end)
-        end
-    end
-})
-
-Tabs.Esp:AddToggle({
     Name = "Esp Legendary Sword",
     Description = "",
     Default = false,
@@ -11571,31 +11239,6 @@ Tabs.Esp:AddToggle({
             task.spawn(function()
                 while ColorEsp do
 pcall(HakiClorEsp) -- [FIX PERF 28] pcall: helper dung plr.Character.Head -> nhan vat chet la thread ESP chet im lang
-                    __DIO_wait(0.4) -- [FIX FPS 4] moi frame -> 0.4s
-                end
-            end)
-        end
-    end
-})
-
-Tabs.Esp:AddToggle({
-    Name = "Esp Gear",
-    Description = "",
-    Default = false,
-    Callback = function(Value)
-        ESPGear = Value
-        if not Value then
-            for _,v in pairs(workspace.Map.MysticIsland:GetDescendants()) do
-                pcall(function()
-                    if v:FindFirstChild("NameEsp") then
-                        v:FindFirstChild("NameEsp"):Destroy()
-                    end
-                end)
-            end
-        else
-            task.spawn(function()
-                while ESPGear do
-pcall(gearEsp) -- [FIX PERF 28] pcall: helper dung plr.Character.Head -> nhan vat chet la thread ESP chet im lang
                     __DIO_wait(0.4) -- [FIX FPS 4] moi frame -> 0.4s
                 end
             end)
