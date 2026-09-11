@@ -1984,7 +1984,10 @@ end
 spawn(function()
   while __DIO_wait(0.1) do -- [FIX LAG] mỗi frame -> 0.1s
     pcall(function()
-      if _G.SailBoat_Hydra or _G.WardenBoss or _G.AutoFactory or _G.HighestMirage or _G.HCM or _G.PGB or _G.Leviathan1 or _G.UPGDrago or _G.Complete_Trials or _G.TpDrago_Prehis or _G.BuyDrago or _G.AutoFireFlowers or _G.DT_Uzoth or _G.AutoBerry or _G.Prefully or _G.Prehis_Find or _G.Prehis_Skills or _G.Prehis_DB or _G.Prehis_DE or _G.FarmBlazeEM or _G.Dojoo or _G.CollectPresent or _G.AutoLawKak or _G.TpLab or _G.AutoPhoenixF or _G.AutoFarmChest or _G.AutoHytHallow or _G.LongsWord or _G.BlackSpikey or _G.AutoHolyTorch or _G.TrainDrago  or _G.AutoSaber or _G.FarmMastery_Dev or _G.CitizenQuest or _G.AutoEctoplasm or _G.KeysRen or _G.Auto_Rainbow_Haki or _G.obsFarm or _G.AutoBigmom or _G.Doughv2 or _G.AuraBoss or _G.Raiding or _G.Auto_Cavender or _G.TpPly or _G.Bartilo_Quest or _G.Level or _G.FarmEliteHunt or _G.AutoZou or _G.AutoFarm_Bone or getgenv().AutoMaterial or _G.CraftVM or _G.FrozenTP or _G.ShotHL or _G.TPDoor or _G.AcientOne or _G.AutoFarmNear or _G.AutoRaidCastle or _G.DarkBladev3 or _G.AutoFarmRaid or _G.Auto_Cake_Prince or _G.Addealer or _G.TPNpc or _G.TwinHook or _G.FindMirage or _G.FrozenDimension or _G.FarmChestM or _G.Shark or _G.TerrorShark or _G.Piranha or _G.MobCrew or _G.SeaBeast1 or _G.FishBoat or _G.AutoPole or _G.AutoPoleV2 or _G.Auto_SuperHuman or _G.AutoDeathStep or _G.Auto_SharkMan_Karate or _G.Auto_Electric_Claw or _G.AutoDragonTalon or _G.Auto_Def_DarkCoat or _G.Auto_God_Human or _G.Auto_Tushita or _G.AutoMatSoul or _G.AutoKenVTWO or _G.AutoSerpentBow or _G.AutoFMon or _G.Auto_Soul_Guitar or _G.TPGEAR or _G.AutoSaw or _G.AutoTridentW2 or _G.AutoEvoRace or _G.AutoGetQuestBounty or _G.MarinesCoat or _G.TravelDres or _G.Defeating or _G.DummyMan or _G.Auto_Yama or _G.Auto_SwanGG or _G.SwanCoat or _G.AutoEcBoss or _G.Auto_Mink or _G.Auto_Human or _G.Auto_Skypiea or _G.Auto_Fish or _G.CDK_TS or _G.CDK_YM or _G.CDK or _G.AutoFarmGodChalice or _G.AutoFistDarkness or _G.AutoMiror or _G.Teleport or _G.AutoKilo or _G.AutoGetUsoap or _G.Praying or _G.TryLucky or _G.AutoColShad or _G.AutoUnHaki or _G.Auto_DonAcces or _G.AutoRipIngay or _G.DragoV3 or _G.DragoV1 or _G.SailBoats or NextIs or _G.FarmGodChalice or _G.IceBossRen or senth or senth2 or _G.Lvthan or _G.beasthunter or _G.DangerLV or _G.Relic123 or _G.tweenKitsune or _G.Collect_Ember or _G.AutofindKitIs or _G.snaguine or _G.TwFruits or _G.tweenKitShrine or _G.Tp_LgS or _G.Tp_MasterA or _G.tweenShrine or _G.FarmMastery_G or _G.FarmMastery_S or _G.FarmBoss or _G.AutoFarmAllBoss or _G.AutoFishSlap or _G.FarmTyrant or _G.FarmPhaBinh or _G.AutoSpawnCP or _G.AutoBerryH or _G.AutoChestBP or _G.FarmEliteHop or _G.AutoHop_Dough or _G.AutoDoughKing or _G.AutoAttackDoughKing or _G.AutoChipFruit or _G.AutoChipBeli or _G.StartEvent or _G.AutoMysticIsland or _G.AutoPlayerHunter or _G.SafeMode or _G.AutoKillMob or _G.AutoStartPrehistoric or _G.AutoUnHaki or _G.AutoFarmIsland or _G.AutoFarmDungeon or _G.AutoFarmCandy or _G.AutoTP_Gift or _G.AutoTPGift or _G.AutoTPAndCollect or _G.MasterAutoLevel or _G.MasterAutoCandy or _G.TPFloor1 or _G.TPFloor2 or _G.TPFloor3 or _G.TPFloor4 or _G.FarmEliteH or _G.Safemode or _G.Greybeard or _G.ResetPH then -- [FIX FLYBUSY-FLAG] 4 toggle co loop rieng nhung khong nam trong cond list -> stomper stomp shouldTween moi 0.1s -> khong bao gio bay (cung benh BuyMelee cu)          
+      -- [FIX BUY-TWEEN] them co __DIO_BuyFlying (chi true TRONG LUC nut Buy Melee dang bay den
+      -- teacher) -> shouldTween=true de he thong goc keo nhan vat theo block: DUNG co che ma
+      -- Auto Farm Bone / Auto Farm Cake Prince dang bay ngon. Khong con phai hack block/shouldTween.
+      if _G.SailBoat_Hydra or _G.WardenBoss or _G.AutoFactory or _G.HighestMirage or _G.HCM or _G.PGB or _G.Leviathan1 or _G.UPGDrago or _G.Complete_Trials or _G.TpDrago_Prehis or _G.BuyDrago or __DIO_BuyFlying or _G.AutoFireFlowers or _G.DT_Uzoth or _G.AutoBerry or _G.Prefully or _G.Prehis_Find or _G.Prehis_Skills or _G.Prehis_DB or _G.Prehis_DE or _G.FarmBlazeEM or _G.Dojoo or _G.CollectPresent or _G.AutoLawKak or _G.TpLab or _G.AutoPhoenixF or _G.AutoFarmChest or _G.AutoHytHallow or _G.LongsWord or _G.BlackSpikey or _G.AutoHolyTorch or _G.TrainDrago  or _G.AutoSaber or _G.FarmMastery_Dev or _G.CitizenQuest or _G.AutoEctoplasm or _G.KeysRen or _G.Auto_Rainbow_Haki or _G.obsFarm or _G.AutoBigmom or _G.Doughv2 or _G.AuraBoss or _G.Raiding or _G.Auto_Cavender or _G.TpPly or _G.Bartilo_Quest or _G.Level or _G.FarmEliteHunt or _G.AutoZou or _G.AutoFarm_Bone or getgenv().AutoMaterial or _G.CraftVM or _G.FrozenTP or _G.ShotHL or _G.TPDoor or _G.AcientOne or _G.AutoFarmNear or _G.AutoRaidCastle or _G.DarkBladev3 or _G.AutoFarmRaid or _G.Auto_Cake_Prince or _G.Addealer or _G.TPNpc or _G.TwinHook or _G.FindMirage or _G.FrozenDimension or _G.FarmChestM or _G.Shark or _G.TerrorShark or _G.Piranha or _G.MobCrew or _G.SeaBeast1 or _G.FishBoat or _G.AutoPole or _G.AutoPoleV2 or _G.Auto_SuperHuman or _G.AutoDeathStep or _G.Auto_SharkMan_Karate or _G.Auto_Electric_Claw or _G.AutoDragonTalon or _G.Auto_Def_DarkCoat or _G.Auto_God_Human or _G.Auto_Tushita or _G.AutoMatSoul or _G.AutoKenVTWO or _G.AutoSerpentBow or _G.AutoFMon or _G.Auto_Soul_Guitar or _G.TPGEAR or _G.AutoSaw or _G.AutoTridentW2 or _G.AutoEvoRace or _G.AutoGetQuestBounty or _G.MarinesCoat or _G.TravelDres or _G.Defeating or _G.DummyMan or _G.Auto_Yama or _G.Auto_SwanGG or _G.SwanCoat or _G.AutoEcBoss or _G.Auto_Mink or _G.Auto_Human or _G.Auto_Skypiea or _G.Auto_Fish or _G.CDK_TS or _G.CDK_YM or _G.CDK or _G.AutoFarmGodChalice or _G.AutoFistDarkness or _G.AutoMiror or _G.Teleport or _G.AutoKilo or _G.AutoGetUsoap or _G.Praying or _G.TryLucky or _G.AutoColShad or _G.AutoUnHaki or _G.Auto_DonAcces or _G.AutoRipIngay or _G.DragoV3 or _G.DragoV1 or _G.SailBoats or NextIs or _G.FarmGodChalice or _G.IceBossRen or senth or senth2 or _G.Lvthan or _G.beasthunter or _G.DangerLV or _G.Relic123 or _G.tweenKitsune or _G.Collect_Ember or _G.AutofindKitIs or _G.snaguine or _G.TwFruits or _G.tweenKitShrine or _G.Tp_LgS or _G.Tp_MasterA or _G.tweenShrine or _G.FarmMastery_G or _G.FarmMastery_S or _G.FarmBoss or _G.AutoFarmAllBoss or _G.AutoFishSlap or _G.FarmTyrant or _G.FarmPhaBinh or _G.AutoSpawnCP or _G.AutoBerryH or _G.AutoChestBP or _G.FarmEliteHop or _G.AutoHop_Dough or _G.AutoDoughKing or _G.AutoAttackDoughKing or _G.AutoChipFruit or _G.AutoChipBeli or _G.StartEvent or _G.AutoMysticIsland or _G.AutoPlayerHunter or _G.SafeMode or _G.AutoKillMob or _G.AutoStartPrehistoric or _G.AutoUnHaki or _G.AutoFarmIsland or _G.AutoFarmDungeon or _G.AutoFarmCandy or _G.AutoTP_Gift or _G.AutoTPGift or _G.AutoTPAndCollect or _G.MasterAutoLevel or _G.MasterAutoCandy or _G.TPFloor1 or _G.TPFloor2 or _G.TPFloor3 or _G.TPFloor4 or _G.FarmEliteH or _G.Safemode or _G.Greybeard or _G.ResetPH then -- [FIX FLYBUSY-FLAG] 4 toggle co loop rieng nhung khong nam trong cond list -> stomper stomp shouldTween moi 0.1s -> khong bao gio bay (cung benh BuyMelee cu)          
        shouldTween = true
         -- [FIX FPS-FINAL-2] khi NGOI THUYEN bay (find Leviathan/Frozen/Prehis/Kitsune): chi can
         -- shouldTween=true de mover keo block. KHONG gan BodyClip (BodyVelocity chong lai chuyen
@@ -4496,7 +4499,7 @@ task.spawn(function()
 end)
 CakeQ = Tabs.Main:AddToggle({
 Name = "Accept Cake Prince Quests",
-Description = "Nhận quest bánh khi bật Auto Farm Cake Prince",
+Description = "",
 Default = false,
 Callback = function(Value)
   _G.AcceptQuestC = Value
@@ -4856,7 +4859,7 @@ spawn(function()
 end)
 BoneQ = Tabs.Main:AddToggle({
 Name = "Accept Bone Quests",
-Description = "Nhận quest bone khi bật Auto Farm Bone",
+Description = "",
 Default = false,
 Callback = function(Value)
   _G.AcceptQuestB = Value
@@ -5561,7 +5564,7 @@ Callback = function(Value)
 end})
 SkilluserFarm = Tabs.Settings:AddToggle({
 Name = "Auto Use Skill Melee/Sword If lag Mob or Ghost Mob", 
-Description = "Bat = khi mob lag/ghost (3s khong hut damage khi dang danh) tu dong dung skill cua vu khi (Melee/Sword/...) AIM vao mob do", 
+Description = "", 
 Default = false,
 Callback = function(Value)
   _G.AutoSkillGhost = Value
@@ -5691,7 +5694,7 @@ Tabs.Settings:AddSlider({
 Tabs.Settings:AddSection("Settings / Configure")
 SaveSetting = Tabs.Settings:AddToggle({
 Name = "Auto Save Serve old", 
-Description = "Bat = tu dong ghi cai dat ra file khi doi toggle / Tat = chi giu trong RAM", 
+Description = "", 
 Default = true,
 Callback = function(Value)
   _G.DIO_AutoSave = Value
@@ -9908,7 +9911,27 @@ spawn(function()
     end
 end)
 
+-- [FIX PREHIS-CONFLICT] (yeu cau user) Toggle "Auto Patch Prehistoric Event" chay 2 loop:
+-- loop GOLEM (Lava Golem) va loop ROCK (VolcanoRocks). Khi ca 2 muc tieu cung ton tai thi moi
+-- loop _tp() ve 1 noi khac nhau moi 0.1s -> 2 loop GIANH TWEEN cua nhau, nhan vat giat qua
+-- giat lai, khong ben nao chet.
+-- FIX: UU TIEN GOLEM TRUOC - ROCK SAU.
+--   * Loop rock CHI chay khi khong con Lava Golem song; con golem -> rock ngung hoan toan.
+--   * Golem xuat hien GIUA luc dang pha rock -> rock NHUONG NGAY (break) de golem giu tween.
+--   * Golem chet het -> vong rock ke tiep tu dong danh tiep rock volcano.
+__DIO_PrehisGolemT = 0
+__DIO_PrehisGolemR = false
+function __DIO_PrehisHasGolem()
+    -- cache 0.3s: loop rock goi ham nay moi 0.1s, quet Enemies lien tuc se ton CPU vo ich
+    if tick() - __DIO_PrehisGolemT < 0.3 then return __DIO_PrehisGolemR end
+    __DIO_PrehisGolemT = tick()
+    local g = GetConnectionEnemies("Lava Golem") -- ham nay chi tra ve model con Humanoid.Health > 0
+    __DIO_PrehisGolemR = (g ~= nil and g.Parent ~= nil)
+    return __DIO_PrehisGolemR
+end
+
 spawn(function()
+    -- LOOP 1 (UU TIEN CAO NHAT): kill Lava Golem
     while __DIO_wait(Sec) do
         if _G.Prehis_Skills then
             pcall(function()
@@ -9921,6 +9944,9 @@ spawn(function()
                     until not _G.Prehis_Skills
                         or not golem.Parent
                         or golem.Humanoid.Health <= 0
+                    -- golem vua chet/mat -> xoa cache de loop rock duoc phep chay NGAY vong sau
+                    __DIO_PrehisGolemT = 0
+                    __DIO_PrehisGolemR = false
                 end
             end)
         end
@@ -9929,9 +9955,12 @@ end)
 
 
 spawn(function()
+    -- LOOP 2 (UU TIEN THAP): pha VolcanoRocks - CHI chay khi khong con golem
     while __DIO_wait(Sec) do
         if _G.Prehis_Skills then
             pcall(function()
+                if __DIO_PrehisHasGolem() then return end -- con golem song -> nhuong tween, khong pha rock
+
                 local island = workspace.Map:FindFirstChild("PrehistoricIsland")
                 if not island then return end
 
@@ -9942,6 +9971,7 @@ spawn(function()
                 if not rocks then return end
 
                 for _, rock in pairs(rocks:GetChildren()) do
+                    if __DIO_PrehisHasGolem() then return end -- golem spawn giua chung -> nhuong ngay
                     local layer = rock:FindFirstChild("VFXLayer")
                     local at0 = layer and layer:FindFirstChild("At0")
                     local glow = at0 and at0:FindFirstChild("Glow")
@@ -9949,18 +9979,24 @@ spawn(function()
                     if glow and glow.Enabled then
                         repeat
                             wait(0.1)
+                            if __DIO_PrehisHasGolem() then break end -- tra tween cho golem lap tuc
                             _tp(layer.CFrame)
 
                             if plr:DistanceFromCharacter(layer.CFrame.Position) <= 150 then
                                 MousePos = layer.CFrame.Position
                                 Useskills("Melee","Z") wait(.4)
+                                if __DIO_PrehisHasGolem() then break end
                                 Useskills("Melee","X") wait(.4)
+                                if __DIO_PrehisHasGolem() then break end
                                 Useskills("Melee","C") wait(.4)
+                                if __DIO_PrehisHasGolem() then break end
                                 Useskills("Blox Fruit","Z") wait(.4)
+                                if __DIO_PrehisHasGolem() then break end
                                 Useskills("Blox Fruit","X") wait(.4)
+                                if __DIO_PrehisHasGolem() then break end
                                 Useskills("Blox Fruit","C")
                             end
-                        until not _G.Prehis_Skills or not glow.Enabled
+                        until not _G.Prehis_Skills or not glow.Enabled or __DIO_PrehisHasGolem()
                     end
                 end
             end)
@@ -10277,7 +10313,7 @@ end})
 -- [DODGE] Toggle bat/tat + slider do cao ne don
 Tabs.SeaEvent:AddToggle({
 Name = "Dodge Sea Beast / Terror Shark",
-Description = "Bay len khi phat hien don, ha xuong danh tiep",
+Description = "",
 Default = true,
 Callback = function(Value)
   _G.DodgeSeaBeast = Value
@@ -11637,12 +11673,10 @@ StartR = Tabs.Raids:AddToggle({
 })
 
 task.spawn(function()
-    -- [FIX RAID-START-ORDER] (yeu cau user) Auto Start Raid: KHONG fire prompt khi nguoi dang
-    -- o XA nut (ProximityPrompt chi an trong pham vi gan) -> truoc do phai tween toi dung vi tri
-    -- room-start CFrame.new(-5059.1748, 314.863464, -2923.36108) (World3 / Boat Castle), cho toi
-    -- noi (hoac het timeout) ROI MOI kich hoat RaidSummon2.Button.Main. Thoi tu tu khong trong raid.
-    -- World2 (CircleIsland) khong co CFrame user cung cap -> dung moc sat nut RaidSummon2 luon.
-    local __RAID_ROOM_START = CFrame.new(-5059.1748, 314.863464, -2923.36108)
+    -- [FIX RAID-NO-TWEEN] (yeu cau user) Auto Start Raid KHONG tween den CFrame khu buy chip nua
+    -- (Sea 2: nut RaidSummon2 o CircleIsland / Sea 3: room-start Boat Castle). Chi tim nut theo
+    -- world roi fire ProximityPrompt / ClickDetector TRUC TIEP -> khong con canh bay loanh quanh,
+    -- khong gianh tween voi cac vong farm khac.
     while __DIO_wait(Sec) do
         if not _G.Auto_StartRaid then continue end
 
@@ -11674,36 +11708,7 @@ task.spawn(function()
             end
             if not btn then return end
 
-            local char = plr.Character
-            local root = char and char:FindFirstChild("HumanoidRootPart")
-            if not root then return end
-
-            -- Buoc 1: tween den vi tri dung truoc nut (diem room-start cua user khi o World3)
-            local startCF
-            if World3 then
-                startCF = __RAID_ROOM_START
-            else
-                local posPart = btn:IsA("BasePart") and btn or btn:FindFirstChild("Part") or btn:FindFirstChildWhichIsA("BasePart")
-                if posPart then
-                    startCF = posPart.CFrame * CFrame.new(0, 2, 0)
-                end
-            end
-
-            if startCF and (root.Position - startCF.Position).Magnitude > 10 then
-                _tp(startCF) -- tween truoc, tuyet doi khong fire prompt khi con xa
-                local t0 = tick()
-                repeat
-                    __DIO_wait(0.2)
-                    local c2 = plr.Character
-                    local r2 = c2 and c2:FindFirstChild("HumanoidRootPart")
-                    if (r2 and (r2.Position - startCF.Position).Magnitude <= 10) or (tick() - t0 > 8) then
-                        break
-                    end
-                until false
-                __DIO_wait(0.2) -- cho phep server "nhan" nhan vat vao vung prompt
-            end
-
-            -- Buoc 2: da sat nut -> kich hoat prompt/click de mo raid
+            -- [FIX RAID-NO-TWEEN] bo buoc tween den nut: kich hoat prompt/click ngay tai cho
             local prompt = btn:FindFirstChild("ProximityPrompt", true)
             local clicker = btn:FindFirstChild("ClickDetector", true)
             if prompt then
@@ -13013,11 +13018,16 @@ __DIO_FlyTo = function(targetCF, arriveDist, cancelFn)
     shouldTween = __old
     return __ok
 end
--- [FIX BUY-TOGGLE 2/3] BuyMelee nang cap:
---  * nhan cancelFn (tham so 2) -> tat toggle thi huy giua duong bay, KHONG goi mua;
---  * co __DIO_BuyBusy: chi 1 chuyen bay tai mot thoi diem (truoc day bam nhieu nut la nhieu
---    chuyen bay tranh nhau -> giat, khong bao gio toi noi);
---  * van tuong thich nguoc: BuyMelee({npcs}, "BuyX", arg1, arg2) (khong truyen cancelFn).
+-- [FIX BUY-TWEEN] (yeu cau user) BO __DIO_FlyTo cho cac nut Buy Melee: bay BANG DUNG CACH CUA
+-- Auto Farm Bone / Auto Farm Cake Prince = chi goi _tp() moi nhip poll, con he thong goc
+-- (shouldTween -> OnFarm -> vong keo nhan vat theo block) tu lo viec bay.
+--   * KHONG chinh block.CFrame bang tay, KHONG tu gan shouldTween, KHONG dung __DIO_FlyBusy
+--     -> het canh 2 co che bay tranh nhau ("gan den dich lai bi keo ve cho cu" / dung yen).
+--   * shouldTween duoc bat qua cond-list cua vong stomper (co __DIO_BuyFlying, xem dong ~1987),
+--     chi true TRONG LUC dang bay -> den noi / tat toggle / loi la tha nhan vat ngay, khong dinh block.
+--   * Tat toggle giua duong -> cancelFn tra true -> dung ngay, khong mua.
+--   * __DIO_BuyBusy: chi 1 chuyen bay tai 1 thoi diem (nhieu nut bat cung luc khong tranh tween).
+__DIO_BuyFlying = false
 BuyMelee = function(npcNames, cancelFn, ...)
     local key, buyArgs
     if type(cancelFn) == "function" then
@@ -13028,7 +13038,7 @@ BuyMelee = function(npcNames, cancelFn, ...)
         buyArgs = { cancelFn, ... }
         cancelFn = nil
     end
-    -- [FIX BUY-MELEE 2/2] Khong con tim NPC theo ten (NPC khong load / sai sea -> nut Cam). Chon CF theo sea -> tween -> den noi moi mua.
+    -- Chon toa do teacher theo sea (khong tim NPC theo ten: NPC khong load / sai sea -> nut cam)
     local entry = __DIO_BUY_MELEE_CF[key]
     if not entry then
         pcall(function() Window:Notify({Title = "Buy Melee", Content = "Khong co toa do teacher cho: " .. tostring(key), Duration = 3}) end)
@@ -13039,21 +13049,40 @@ BuyMelee = function(npcNames, cancelFn, ...)
         pcall(function() Window:Notify({Title = "Buy Melee", Content = "Khong co toa do cho sea hien tai: " .. tostring(key), Duration = 3}) end)
         return
     end
-    if __DIO_BuyBusy then return end -- [FIX BUY-TOGGLE] dang co chuyen bay khac -> bo qua, khong tranh tween
+    if __DIO_BuyBusy then return end -- dang co chuyen bay khac -> bo qua, khong tranh tween
     __DIO_BuyBusy = true
-    task.spawn(function() -- [FIX BUY-MELEE 4/4] khong block UI; bay that bang __DIO_FlyTo
+    task.spawn(function() -- khong block UI
         local standCF = targetCF * CFrame.new(0, 0, 4) -- dung le 4 stud truoc teacher
         local __char0 = plr.Character
         local __hrp0 = __char0 and __char0:FindFirstChild("HumanoidRootPart")
         if not __hrp0 then __DIO_BuyBusy = false return end
         local dist0 = (standCF.Position - __hrp0.Position).Magnitude
         pcall(function() Window:Notify({Title = "Buy Melee", Content = "Dang bay den " .. tostring(npcNames[1]) .. " (" .. string.format("%.0f", dist0) .. " studs)", Duration = 3}) end)
-        local __arrived = __DIO_FlyTo(standCF, 15, cancelFn)
-        __DIO_BuyBusy = false -- [FIX BUY-TOGGLE] tha co truoc khi mua (mua la remote, khong phai "chuyen bay")
-        if cancelFn and cancelFn() then -- [FIX BUY-TOGGLE] toggle da tat trong luc bay -> KHONG mua
+
+        local __spd = math.max(tonumber(_G.TweenSpeed) or 300, 1)
+        local __timeout = math.min(math.max(dist0 / __spd + 25, 15), 300)
+        local __t0 = tick()
+        local __arrived, __cancelled = false, false
+
+        __DIO_BuyFlying = true   -- bat shouldTween (qua cond-list) trong suot chuyen bay
+        __DIO_wait(0.15)         -- cho vong stomper (0.1s) kip bat shouldTween truoc khi goi _tp
+        while true do
+            if cancelFn and cancelFn() then __cancelled = true break end -- tat toggle = dung ngay
+            local c2 = plr.Character
+            local h2 = c2 and c2:FindFirstChild("HumanoidRootPart")
+            if not h2 then break end                                     -- mat nhan vat / respawn
+            if (h2.Position - standCF.Position).Magnitude <= 15 then __arrived = true break end
+            if tick() - __t0 > __timeout then break end
+            _tp(standCF)           -- DUNG 1 tween cua source (_tp co dedupe 0.6s + huy tween cu san)
+            __DIO_wait(0.5)        -- nhip poll nhe, giong vong ngoai cua farm bone / farm cake
+        end
+        __DIO_BuyFlying = false    -- tha shouldTween -> het keo block, nhan vat tu do
+        __DIO_BuyBusy = false
+
+        if __cancelled then
             pcall(function() Window:Notify({Title = "Buy Melee", Content = "Da huy (toggle tat) - khong tween/mua nua.", Duration = 3}) end)
         elseif __arrived then
-            replicated.Remotes.CommF_:InvokeServer(unpack(buyArgs)) -- DA DEN NOI MOI GOI MUA (dung args goc cua tung nut)
+            replicated.Remotes.CommF_:InvokeServer(unpack(buyArgs)) -- DA DEN NOI MOI GOI MUA
         else
             pcall(function() Window:Notify({Title = "Buy Melee", Content = "Khong den duoc teacher trong 300s - chua mua. Bat lai toggle de thu lai.", Duration = 4}) end)
         end
@@ -13068,7 +13097,7 @@ Tabs.Shop:AddSection("Fighting - Style")
 __DIO_BuyMeleeToggles = {}
 __DIO_BuyMeleeToggles.BuyBlackLeg = Tabs.Shop:AddToggle({
 Name = "Buy Black Leg", 
-Description = "Bay den Dark Step Teacher va mua (tat = dung ngay)", 
+Description = "", 
 Default = false,
 Callback = function(Value)
   _G.BuyMelee_BuyBlackLeg = Value
@@ -13076,7 +13105,7 @@ Callback = function(Value)
 end})
 __DIO_BuyMeleeToggles.BuyElectro = Tabs.Shop:AddToggle({
 Name = "Buy Electro", 
-Description = "Bay den Mad Scientist va mua (tat = dung ngay)", 
+Description = "", 
 Default = false,
 Callback = function(Value)
   _G.BuyMelee_BuyElectro = Value
@@ -13084,7 +13113,7 @@ Callback = function(Value)
 end})
 __DIO_BuyMeleeToggles.BuyFishmanKarate = Tabs.Shop:AddToggle({
 Name = "Buy Fishman Karate", 
-Description = "Bay den Water Kung Fu Teacher va mua (tat = dung ngay)", 
+Description = "", 
 Default = false,
 Callback = function(Value)
   _G.BuyMelee_BuyFishmanKarate = Value
@@ -13092,7 +13121,7 @@ Callback = function(Value)
 end})
 __DIO_BuyMeleeToggles.BuyDragonClaw = Tabs.Shop:AddToggle({
 Name = "Buy DragonClaw", 
-Description = "Bay den Sabi, doi 1500 Fragments (tat = dung ngay)", 
+Description = "", 
 Default = false,
 Callback = function(Value)
   _G.BuyMelee_BuyDragonClaw = Value
