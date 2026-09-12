@@ -4128,7 +4128,7 @@ EliteH = Tabs.Main:AddToggle({
 	_G.FarmEliteH = Value
 end})
 
-Tabs.Combat:AddToggle({
+Tabs.Main:AddToggle({
     Name = "Auto Get PlayerQuest",
     Description = "",
     Default = false,
@@ -4137,7 +4137,7 @@ Tabs.Combat:AddToggle({
     end
 })
 
-Tabs.Combat:AddToggle({
+Tabs.Main:AddToggle({
     Name = "Auto Kill Player Quest", 
     Default = false,
     Callback = function(Value)
