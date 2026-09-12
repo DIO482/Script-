@@ -1857,13 +1857,17 @@ _tp = function(target)
         __speed = tonumber(_G.BoatTweenSpeed) or __speed
     end
     __speed = math.max(__speed, 1)
-    -- [FIX NEAR-TWEEN-v2] (yeu cau user "fix ngay"): toc do 600 chi XAY RA khi BAT toggle
-    -- "Tween speed 600 if near" (Neartween). Ban cu co 1 block FIX PERF 7 tu dong ~ gan dich
-    -- (<=150 stud) la 600 NGAY CA KHI TAT toggle -> da go bo. TAT = luon dung Speed Tween.
-    -- BAT = 600 khi (a) gan dich hoac (b) co mob gan nguoi (<150 stud); chi khi di bo (khong Sit),
-    -- ngoi thuyen van dung BoatTweenSpeed rieng. Muon doi ban kinh thi sua so 150 ben duoi.
-    if _G.Neartween and not (__humTween and __humTween.Sit)
-       and _G.ModeFarm ~= "Obrit" and _G.ModeFarm ~= "Dodge" then
+    -- [FIX NEAR-TWEEN-v3] SUA MOT LAN TRIET DE — day la DUY NHAT noi toan script quyyet dinh
+    -- toc do 600 (kiem tra: grep "600" chi bat o day). Dung cho MOI mode Farm (Normal/Obrit/Dodge):
+    --   * TAT toggle "Tween speed 600 if near" (_G.Neartween ~= true)
+    --       -> 600 BAO GIUONG khong xuat hien. Luon dung slider "Speed Tween"
+    --          (ngoai ngoi thuyen = BoatTweenSpeed). KHONG co co che nao khac tu dong 600.
+    --   * BAT toggle + di bo (khong Sit) -> 600 CHI KHI GAN:
+    --          (a) diem den cach <= 150 stud HOAC (b) co mob song trong ban kinh 150 stud quanh nguoi.
+    --   * Mode Obrit/Dodge: tween tiep can cua driver (dist > 250) cung noi gate nay —
+    --          tung duong bay vong / dam sau lung la driver frame (khong phai tween) nen
+    --          khong lien quan toc do 600. Toggle TAT = tung di chuyen dung toc do slider.
+    if _G.Neartween == true and not (__humTween and __humTween.Sit) then
         if distance <= 150 or __DIO_MobNear(rootPart.Position) then
             __speed = 600
         end
@@ -2832,10 +2836,58 @@ local function __DIO_IsGhost(mob)
     return __DIO_GhostSkip[mob] == true
 end
 
+-- [FIX SKILL-INSTANT 1/3] Truoc day: skill ghost chi duoc ban trong __DIO_GhostCheck sau khi
+-- mob 3 GIAY khong phai damage -> user bat toggle "Auto Use Skill Melee/Sword If lag Mob or
+-- Ghost Mob" nhung "khong dung skill fix NGAY LAP TUC" (phi 3s moi co loi).
+-- Bien theo doi mob hien tai: moi lan __DIO_GhostCheck(mob) duoc goi, mob do la "con dang danh".
+local __DIO_LastGhostMob = nil
+
+-- [FIX SKILL-INSTANT 2/3] Gom toan bo logic "ban skill vao mob ghost/lag" vao MOI ham chung
+-- (truoc day code nham trong __DIO_GhostCheck, khong choi lai duoc tu toggle):
+--   * Duong TU DONG : __DIO_GhostCheck goi sau 3s khong gay duoc damage.
+--   * Duong NGAY LAP TUC : toggle bat = goi thẳng vao mob hien tai (khong phi 3s).
+local function __DIO_FireGhostSkill(mob)
+    task.spawn(function()  -- spawn rieng de khong block farm loop / callback UI
+        pcall(function()
+            if not mob or not mob.Parent then return end
+            local __gh = mob:FindFirstChild("Humanoid")
+            if not __gh or __gh.Health <= 0 then return end
+            -- [FIX SKILL-AIM] aim vao CHINH con mob dang danh (truoc day chi SendKeyEvent,
+            -- con tro chuot co the dang o cho khac -> skill bay lech / khong trung).
+            -- Hook __namecall ben duoi rewrite toa do remote skill ve MousePos nay trong cua so nho.
+            local __aHRP = mob:FindFirstChild("HumanoidRootPart")
+            if __aHRP then
+                MousePos = __aHRP.Position + Vector3.new(0, 2, 0)
+                _G.DIO_SkillAim = true
+                task.spawn(function() task.wait(0.7) _G.DIO_SkillAim = false end)
+            end
+            EquipWeapon(_G.SelectWeapon)
+            local eq = plr.Character and plr.Character:FindFirstChildOfClass("Tool")
+            local wt = eq and eq.ToolTip or "Melee"
+            if wt == "Sword" then
+                Useskills("Sword","Z") task.wait(0.15)
+                Useskills("Sword","X")
+            elseif wt == "Blox Fruit" then
+                Useskills("Blox Fruit","Z") task.wait(0.15)
+                Useskills("Blox Fruit","X") task.wait(0.15)
+                Useskills("Blox Fruit","C")
+            elseif wt == "Gun" then
+                Useskills("Gun","Z") task.wait(0.15)
+                Useskills("Gun","X")
+            else
+                Useskills("Melee","Z") task.wait(0.15)
+                Useskills("Melee","X") task.wait(0.15)
+                Useskills("Melee","C")
+            end
+        end)
+    end)
+end
+
 -- Gọi SAU mỗi Attack.Kill/Kill2.
 -- Trả về true = ghost xác nhận → caller phải break và tìm mob khác.
 local function __DIO_GhostCheck(mob)
     if not mob or not mob.Parent then return true end
+    __DIO_LastGhostMob = mob -- [FIX SKILL-INSTANT] giu mob dang danh de duong "bat toggle = ban ngay" dung
     local hum = mob:FindFirstChild("Humanoid")
     if not hum or hum.Health <= 0 then
         __DIO_GhostData[mob] = nil
@@ -2878,38 +2930,8 @@ local function __DIO_GhostCheck(mob)
         --   * d.skill chi dat = true khi THUC SU ban (khi tat thi de false de neu user bat toggle
         --     giua khung 3-6s, vong sau se ban duoc; con skip 6s van chay).
         if _G.AutoSkillGhost then
-        d.skill = true
-        task.spawn(function()  -- spawn riêng để không block farm loop
-            pcall(function()
-                -- [FIX SKILL-AIM] aim vao CHINH con mob dang danh (truoc day chi SendKeyEvent,
-                -- con tro chuot co the dang o cho khac -> skill bay lech / khong trung).
-                -- Hook __namecall ben duoi rewrite toa do remote skill ve MousePos nay trong cua so nho.
-                local __aHRP = mob:FindFirstChild("HumanoidRootPart")
-                if __aHRP then
-                    MousePos = __aHRP.Position + Vector3.new(0, 2, 0)
-                    _G.DIO_SkillAim = true
-                    task.spawn(function() task.wait(0.7) _G.DIO_SkillAim = false end)
-                end
-                EquipWeapon(_G.SelectWeapon)
-                local eq = plr.Character and plr.Character:FindFirstChildOfClass("Tool")
-                local wt = eq and eq.ToolTip or "Melee"
-                if wt == "Sword" then
-                    Useskills("Sword","Z") task.wait(0.15)
-                    Useskills("Sword","X")
-                elseif wt == "Blox Fruit" then
-                    Useskills("Blox Fruit","Z") task.wait(0.15)
-                    Useskills("Blox Fruit","X") task.wait(0.15)
-                    Useskills("Blox Fruit","C")
-                elseif wt == "Gun" then
-                    Useskills("Gun","Z") task.wait(0.15)
-                    Useskills("Gun","X")
-                else
-                    Useskills("Melee","Z") task.wait(0.15)
-                    Useskills("Melee","X") task.wait(0.15)
-                    Useskills("Melee","C")
-                end
-            end)
-        end)
+            d.skill = true
+            __DIO_FireGhostSkill(mob) -- [FIX SKILL-INSTANT 3/3] duong tu dong 3s -> dung ham chung
         end
     end
 
@@ -5568,6 +5590,20 @@ Description = "",
 Default = false,
 Callback = function(Value)
   _G.AutoSkillGhost = Value
+  -- [FIX SKILL-INSTANT] BAT = dung skill NGAY LAP TUC vao mob hien tai (user bao: "bat nhung
+  -- khong dung skill Melee/Sword Fix ngay lap tuc" - ban cu phi 3s no-damage timer moi ban).
+  -- Mob dang danh = __DIO_LastGhostMob (moi nhip Attack.Kill/Kill2 la __DIO_GhostCheck nhap lai).
+  -- Khong co mob hien tai (chua danh gi ca) = khong lam gi; khi farm loop bat dau danh,
+  -- duong tu dong 3s se tiep quan binh thuong.
+  if Value then
+      local __m = __DIO_LastGhostMob
+      local __mh = __m and __m.Parent and __m:FindFirstChild("Humanoid")
+      if __mh and __mh.Health > 0 then
+          local __d = __DIO_GhostData[__m]
+          if __d then __d.skill = true __d.t = tick() end -- reset dong ho: tranh ban lap 2 lan trong 3s
+          __DIO_FireGhostSkill(__m) -- BAN NGAY
+      end
+  end
 end})
 Neartween = Tabs.Settings:AddToggle({
 Name = "Tween speed 600 if near", 
@@ -8179,7 +8215,47 @@ function __DIO_ReleaseAll(owner)
     __DIO_FlagBorrow[owner] = nil
 end
 
+-- [FIX SYNTAX-BUYTOGGLES 1/2] 3 loi san co trong khoi UI vua them (chi chay luot sua nay moi bat duoc):
+--   (1) Toggle "Buy Black Leg" THI EU dong mo ".__DIO_BuyMeleeToggles.BuyBlackLeg = ...:AddToggle({"
+--       -> loI syntax NGAY, TOAN BO script khong bao gi compile chay.
+--   (2) Bang __DIO_BuyMeleeToggles dugc ghi 4 lan nhung CHUA TUNG khai bao -> runtime "index nil".
+--   (3) Section "Fighting Melee Styles" nam o tab Quests nhung 3 toggle con lai la Tabs.Shop
+--       -> nhom 4 toggle vao cug tab voi section. (Muon chuyen sang tab Shopping: doi 4 dong
+--       Tabs.Quests thanh Tabs.Shop la xong.)
+__DIO_BuyMeleeToggles = {}
 Tabs.Quests:AddSection("Fighting Melee Styles")
+__DIO_BuyMeleeToggles.BuyBlackLeg = Tabs.Quests:AddToggle({
+Name = "Buy Black Leg", 
+Description = "", 
+Default = false,
+Callback = function(Value)
+  _G.BuyMelee_BuyBlackLeg = Value
+  if Value and __DIO_BuyDriverStart then __DIO_BuyDriverStart() end
+end})
+__DIO_BuyMeleeToggles.BuyElectro = Tabs.Quests:AddToggle({
+Name = "Buy Electro", 
+Description = "", 
+Default = false,
+Callback = function(Value)
+  _G.BuyMelee_BuyElectro = Value
+  if Value and __DIO_BuyDriverStart then __DIO_BuyDriverStart() end
+end})
+__DIO_BuyMeleeToggles.BuyFishmanKarate = Tabs.Shop:AddToggle({
+Name = "Buy Fishman Karate", 
+Description = "", 
+Default = false,
+Callback = function(Value)
+  _G.BuyMelee_BuyFishmanKarate = Value
+  if Value and __DIO_BuyDriverStart then __DIO_BuyDriverStart() end
+end})
+__DIO_BuyMeleeToggles.BuyDragonClaw = Tabs.Quests:AddToggle({ -- [FIX SYNTAX-BUYTOGGLES 2/2] Shop -> Quests (dong nhom voi section)
+Name = "Buy DragonClaw", 
+Description = "", 
+Default = false,
+Callback = function(Value)
+  _G.BuyMelee_BuyDragonClaw = Value
+  if Value and __DIO_BuyDriverStart then __DIO_BuyDriverStart() end
+end})
 SuperHuman = Tabs.Quests:AddToggle({
 Name = "Auto Superhuman", 
 Description = "", 
@@ -13028,6 +13104,20 @@ end
 --   * Tat toggle giua duong -> cancelFn tra true -> dung ngay, khong mua.
 --   * __DIO_BuyBusy: chi 1 chuyen bay tai 1 thoi diem (nhieu nut bat cung luc khong tranh tween).
 __DIO_BuyFlying = false
+__DIO_BuyBusyT = nil
+-- [FIX TWEEN-FOREVER 1/3] Yeu cau user: "SUA LAI TWEEN, NHIN CACH CAC LOGIC KACH TWEEN (farm
+-- Bone / Cake Prince), FIX MOT LAN TRIET DE DAM BAO TWEEN DUOC 1 LAN VA MAI MAI".
+-- Phan tich root-cause "khong bay / ket / chet manh" cua ban cu:
+--   (1) Thread bay CHUA co pcall bao ngoai: moi loi runtime giua duong (chet nhan vat, block mat,
+--       update game) sat thread TRUOC dong tha flag -> __DIO_BuyBusy = true MAI MAI (driver khong
+--       bao gio mua lai duoc) + __DIO_BuyFlying = true MAI MAI (shouldTween bi dinh ON -> nhan vat
+--       dien block, toan bo tween bi paralyse) = "khet vinh vien".
+--   (2) Loi 1 nhip duy nhat = bo luon ca chuyen bay (ban cu `if not h2 then break end`).
+-- Cach sua = dung dung mau cac farm loop bay ngon:
+--   * pcall NHAP VAO vong while (moi nhip tu phuc hoi, vong khong bao gio chet),
+--   * __release() BAO DANH tha flag o moi duong thoat (den noi / huy / timeout / loi),
+--   * WATCHDOG ben duoi: flag ket > 320s (dao dai hon timeout toi da 300s) = buoc tha
+--     -> he tu chua, khong bao gio phai reload.
 BuyMelee = function(npcNames, cancelFn, ...)
     local key, buyArgs
     if type(cancelFn) == "function" then
@@ -13051,87 +13141,81 @@ BuyMelee = function(npcNames, cancelFn, ...)
     end
     if __DIO_BuyBusy then return end -- dang co chuyen bay khac -> bo qua, khong tranh tween
     __DIO_BuyBusy = true
+    __DIO_BuyBusyT = tick()  -- [FIX TWEEN-FOREVER] dong ho cho watchdog ket-flag
     task.spawn(function() -- khong block UI
-        local standCF = targetCF * CFrame.new(0, 0, 4) -- dung le 4 stud truoc teacher
-        local __char0 = plr.Character
-        local __hrp0 = __char0 and __char0:FindFirstChild("HumanoidRootPart")
-        if not __hrp0 then __DIO_BuyBusy = false return end
-        local dist0 = (standCF.Position - __hrp0.Position).Magnitude
-        pcall(function() Window:Notify({Title = "Buy Melee", Content = "Dang bay den " .. tostring(npcNames[1]) .. " (" .. string.format("%.0f", dist0) .. " studs)", Duration = 3}) end)
-
-        local __spd = math.max(tonumber(_G.TweenSpeed) or 300, 1)
-        local __timeout = math.min(math.max(dist0 / __spd + 25, 15), 300)
-        local __t0 = tick()
-        local __arrived, __cancelled = false, false
-
-        __DIO_BuyFlying = true   -- bat shouldTween (qua cond-list) trong suot chuyen bay
-        __DIO_wait(0.15)         -- cho vong stomper (0.1s) kip bat shouldTween truoc khi goi _tp
-        while true do
-            if cancelFn and cancelFn() then __cancelled = true break end -- tat toggle = dung ngay
-            local c2 = plr.Character
-            local h2 = c2 and c2:FindFirstChild("HumanoidRootPart")
-            if not h2 then break end                                     -- mat nhan vat / respawn
-            if (h2.Position - standCF.Position).Magnitude <= 15 then __arrived = true break end
-            if tick() - __t0 > __timeout then break end
-            _tp(standCF)           -- DUNG 1 tween cua source (_tp co dedupe 0.6s + huy tween cu san)
-            __DIO_wait(0.5)        -- nhip poll nhe, giong vong ngoai cua farm bone / farm cake
+        local __released = false
+        local function __release()  -- [FIX TWEEN-FOREVER] tha flag BAO DANH (idempotent, goi may lan cung duoc)
+            if __released then return end
+            __released = true
+            __DIO_BuyFlying = false
+            __DIO_BuyBusy = false
         end
-        __DIO_BuyFlying = false    -- tha shouldTween -> het keo block, nhan vat tu do
-        __DIO_BuyBusy = false
+        pcall(function()  -- [FIX TWEEN-FOREVER 2/3] nuot TOAN BO than: loi gi cung khong de flag ket
+            local __c0 = plr.Character
+            local __h0 = __c0 and __c0:FindFirstChild("HumanoidRootPart")
+            if not __h0 then __release() return end
+            local standCF = targetCF * CFrame.new(0, 0, 4) -- dung le 4 stud truoc teacher
+            local dist0 = (standCF.Position - __h0.Position).Magnitude
+            pcall(function() Window:Notify({Title = "Buy Melee", Content = "Dang bay den " .. tostring(npcNames[1]) .. " (" .. string.format("%.0f", dist0) .. " studs)", Duration = 3}) end)
 
-        if __cancelled then
-            pcall(function() Window:Notify({Title = "Buy Melee", Content = "Da huy (toggle tat) - khong tween/mua nua.", Duration = 3}) end)
-        elseif __arrived then
-            replicated.Remotes.CommF_:InvokeServer(unpack(buyArgs)) -- DA DEN NOI MOI GOI MUA
-        else
-            pcall(function() Window:Notify({Title = "Buy Melee", Content = "Khong den duoc teacher trong 300s - chua mua. Bat lai toggle de thu lai.", Duration = 4}) end)
-        end
+            local __spd = math.max(tonumber(_G.TweenSpeed) or 300, 1)
+            local __timeout = math.min(math.max(dist0 / __spd + 25, 15), 300)
+            local __t0 = tick()
+            local __arrived, __cancelled = false, false
+
+            __DIO_BuyFlying = true   -- bat shouldTween (qua cond-list) trong suot chuyen bay
+            __DIO_wait(0.15)         -- cho vong stomper (0.1s) kip bat shouldTween truoc khi goi _tp
+            while true do
+                local __stop = false
+                -- [FIX TWEEN-FOREVER 2/3] pcall moi nhip (dung nhu farm Bone/Cake: pcall TRONG while):
+                -- 1 nhip xau (vua chet / block mat) KHONG sat ca chuyen bay — nhip sau tu phuc hoi.
+                pcall(function()
+                    if cancelFn and cancelFn() then __cancelled = true __stop = true return end -- tat toggle = dung ngay
+                    local c2 = plr.Character
+                    local h2 = c2 and c2:FindFirstChild("HumanoidRootPart")
+                    if not h2 then
+                        __DIO_wait(0.5)  -- chet / mat nhan vat: roi nhoi nhan vat moi, tiep tuc bay (timeout van chan tren)
+                        return
+                    end
+                    if (h2.Position - standCF.Position).Magnitude <= 15 then __arrived = true __stop = true return end
+                    if tick() - __t0 > __timeout then __stop = true return end
+                    _tp(standCF)           -- DUNG 1 tween cua source (_tp co dedupe 0.6s + huy tween cu san)
+                    __DIO_wait(0.5)        -- nhip poll nhe, giong vong ngoai cua farm bone / farm cake
+                end)
+                if __stop then break end
+            end
+            __release()  -- moi duong thoat binh thuong (den noi / huy / timeout) deu tha flag
+
+            if __cancelled then
+                pcall(function() Window:Notify({Title = "Buy Melee", Content = "Da huy (toggle tat) - khong tween/mua nua.", Duration = 3}) end)
+            elseif __arrived then
+                local __bok = pcall(function() replicated.Remotes.CommF_:InvokeServer(unpack(buyArgs)) end) -- DA DEN NOI MOI GOI MUA
+                pcall(function()
+                    Window:Notify({Title = "Buy Melee", Content = tostring(npcNames[1]) .. ": " .. (__bok and "Da den noi, da goi mua." or "Den noi nhung remote mua lo - kiem tra lai."), Duration = 3})
+                end)
+            else
+                pcall(function() Window:Notify({Title = "Buy Melee", Content = "Khong den duoc teacher trong 300s - chua mua. Bat lai toggle de thu lai.", Duration = 4}) end)
+            end
+        end)
+        __release()  -- [FIX TWEEN-FOREVER] luoi an toan cuoi cung: bat ki tinh huong nao cung tha flag
     end)
 end
 
-Tabs.Shop:AddSection("Fighting - Style")
--- [FIX BUY-TOGGLE 1/3] 11 nut "Buy ..." cu -> 4 TOGGLE (chi 4 style nay chua co Auto toggle rieng;
--- 7 style con lai da co toggle o tab Quest / section "Fighting Melee Styles").
--- Nguyen tac: BAT = bay den teacher va mua; TAT = dung NGAY (khong tween, khong goi remote mua).
--- Moi toggle co flag rieng; driver ben duoi chi ton tai khi co it nhat 1 toggle BAT (tat het = 0 vong lap).
-__DIO_BuyMeleeToggles = {}
-__DIO_BuyMeleeToggles.BuyBlackLeg = Tabs.Shop:AddToggle({
-Name = "Buy Black Leg", 
-Description = "", 
-Default = false,
-Callback = function(Value)
-  _G.BuyMelee_BuyBlackLeg = Value
-  if Value and __DIO_BuyDriverStart then __DIO_BuyDriverStart() end
-end})
-__DIO_BuyMeleeToggles.BuyElectro = Tabs.Shop:AddToggle({
-Name = "Buy Electro", 
-Description = "", 
-Default = false,
-Callback = function(Value)
-  _G.BuyMelee_BuyElectro = Value
-  if Value and __DIO_BuyDriverStart then __DIO_BuyDriverStart() end
-end})
-__DIO_BuyMeleeToggles.BuyFishmanKarate = Tabs.Shop:AddToggle({
-Name = "Buy Fishman Karate", 
-Description = "", 
-Default = false,
-Callback = function(Value)
-  _G.BuyMelee_BuyFishmanKarate = Value
-  if Value and __DIO_BuyDriverStart then __DIO_BuyDriverStart() end
-end})
-__DIO_BuyMeleeToggles.BuyDragonClaw = Tabs.Shop:AddToggle({
-Name = "Buy DragonClaw", 
-Description = "", 
-Default = false,
-Callback = function(Value)
-  _G.BuyMelee_BuyDragonClaw = Value
-  if Value and __DIO_BuyDriverStart then __DIO_BuyDriverStart() end
-end})
+-- [FIX TWEEN-FOREVER 3/3] WATCHDOG "MAI MAI": trong moi tinh huong cuc dac thread bay chet ma
+-- chua de __release() chay (loi ngoai pcall, exploit nuot, ...), vong nay phat hien flag ket
+-- (da true > 320s = dai hon timeout toi da 300s) va BUOC tha -> he tween/mua tu hoat lai
+-- khong can reload script. Tick 5s, gia nang ~0.
+task.spawn(function()
+    while __DIO_wait(5) do
+        if __DIO_BuyBusy and __DIO_BuyBusyT and (tick() - __DIO_BuyBusyT) > 320 then
+            __DIO_BuyBusy = false
+            __DIO_BuyFlying = false
+            __DIO_BuyBusyT = nil
+            pcall(function() Window:Notify({Title = "Buy Melee", Content = "Phat hien tween bi ket - da tu phu hoi. Bat lai toggle de tiep tuc.", Duration = 4}) end)
+        end
+    end
+end)
 
--- [FIX BUY-TOGGLE 3/3] Driver: 1 chuyen bay / lan, doc flag moi vong.
---  * Tat toggle giua duong bay -> cancelFn cua __DIO_FlyTo tra true -> huy ngay, khong toi noi, khong mua.
---  * Tat het toggle -> while ket thuc -> KHONG con vong lap nao chay (dung yeu cau "tat = khong chay gi").
---  * Da co item roi -> khong bay nua, chi bao 1 lan.
 do
     local __DIO_BuyJobs = {
         { flag = "_G.BuyMelee_BuyBlackLeg",      key = "BuyBlackLeg",      owned = "Black Leg",      npc = {"Dark Step Teacher"},    beli = 150000, args = {"BuyBlackLeg"} },
