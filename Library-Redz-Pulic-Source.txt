@@ -4053,13 +4053,37 @@ local at,au=aa(af,an)
 at.Parent=al
 au.Parent=al
 
+-- Viền xanh bao quanh panel Tabs (trái)
+E("UIStroke","TabsStroke",at,{
+ThemeTag={Color="Colors.Primary"},
+Thickness=1,
+ApplyStrokeMode=Enum.ApplyStrokeMode.Border
+})
+
+-- Viền xanh bao quanh panel Content (phải)
+E("UIStroke","ContentStroke",au,{
+ThemeTag={Color="Colors.Primary"},
+Thickness=1,
+ApplyStrokeMode=Enum.ApplyStrokeMode.Border
+})
+
+-- Đường kẻ ngang màu xanh dưới TopBar
+E("Frame","TopBarSeparator",an,{
+Size=UDim2.new(1,0,0,1),
+Position=UDim2.new(0,0,1,-1),
+AnchorPoint=Vector2.new(0,1),
+BorderSizePixel=0,
+BackgroundTransparency=0.3,
+ThemeTag={BackgroundColor3="Colors.Primary"}
+})
+
 -- Đường kẻ viền dọc màu xanh giữa panel Tab và panel nội dung
 local avSeparator=E("Frame","TabSeparator",al,{
 Size=UDim2.new(0,1,1,-an.Size.Y.Offset),
 Position=UDim2.new(0,at.Size.X.Offset,0,an.Size.Y.Offset),
 BorderSizePixel=0,
 ThemeTag={BackgroundColor3="Colors.Primary"},
-BackgroundTransparency=0.5
+BackgroundTransparency=0.3
 })
 
 local av=table.freeze{
@@ -4262,6 +4286,6 @@ end)
 
 return as  
 end
-
+ 
 return s
  
