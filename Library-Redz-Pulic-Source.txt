@@ -3942,6 +3942,7 @@ local ak=E("Frame","Window",I,{
 Position=UDim2.new(0.5,-ah.X.Offset/2,0.5,-ah.Y.Offset/2),
 Active=true,
 Size=ah,
+ClipsDescendants=true,
 ThemeTag={
 BackgroundTransparency="BackgroundTransparency"
 },
@@ -4053,11 +4054,20 @@ local at,au=aa(af,an)
 at.Parent=al
 au.Parent=al
 
--- Viền xanh bao quanh panel Tabs (trái)
-E("UIStroke","TabsStroke",at,{
+-- Ô vuông chữ nhật bao gồm cả search + tabs (1 border duy nhất)
+local leftBorderFrame=E("Frame","LeftPanelBorder",al,{
+Size=UDim2.new(0,at.Size.X.Offset,1,-an.Size.Y.Offset),
+Position=UDim2.new(0,0,0,an.Size.Y.Offset),
+BackgroundTransparency=1,
+BorderSizePixel=0,
+Elements={
+Corner=UDim.new(0,4),
+Stroke={
 ThemeTag={Color="Colors.Primary"},
 Thickness=1,
 ApplyStrokeMode=Enum.ApplyStrokeMode.Border
+}
+}
 })
 
 -- Viền xanh bao quanh panel Content (phải)
@@ -4077,7 +4087,7 @@ BackgroundTransparency=0.3,
 ThemeTag={BackgroundColor3="Colors.Primary"}
 })
 
--- Đường kẻ viền dọc màu xanh giữa panel Tab và panel nội dung
+-- Đường kẻ dọc 1px phân cách trái/phải
 local avSeparator=E("Frame","TabSeparator",al,{
 Size=UDim2.new(0,1,1,-an.Size.Y.Offset),
 Position=UDim2.new(0,at.Size.X.Offset,0,an.Size.Y.Offset),
@@ -4151,7 +4161,8 @@ local az=ax.Position
 at.Size=UDim2.new(0,az.X.Offset,1,-an.Size.Y.Offset)
 au.Size=UDim2.new(1,-at.Size.X.Offset,1,-an.Size.Y.Offset)
 af.TabSize=az.X.Offset
--- Cập nhật vị trí đường kẻ viền dọc xanh khi kéo resize
+-- Cập nhật border + separator theo tab panel
+leftBorderFrame.Size=UDim2.new(0,az.X.Offset,1,-an.Size.Y.Offset)
 avSeparator.Position=UDim2.new(0,az.X.Offset,0,an.Size.Y.Offset)
 end)
 
@@ -4274,9 +4285,8 @@ at.Size = UDim2.new(0, at.Size.X.Offset, 1, -(an.Size.Y.Offset + searchContainer
 
 u(ax:GetPropertyChangedSignal("Position"), function()
     searchContainer.Size = UDim2.new(0, ax.Position.X.Offset, 0, searchContainerHeight)
-    -- Giữ nguyên logic trừ đi chiều cao của TopBar + SearchBox cho TabsScroll
     at.Size = UDim2.new(0, ax.Position.X.Offset, 1, -(an.Size.Y.Offset + searchContainerHeight))
-    -- Cập nhật vị trí đường kẻ xanh theo tab panel
+    leftBorderFrame.Size = UDim2.new(0, ax.Position.X.Offset, 1, -an.Size.Y.Offset)
     avSeparator.Position = UDim2.new(0, ax.Position.X.Offset, 0, an.Size.Y.Offset)
 end)
 
@@ -4286,6 +4296,6 @@ end)
 
 return as  
 end
- 
+
 return s
  
