@@ -14048,7 +14048,7 @@ Callback = function(Value)
 end
 })
 
-DisableHitVFX = Tabs.Settings:AddToggle({
+DisableHitVFX = Tabs.Hop:AddToggle({
     Name = "Remove Hit VFX",
     Description = "Removes slash and sword visual effects for better visibility",
     Default = false,
@@ -14072,7 +14072,7 @@ task.spawn(function()
         end
     end
 end)
-RmvVFX = Tabs.Settings:AddToggle({
+RmvVFX = Tabs.Hop:AddToggle({
 Name = "Remove Death & Respawned VFX", 
 Description = "", 
 Default = true,
@@ -14089,7 +14089,7 @@ spawn(function()
     end)
   end
 end)	
-DisblesNotify = Tabs.Settings:AddToggle({
+DisblesNotify = Tabs.Hop:AddToggle({
 Name = "Disable Notify", 
 Description = "", 
 Default = false,
