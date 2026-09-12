@@ -880,7 +880,7 @@ Font="Font.Medium"
 
 local ap=E("Frame","Indicator",ao,{
 Position=UDim2.new(0,0,1,0),
-AnchorPoint=Vector2.new(0,1),
+AnchorPoint=Vector2.new(0,0),
 Size=UDim2.new(1,0,0,2),
 BackgroundTransparency=1,
 ThemeTag={
@@ -2793,16 +2793,32 @@ end
 end
 
 function ah:Select()
-if ac==self then
+local aw=self.Parent
+local ax=aw.SelectedTabs or{}
+
+for ay=1,#ax do
+if ax[ay]==self then
+if #ax==2 then
+table.remove(ax,ay)
+U[self].Unselect()
+ac=ax[1]
+aw:RefreshSplit()
+else
 return nil
 end
-
-if ac then
-U[ac].Unselect()
+return nil
+end
 end
 
+if #ax==2 then
+local az=table.remove(ax,1)
+U[az].Unselect()
+end
+
+table.insert(ax,self)
 ac=self
-U[ac].Select()
+U[self].Select()
+aw:RefreshSplit()
 end
 
 function ai:SetTitle(av)
@@ -2918,6 +2934,28 @@ function ag:Minimize()
 ab.Visible=not ab.Visible
 end
 
+function ag:RefreshSplit()
+local aw=self.SelectedTabs or{}
+local ax=#aw
+local ay=self:GetElements().ContainerHolder
+
+for az=1,ax do
+local aA=aw[az]
+local aB=T[aA]and T[aA].Container
+
+if aB then
+aB.Parent=ay
+if ax==2 then
+aB.Position=UDim2.new(az==2 and 0.5 or 0,0,0,0)
+aB.Size=UDim2.new(0.5,0,1,0)
+else
+aB.Position=UDim2.new(0,0,0,0)
+aB.Size=UDim2.new(1,0,1,0)
+end
+end
+end
+end
+
 function ag:MakeTab(av)
 local aw=av[1]or av.Name or av.Title
 local ax=av[2]or av.Icon or av.Image
@@ -2962,15 +3000,13 @@ aL[aM]:Play()
 end end local aM=function()
 
 
-
 aL(aI)
 J(aC,"BackgroundTransparency",0.5,aH):Play()
 ay.Selected=true
 aK:changeRendering(true)
 aK:update()
 aD.Parent=aB
-aD.Size=aG
-aF:Play()end local aN=function()
+end local aN=function()
 
 
 
@@ -4061,6 +4097,8 @@ local as=setmetatable(ae,{
 __index=R.Window
 })
 
+as.SelectedTabs={}
+
 local at,au=aa(af,an)
 
 at.Parent=al
@@ -4219,11 +4257,12 @@ u(ar.Activated,function()
     as:Dialog(aA)
 end)
 
-local searchContainerHeight = 26
+local searchContainerHeight = 22
 
-local searchContainer = E("Frame", "SearchContainer", al, {
-    Size = UDim2.new(0, 210, 0, searchContainerHeight),
-    Position = UDim2.new(0, 8, 0, an.Size.Y.Offset + 4), -- Nằm trong thanh tab, bên trái các tab
+local searchContainer = E("Frame", "SearchContainer", an, {
+    Size = UDim2.new(0, 170, 0, searchContainerHeight),
+    Position = UDim2.new(1, -59, 0.5, 0), -- Nằm giữa subtitle và nút thu nhỏ (-)
+    AnchorPoint = Vector2.new(1, 0.5),
     BackgroundTransparency = 1,
     ZIndex = 5
 })
@@ -4260,7 +4299,7 @@ local searchInput = E("TextBox", "SearchBar", searchInputBg, {
     }
 })
 
--- Icon kính lúp nằm bên phải giống trong ảnh
+-- Icon kính lúp nằm bên phải
 local searchIcon = E("ImageLabel", "SearchIcon", searchInputBg, {
     Size = UDim2.new(0, 14, 0, 14),
     Position = UDim2.new(1, -8, 0.5, 0), -- Nằm sát lề phải
@@ -4271,9 +4310,6 @@ local searchIcon = E("ImageLabel", "SearchIcon", searchInputBg, {
         ImageColor3 = "Colors.Icons"
     }
 })
-
--- Tab bắt đầu sau ô search (chung 1 thanh ngang)
-at.UIPadding.PaddingLeft = UDim.new(0, 222)
 
 u(searchInput:GetPropertyChangedSignal("Text"), function()
     as:PerformSearch(searchInput.Text)
