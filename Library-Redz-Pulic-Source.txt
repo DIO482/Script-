@@ -849,7 +849,7 @@ end local al=function(
 
 al, am, an)
 local ao=E("TextButton","Button",an,{
-Size=UDim2.new(1,0,0,24),
+Size=UDim2.new(1,0,0,26),
 AutoButtonColor=false,
 Text="",
 Elements={
@@ -861,14 +861,14 @@ BackgroundColor3="Colors.Buttons.Default"
 Childs={
 E("TextLabel","Title",{
 BackgroundTransparency=1,
-Font=Enum.Font.GothamMedium,
 Text=am.Title,
-TextSize=10,
+TextSize=11,
 TextXAlignment=Enum.TextXAlignment.Left,
-TextTransparency=(FirstTab and 0.3)or 0,
+TextTransparency=0,
 TextTruncate=Enum.TextTruncate.AtEnd,
 ThemeTag={
-TextColor3="Colors.Text.Default"
+TextColor3="Colors.Text.Default",
+Font="Font.Medium"
 }
 })
 }
@@ -1585,22 +1585,35 @@ function ah:AddSection(av)
     local aw=V[self]
 
     local ax=E("Frame","Option",T[self].Container,{
-        Size=UDim2.new(1,0,0,20),
+        Size=UDim2.new(1,0,0,26),
         BackgroundTransparency=1
     })
 
     local ay=E("TextLabel",ax,{
         TextXAlignment=Enum.TextXAlignment.Left,
         TextTruncate=Enum.TextTruncate.AtEnd,
-        Size=UDim2.new(1,-25,1,0),
-        Position=UDim2.new(0,5),
+        Size=UDim2.new(1,-25,1,-4),
+        Position=UDim2.new(0,5,0,0),
         BackgroundTransparency=1,
-        TextSize=17,
+        TextSize=12,
         Text=av,
         ThemeTag={
             OBJECTS=aw,
             TextColor3="Colors.Text.Default",
-            Font="Font.Bold"
+            Font="Font.ExtraBold"
+        }
+    })
+
+    -- Đường kẻ phân cách xanh dưới section header
+    E("Frame","SectionSep",ax,{
+        Size=UDim2.new(1,-10,0,1),
+        Position=UDim2.new(0,5,1,-1),
+        AnchorPoint=Vector2.new(0,1),
+        BorderSizePixel=0,
+        BackgroundTransparency=0.6,
+        ThemeTag={
+            OBJECTS=aw,
+            BackgroundColor3="Colors.Primary"
         }
     })
 
@@ -2935,7 +2948,7 @@ local aH=0.45
 
 local aI={
 J(aE,"BackgroundTransparency",0,aH),
-J(aE,"Size",UDim2.fromOffset(4,13),aH)
+J(aE,"Size",UDim2.fromOffset(4,16),aH)
 }
 
 local aJ={
@@ -3976,7 +3989,7 @@ local al=E("Folder","Components",ak)
 local am=E("Folder","Dropdowns",I)
 
 local an=E("Frame","TopBar",al,{
-Size=UDim2.new(1,0,0,28),
+Size=UDim2.new(1,0,0,32),
 BackgroundTransparency=1
 })
 
@@ -3986,25 +3999,25 @@ AutomaticSize=Enum.AutomaticSize.XY,
 Position=UDim2.new(0,15,0.5,0),
 AnchorPoint=Vector2.new(0,0.5),
 Text=ae.Title,
-TextSize=12,
+TextSize=13,
 BackgroundTransparency=1,
 ThemeTag={
 TextColor3="Colors.Text.Default",
-Font="Font.Bold"
+Font="Font.ExtraBold"
 },
 Childs={
 E("TextLabel","SubTitle",{
 Size=UDim2.fromScale(0,1),
 AutomaticSize="X",
 AnchorPoint=Vector2.new(0,1),
-Position=UDim2.new(1,5,0.9),
+Position=UDim2.new(1,6,0.9),
 Text=ae.SubTitle,
 BackgroundTransparency=1,
 TextXAlignment="Left",
 TextYAlignment="Bottom",
-TextSize=8,
+TextSize=9,
 ThemeTag={
-TextColor3="Colors.Text.Dark",
+TextColor3="Colors.Text.Darker",
 Font="Font.Normal"
 }
 })
@@ -4294,7 +4307,7 @@ u(searchInput:GetPropertyChangedSignal("Text"), function()
     as:PerformSearch(searchInput.Text)
 end)
 
-return as  
+return as   
 end
 
 return s
