@@ -1686,6 +1686,37 @@ function __DIO_MobNear(pos)
     return near
 end
 
+-- ============================================================================
+-- [FIX NEAR-SPEED v4 12-09-2026] MOT HAM DUY NHAT quyet dinh toc do tween cho
+-- TOAN BO script. Truoc day logic nam rac trong _tp -> kho audit, va user bao
+-- "khong bat toggle van tu dung 600". Nay:
+--   * Chi co HAM NAY tra ve 600. grep "__DIO_NEAR_SPEED" -> dung 1 noi gan 600.
+--   * Dieu kien BAT BUOC de co 600 (thieu 1 dieu kien = khong bao gio co 600):
+--        (1) _G.Neartween == true  (toggle "Tween speed 600 if near" = BAT)
+--        (2) khong dang NGOI THUYEN (Hum.Sit == false)
+--        (3) GAN: diem den <= __DIO_NEAR_RADIUS (150) stud
+--            HOAC co mob song trong 150 stud quanh nguoi.
+--   * Moi truong hop khac (ke ca Normal / Obrit / Dodge) -> dung DUNG slider
+--     "Speed Tween"; ngoi thuyen -> dung slider "Boat Speed Tween".
+--   * Toggle TAT => 600 KHONG the xuat hien o bat ky mode Farm nao.
+-- ============================================================================
+__DIO_NEAR_SPEED  = 600
+__DIO_NEAR_RADIUS = 150
+__DIO_PickTweenSpeed = function(distance, rootPos, hum)
+    local __sit = (hum ~= nil) and (hum.Sit == true)
+    if __sit and _G.BoatTweenSpeed then
+        return math.max(tonumber(_G.BoatTweenSpeed) or 300, 1) -- thuyen: speed rieng, khong bao gio 600
+    end
+    local __base = math.max(tonumber(_G.TweenSpeed) or 300, 1)
+    if _G.Neartween == true and not __sit then
+        if (tonumber(distance) or math.huge) <= __DIO_NEAR_RADIUS
+           or __DIO_MobNear(rootPos) then
+            return __DIO_NEAR_SPEED
+        end
+    end
+    return __base
+end
+
 function totopofgreattree()
     if getdis(CFrame.new(28310.0234, 14895.1123, 109.456741)) > 1500 then
         ReplicatedStorage.Remotes.CommF_:InvokeServer("requestEntrance", Vector3.new(28310.0234, 14895.1123, 109.456741))
@@ -1850,32 +1881,29 @@ _tp = function(target)
             end
         end
     end
-    -- [FIXED] tốc độ tween đọc từ slider "Speed Tween" (bản cũ fix cứng 300)
-    local __speed = tonumber(_G.TweenSpeed) or 300
-    local __humTween = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
-    if __humTween and __humTween.Sit and _G.BoatTweenSpeed then
-        __speed = tonumber(_G.BoatTweenSpeed) or __speed
-    end
-    __speed = math.max(__speed, 1)
-    -- [FIX NEAR-TWEEN-v3] SUA MOT LAN TRIET DE — day la DUY NHAT noi toan script quyyet dinh
-    -- toc do 600 (kiem tra: grep "600" chi bat o day). Dung cho MOI mode Farm (Normal/Obrit/Dodge):
-    --   * TAT toggle "Tween speed 600 if near" (_G.Neartween ~= true)
-    --       -> 600 BAO GIUONG khong xuat hien. Luon dung slider "Speed Tween"
-    --          (ngoai ngoi thuyen = BoatTweenSpeed). KHONG co co che nao khac tu dong 600.
-    --   * BAT toggle + di bo (khong Sit) -> 600 CHI KHI GAN:
-    --          (a) diem den cach <= 150 stud HOAC (b) co mob song trong ban kinh 150 stud quanh nguoi.
-    --   * Mode Obrit/Dodge: tween tiep can cua driver (dist > 250) cung noi gate nay —
-    --          tung duong bay vong / dam sau lung la driver frame (khong phai tween) nen
-    --          khong lien quan toc do 600. Toggle TAT = tung di chuyen dung toc do slider.
-    --   [AUDIT 12-09-2026] xac nhan: grep "__speed = 600" TOAN FILE chi trung 1 dong ben duoi -
-    --   day la CHO DUY NHAT sinh ra toc do 600. Dieu kien BAT BUOC: _G.Neartween == true
-    --   (toggle ON, Default=true, flag dong bo NGAY tu save) + khong Sit + gan (dich <=150
-    --   hoac co mob song trong 150 stud). TAT toggle => 100% toc do slider, moi mode Farm.
-    if _G.Neartween == true and not (__humTween and __humTween.Sit) then
-        if distance <= 150 or __DIO_MobNear(rootPart.Position) then
-            __speed = 600
+    -- [FIX TWEEN-PARK 12-09-2026] (nguyen nhan "nhan tween 1 lan roi dung yen")
+    -- CAC LOGIC KHAC TWEEN THE NAO: __DIO_FlyTo (dùng cho Auto Superhuman/Death Step...)
+    -- luon lam `block.CFrame = __h.CFrame` TRUOC khi bay -> tween bat dau TU NHAN VAT.
+    -- Cac vong farm cung vay: block luon nam canh nhan vat (vong OnFarm keo 2 ben lai
+    -- gan nhau khi cach <= 200 stud) nen moi lan _tp goi, tween sinh ra tu dung cho nguoi.
+    -- Con BuyMelee (va moi nut di 1 minh) KHONG don block -> block con sot o toa do cu
+    -- (cach > 200 stud). Khi do vong OnFarm KHONG keo nhan vat (chi keo khi <= 200),
+    -- tween lai chay tren block tu cho cu => "nhan vat dung yen / chi hien notify".
+    -- FIX TRIET DE 1 LAN: chinh _tp tu DON BLOCK VE CANH NHAN VAT khi no roi xa > 200 stud.
+    -- Ap dung cho MOI duong tween trong script (BuyMelee, quest, boss, event...), khong
+    -- doi voi luc ngoi thuyen (thuyen dieu khien block theo cach rieng).
+    do
+        local __humPark = character:FindFirstChildOfClass("Humanoid")
+        if block and block.Parent == workspace and not (__humPark and __humPark.Sit) then
+            if (block.Position - rootPart.Position).Magnitude > 200 then
+                block.CFrame = rootPart.CFrame
+            end
         end
     end
+    -- [FIX NEAR-SPEED v4] toc do do MOT ham quyet dinh (xem __DIO_PickTweenSpeed phia tren):
+    -- 600 chi co khi toggle "Tween speed 600 if near" BAT + khong ngoi thuyen + GAN.
+    local __humTween = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
+    local __speed = __DIO_PickTweenSpeed(distance, rootPart.Position, __humTween)
     -- [FIX FPS 1] phan tich: moi loi _tp tao 1 tween MOI tren cung block "block" ma khong
     -- huy tween cu; cac loop camp (Rip Indra, Gravestone, FrozenTP...) goi _tp 10 lan/s
     -- => hang chuc tween cung dang "Playing" tranh nhau property CFrame -> FPS tut dan.
@@ -5688,6 +5716,11 @@ end
 -- [FIX SKILL-FOREVER 2/3] Ban DUNG skill Melee (Z/X/C) + Sword (Z/X) vao mob (aim thang mob
 -- qua MousePos + cua so _G.DIO_SkillAim 0.9s, dung co che hook __namecall san co).
 -- Chi ban loai vu khi dang co that -> khong spam phim vo ich khi thieu vu khi.
+-- [FIX SKILL-NOWEPON 12-09-2026] user bao "bat toggle nhung khong thay dung skill": nguyen
+-- nhan hay gap nhat la TRONG BALO KHONG CO vu khi Melee/Sword (chi cam Trai ac quy / Sung)
+-- -> ham im lang khong lam gi. Nay bao 1 lan duy nhat de nguoi dung biet ly do, va tu nhac
+-- lai sau 60s neu van thieu (khong spam notify).
+__DIO_NoWepWarnT = 0
 __DIO_FireMeleeSwordNow = function(mob)
     if not mob or not mob.Parent then return end
     task.spawn(function() -- spawn rieng: khong block callback UI / vong driver
@@ -5700,12 +5733,21 @@ __DIO_FireMeleeSwordNow = function(mob)
                 _G.DIO_SkillAim = true
                 task.spawn(function() task.wait(0.9) _G.DIO_SkillAim = false end)
             end
-            if __DIO_HasTip("Melee") then
+            local __hasMelee = __DIO_HasTip("Melee")
+            local __hasSword = __DIO_HasTip("Sword")
+            if not __hasMelee and not __hasSword then
+                if tick() - (__DIO_NoWepWarnT or 0) > 60 then
+                    __DIO_NoWepWarnT = tick()
+                    pcall(function() Window:Notify({Title = "Skill Melee/Sword", Content = "Khong tim thay vu khi Melee hoac Sword trong tui - khong co skill de ban.", Duration = 5}) end)
+                end
+                return
+            end
+            if __hasMelee then
                 Useskills("Melee", "Z") task.wait(0.15)
                 Useskills("Melee", "X") task.wait(0.15)
                 Useskills("Melee", "C") task.wait(0.15)
             end
-            if __DIO_HasTip("Sword") then
+            if __hasSword then
                 Useskills("Sword", "Z") task.wait(0.15)
                 Useskills("Sword", "X")
             end
@@ -5730,14 +5772,27 @@ end)
 
 Neartween = Tabs.Settings:AddToggle({
 Name = "Tween speed 600 if near", 
-Description = "", 
+Description = "BAT: khi gan (dich <=150 stud hoac co mob song trong 150 stud) tween chay 600. TAT: moi mode Farm (Normal/Obrit/Dodge) luon dung dung slider 'Speed Tween', khong bao gio tu len 600.", 
 Default = true, 
 Callback = function(Value)
-  _G.Neartween = Value
+  -- [FIX NEAR-FLAG 12-09-2026] ep CUNG KIEU boolean: gate trong __DIO_PickTweenSpeed la
+  -- `_G.Neartween == true` nen bat ky gia tri le nao (nil / "true" / 1) deu = TAT.
+  _G.Neartween = (Value == true)
+  -- bao lai trang thai de nguoi dung xac nhan toggle da an (tranh nghi "tat roi ma van 600")
+  pcall(function()
+    Window:Notify({
+      Title = "Tween speed 600 if near",
+      Content = _G.Neartween
+        and ("BAT: gan thi tween 600 (moi mode Farm).")
+        or  ("TAT: khong bao gio dung 600 - moi mode Farm dung slider Speed Tween (" .. tostring(math.floor(tonumber(_G.TweenSpeed) or 300)) .. ")."),
+      Duration = 4,
+    })
+  end)
 end})
 -- [FIX NEAR-INIT 12-09-2026] ON mac dinh (Default=true) + dong bo flag NGAY tu save (khong cho replay 3s).
--- 600 CHI xuat hien khi toggle ON (xem gate duy nhat trong _tp). TAT => 100% toc do slider, moi mode Farm.
-_G.Neartween = GetSetting("UI/Settings/Tween speed 600 if near", true)
+-- 600 CHI xuat hien khi toggle ON (xem __DIO_PickTweenSpeed - gate duy nhat cua toan script).
+-- TAT => 100% toc do slider, moi mode Farm (Normal / Obrit / Dodge).
+_G.Neartween = (GetSetting("UI/Settings/Tween speed 600 if near", true) == true)
 Bringmob = Tabs.Settings:AddToggle({
 Name = "Bring Mobs", 
 Description = "", 
@@ -5778,6 +5833,15 @@ Tabs.Settings:AddDropdown({
         --          toc do = "Orbit Speed" (KHONG lien quan "Speed Tween")
         -- Dodge  : luon dam SAU LUNG quai, khoang cach = "Farm Distance";
         --          quai xoay huong nao thi bam theo huong do, khong co diem khoa
+        -- [FIX MODEFARM-SPEED 12-09-2026] Ca 3 mode deu di qua CUNG 1 gate toc do
+        -- (__DIO_PickTweenSpeed). Nghia la:
+        --   * "Tween speed 600 if near" TAT  -> moi di chuyen tween (ke ca buoc tiep can
+        --     cua driver Obrit/Dodge khi cach quai > 250 stud) dung DUNG slider "Speed Tween".
+        --     Khong con duong nao tu dong len 600.
+        --   * "Tween speed 600 if near" BAT  -> 600 chi khi GAN (dich <=150 stud hoac co mob
+        --     song trong 150 stud), va KHONG ap dung khi dang ngoi thuyen.
+        --   * Phan bay vong (Obrit) / dam sau lung (Dodge) la driver ghi CFrame moi frame theo
+        --     slider "Orbit Speed" — khong phai tween, nen khong lien quan moc 600.
         __DIO_CurTarget = nil -- doi mode -> bo muc tieu cu de driver khong keo nham
     end
 })
@@ -8274,48 +8338,46 @@ function __DIO_ReleaseAll(owner)
     __DIO_FlagBorrow[owner] = nil
 end
 
--- [FIX SYNTAX-BUYTOGGLES 1/2] 3 loi san co trong khoi UI vua them (chi chay luot sua nay moi bat duoc):
---   (1) Toggle "Buy Black Leg" THI EU dong mo ".__DIO_BuyMeleeToggles.BuyBlackLeg = ...:AddToggle({"
---       -> loI syntax NGAY, TOAN BO script khong bao gi compile chay.
---   (2) Bang __DIO_BuyMeleeToggles dugc ghi 4 lan nhung CHUA TUNG khai bao -> runtime "index nil".
---   (3) Section "Fighting Melee Styles" nam o tab Quests nhung 3 toggle con lai la Tabs.Shop
---       -> nhom 4 toggle vao cug tab voi section. (Muon chuyen sang tab Shopping: doi 4 dong
---       Tabs.Quests thanh Tabs.Shop la xong.)
--- [FIX BUY-SHOP 12-09-2026] user: 4 toggle Buy Melee + section ve Tabs.Shop (thong nhat).
---   Luu y: save-key doi "UI/Quests/..." -> "UI/Shop/..." nen lan dau sau fix can bat lai toggle.
 __DIO_BuyMeleeToggles = {}
+-- [FIX BUY-SHOP 12-09-2026] 4 toggle Buy Melee nam o TAB SHOP (dung nhu yeu cau user),
+-- khong con 3 cai o Quests + 1 cai o Shop nua. Callback chi set flag: driver duoc khoi
+-- dong boi __DIO_BuyKick() (neu da load xong) HOAC boi WATCHDOG 1s (neu click som hon load)
+-- -> khong con canh "bat toggle ma khong bay" vi sai thu tu load.
+__DIO_BuyKick = function()
+    if __DIO_BuyDriverStart then pcall(__DIO_BuyDriverStart) end
+end
 Tabs.Shop:AddSection("Fighting Melee Styles")
 __DIO_BuyMeleeToggles.BuyBlackLeg = Tabs.Shop:AddToggle({
 Name = "Buy Black Leg", 
 Description = "", 
 Default = false,
 Callback = function(Value)
-  _G.BuyMelee_BuyBlackLeg = Value
-  if Value and __DIO_BuyDriverStart then __DIO_BuyDriverStart() end
+  _G.BuyMelee_BuyBlackLeg = (Value == true)
+  if Value then __DIO_BuyKick() end
 end})
 __DIO_BuyMeleeToggles.BuyElectro = Tabs.Shop:AddToggle({
 Name = "Buy Electro", 
 Description = "", 
 Default = false,
 Callback = function(Value)
-  _G.BuyMelee_BuyElectro = Value
-  if Value and __DIO_BuyDriverStart then __DIO_BuyDriverStart() end
+  _G.BuyMelee_BuyElectro = (Value == true)
+  if Value then __DIO_BuyKick() end
 end})
 __DIO_BuyMeleeToggles.BuyFishmanKarate = Tabs.Shop:AddToggle({
 Name = "Buy Fishman Karate", 
 Description = "", 
 Default = false,
 Callback = function(Value)
-  _G.BuyMelee_BuyFishmanKarate = Value
-  if Value and __DIO_BuyDriverStart then __DIO_BuyDriverStart() end
+  _G.BuyMelee_BuyFishmanKarate = (Value == true)
+  if Value then __DIO_BuyKick() end
 end})
-__DIO_BuyMeleeToggles.BuyDragonClaw = Tabs.Shop:AddToggle({ -- [FIX BUY-SHOP 12-09-2026] Quests -> Shop (user: 4 toggle ve Shop, thong nhat)
+__DIO_BuyMeleeToggles.BuyDragonClaw = Tabs.Shop:AddToggle({
 Name = "Buy DragonClaw", 
 Description = "", 
 Default = false,
 Callback = function(Value)
-  _G.BuyMelee_BuyDragonClaw = Value
-  if Value and __DIO_BuyDriverStart then __DIO_BuyDriverStart() end
+  _G.BuyMelee_BuyDragonClaw = (Value == true)
+  if Value then __DIO_BuyKick() end
 end})
 SuperHuman = Tabs.Quests:AddToggle({
 Name = "Auto Superhuman", 
@@ -11539,15 +11601,214 @@ end)
 
 RandomFF = Tabs.Raids:AddToggle({
 Name = "Auto Random Fruit", 
-Description = "", 
+Description = "Roll trai ac quy qua he Gacha (ZiolesGacha). Tu mo cua so gacha roi bam nut Roll/Spin.", 
 Default = false,
 Callback = function(Value)
-  _G.Random_Auto = Value
+  _G.Random_Auto = (Value == true)
 end})
+
+-- ============================================================================
+-- [FIX RANDOM-FRUIT v2 12-09-2026] LOGIC RANDOM FRUIT MOI — ghep dung theo function
+-- user cung cap (he GACHA cua game), thay cho remote cu `CommF_:InvokeServer("Cousin","Buy")`
+-- (remote do khong con tra trai ngau nhien dung cach).
+-- Cach hoat dong:
+--   1) require 2 module Gacha cua game (GachaClient + UI.GachaWindow) trong pcall.
+--   2) CheckGachaAsync("ZiolesGacha") -> neu Level.RequirementMet = false thi DUNG (bao 1 lan).
+--   3) GachaWindow:Open(...) -> cho 1.2s -> tim ScreenGui VUA xuat hien (so sanh snapshot
+--      truoc/sau) de khong bam nham vao GUI cua chat/topbar/...
+--   4) Khong tim thay GUI -> thu goi thang GachaWindow:Roll/Spin/Buy/...
+--   5) Tim thay GUI -> quet nut, uu tien nut co ten/chu khoa (roll/spin/buy/...), roi toi
+--      nut co nhieu connection nhat, roi moi toi nut bat ky. Loai tru nut close/exit/robux...
+--   6) Fire nut bang getconnections (chinh xac nhat) -> firesignal -> Activate (du phong).
+-- Vong lap chi chay khi toggle BAT, co khoa chong chay trung (1 roll / luot), pcall toan than
+-- nen khong bao gio sat thread; tat toggle = dung ngay o nhip ke tiep.
+-- ============================================================================
+__DIO_GACHA_NAME  = "ZiolesGacha"
+__DIO_GachaBusy   = false
+__DIO_GachaWarnT  = 0
+__DIO_GachaModules = nil
+__DIO_GachaGetModules = function()
+    if __DIO_GachaModules ~= nil then return __DIO_GachaModules end
+    local ok, res = pcall(function()
+        local rs = game:GetService("ReplicatedStorage")
+        return {
+            Client = require(rs.Controllers.GachaClient),
+            Window = require(rs.Controllers.UI.GachaWindow),
+        }
+    end)
+    if ok and type(res) == "table" and res.Client and res.Window then
+        __DIO_GachaModules = res
+    else
+        __DIO_GachaModules = false -- khong co he gacha -> nho de khong require lai moi nhip
+    end
+    return __DIO_GachaModules
+end
+
+__DIO_GachaRollOnce = function()
+    if __DIO_GachaBusy then return false end
+    __DIO_GachaBusy = true
+    local __rolled = false
+    task.spawn(function()
+        pcall(function()
+            local mods = __DIO_GachaGetModules()
+            if not mods then
+                if tick() - (__DIO_GachaWarnT or 0) > 60 then
+                    __DIO_GachaWarnT = tick()
+                    pcall(function() Window:Notify({Title = "Auto Random Fruit", Content = "Khong tim thay module Gacha (Controllers.GachaClient) trong game nay.", Duration = 5}) end)
+                end
+                return
+            end
+            local GachaClient, GachaWindow = mods.Client, mods.Window
+
+            local success, gachaData = pcall(function()
+                return GachaClient.CheckGachaAsync(__DIO_GACHA_NAME)
+            end)
+            if not (success and gachaData and gachaData.Level and gachaData.Level.RequirementMet) then
+                if tick() - (__DIO_GachaWarnT or 0) > 60 then
+                    __DIO_GachaWarnT = tick()
+                    pcall(function() Window:Notify({Title = "Auto Random Fruit", Content = "Chua du dieu kien cap do de roll " .. __DIO_GACHA_NAME .. " - tam dung.", Duration = 5}) end)
+                end
+                return
+            end
+
+            local priceArg = {
+                ["Name"]  = "Money",
+                ["Value"] = (gachaData.Price and gachaData.Price.Value) or 0,
+            }
+
+            local playerGui = plr:FindFirstChild("PlayerGui")
+            if not playerGui then return end
+
+            -- snapshot ScreenGui truoc khi mo -> chi xet GUI VUA xuat hien
+            local snapshotBefore = {}
+            for _, gui in ipairs(playerGui:GetChildren()) do
+                if gui:IsA("ScreenGui") then
+                    snapshotBefore[gui] = gui.Enabled
+                end
+            end
+
+            pcall(function()
+                GachaWindow:Open(__DIO_GACHA_NAME, priceArg)
+            end)
+
+            task.wait(1.2)
+            if not _G.Random_Auto then return end -- tat toggle giua chung -> dung, khong bam
+
+            local targetGuis = {}
+            for _, gui in ipairs(playerGui:GetChildren()) do
+                if gui:IsA("ScreenGui") then
+                    local before = snapshotBefore[gui]
+                    if before == nil or (before == false and gui.Enabled) then
+                        table.insert(targetGuis, gui)
+                    end
+                end
+            end
+
+            if #targetGuis == 0 then
+                for _, method in ipairs({ "Roll", "Spin", "Buy", "Purchase", "Confirm", "Draw", "Pull" }) do
+                    if type(GachaWindow[method]) == "function" then
+                        local ok = pcall(GachaWindow[method], GachaWindow, __DIO_GACHA_NAME, priceArg)
+                        if ok then
+                            __rolled = true
+                            return
+                        end
+                    end
+                end
+                return
+            end
+
+            local guiBlacklist = { "chat", "topbar", "leaderboard", "serverlist", "notification", "robux", "coregui" }
+            local btnBlacklist = { "close", "exit", "back", "cancel", "robux", "server", "list", "no", "x" }
+            local btnKeywords  = { "roll", "spin", "random", "buy", "confirm", "draw", "pull", "play", "start", "purchase" }
+
+            -- [FIX GACHA-BLACKLIST 12-09-2026] Ban goc cua user dung find() cho CA token 1-2 ky tu
+            -- ("x", "no") -> nut "ROLL x1" bi chan vi chua chu "x", nut "Normal Roll" bi chan vi
+            -- chua "no" => khong bao gio bam duoc nut roll. Sua: token <= 2 ky tu chi khop KHI
+            -- ten/chu TRUNG KHIT; token dai van khop chuoi con.
+            local function listHas(list, str)
+                str = string.lower(tostring(str or ""))
+                for _, v in ipairs(list) do
+                    if #v <= 2 then
+                        if str == v then return true end
+                    elseif string.find(str, v, 1, true) then
+                        return true
+                    end
+                end
+                return false
+            end
+
+            local function fireBtn(btn)
+                if getconnections then
+                    local fired = false
+                    for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do conn:Fire() fired = true end
+                    for _, conn in ipairs(getconnections(btn.Activated))       do conn:Fire() fired = true end
+                    if fired then return true end
+                end
+                if firesignal then
+                    pcall(function()
+                        firesignal(btn.MouseButton1Click)
+                        firesignal(btn.Activated)
+                    end)
+                    return true
+                end
+                pcall(function() btn:Activate() end)
+                return false
+            end
+
+            local clicked = false
+
+            for _, gui in ipairs(targetGuis) do
+                if not listHas(guiBlacklist, gui.Name) then
+                    local allBtns = {}
+                    for _, btn in ipairs(gui:GetDescendants()) do
+                        if (btn:IsA("TextButton") or btn:IsA("ImageButton")) and btn.Visible then
+                            local name = btn.Name
+                            local text = (btn:IsA("TextButton") and btn.Text) or ""
+                            if not listHas(btnBlacklist, name) and not listHas(btnBlacklist, text) then
+                                table.insert(allBtns, { btn = btn, name = name, text = text })
+                            end
+                        end
+                    end
+
+                    for _, b in ipairs(allBtns) do
+                        if listHas(btnKeywords, b.name) or listHas(btnKeywords, b.text) then
+                            if fireBtn(b.btn) then clicked = true break end
+                        end
+                    end
+
+                    if not clicked and getconnections then
+                        local best, bestCount = nil, 0
+                        for _, b in ipairs(allBtns) do
+                            local n = #getconnections(b.btn.MouseButton1Click)
+                            if n > bestCount then bestCount = n best = b end
+                        end
+                        if best and bestCount > 0 then
+                            if fireBtn(best.btn) then clicked = true end
+                        end
+                    end
+
+                    if not clicked then
+                        for _, b in ipairs(allBtns) do
+                            if fireBtn(b.btn) then clicked = true break end
+                        end
+                    end
+                end
+                if clicked then break end
+            end
+
+            __rolled = clicked
+        end)
+        __DIO_GachaBusy = false
+    end)
+    return true
+end
+
+-- Vong random fruit: chi chay khi toggle BAT. Nhip 3s (roll gacha co animation + task.wait(1.2)
+-- ben trong) -> khong spam remote/GUI. pcall + khoa __DIO_GachaBusy nen khong bao gio chay trung.
 spawn(function()
-  while __DIO_wait(1) do -- [FIX PERF 52a] Sec -> 1 remote mua fruit ngau nhien 4 lan/s thanh 1 lan/s
-   	pcall(function()
-      if _G.Random_Auto then replicated.Remotes.CommF_:InvokeServer("Cousin","Buy") end 
+  while __DIO_wait(3) do
+    pcall(function()
+      if _G.Random_Auto then __DIO_GachaRollOnce() end
     end)
   end
 end)
@@ -13235,16 +13496,17 @@ BuyMelee = function(npcNames, cancelFn, ...)
                     if cancelFn and cancelFn() then __cancelled = true __stop = true return end -- tat toggle = dung ngay
                     local c2 = plr.Character
                     local h2 = c2 and c2:FindFirstChild("HumanoidRootPart")
-                    if not h2 then
-                        __DIO_wait(0.5)  -- chet / mat nhan vat: roi nhoi nhan vat moi, tiep tuc bay (timeout van chan tren)
-                        return
-                    end
+                    if not h2 then return end -- chet / mat nhan vat: nhip sau tu thu lai (timeout van chan tren)
                     if (h2.Position - standCF.Position).Magnitude <= 15 then __arrived = true __stop = true return end
                     if tick() - __t0 > __timeout then __stop = true return end
-                    _tp(standCF)           -- DUNG 1 tween cua source (_tp co dedupe 0.6s + huy tween cu san)
-                    __DIO_wait(0.5)        -- nhip poll nhe, giong vong ngoai cua farm bone / farm cake
+                    _tp(standCF)           -- DUNG 1 tween cua source (_tp tu don block ve canh nhan vat + dedupe 0.6s)
                 end)
                 if __stop then break end
+                -- [FIX HOTSPIN 12-09-2026] __DIO_wait NAM NGOAI pcall va LUON chay: ban cu de
+                -- wait o CUOI than pcall nen chi can 1 loi giua chung (vd _tp loi 1 nhip) la ca
+                -- vong quay NONG khong nghi (100% CPU, exploit treo) -> do la 1 nua cua ca
+                -- "tween chi duoc 1 lan". Gio nhip nao cung nghi 0.5s, loi gi van tien tiep.
+                __DIO_wait(0.5)
             end
             __release()  -- moi duong thoat binh thuong (den noi / huy / timeout) deu tha flag
 
@@ -13278,22 +13540,34 @@ task.spawn(function()
     end
 end)
 
+-- ============================================================================
+-- [FIX BUY-DRIVER v2 12-09-2026] Driver mua 4 style Melee (Black Leg / Electro /
+-- Fishman Karate / Dragon Claw). 3 loi cua ban cu da sua:
+--   (1) flag "_G.BuyMelee_X" -> _G[j.flag] LUON nil => driver thoat ngay, khong bao gio bay.
+--   (2) driver CHI duoc khoi dong tu Callback cua toggle. Neu Callback chay TRUOC khi file
+--       load toi dong dinh nghia __DIO_BuyDriverStart (script 14k dong; UI con replay
+--       setting da luu o giay thu 3) thi `if Value and __DIO_BuyDriverStart` = nil -> KHONG
+--       co gi khoi dong driver nua => "bat toggle ma nhan vat khong bay". Nay co WATCHDOG
+--       o duoi tu khoi dong moi 1s -> bat toggle luc nao cung chay, "1 lan va mai mai".
+--   (3) den noi ma chua so huu style (mua that bai / chua du tien / ten style khac) -> driver
+--       goi lai remote mua + notify moi 0.5s = spam remote vo han. Nay co cooldown 8s/style.
+-- ============================================================================
+__DIO_BuyJobs = {
+    { flag = "BuyMelee_BuyBlackLeg",      key = "BuyBlackLeg",      owned = "Black Leg",      npc = {"Dark Step Teacher"},    beli = 150000, args = {"BuyBlackLeg"} },
+    { flag = "BuyMelee_BuyElectro",       key = "BuyElectro",       owned = "Electro",        npc = {"Mad Scientist"},        beli = 500000, args = {"BuyElectro"} },
+    { flag = "BuyMelee_BuyFishmanKarate", key = "BuyFishmanKarate", owned = "Fishman Karate", npc = {"Water Kung Fu Teacher"},beli = 750000, args = {"BuyFishmanKarate"} },
+    { flag = "BuyMelee_BuyDragonClaw",    key = "BuyDragonClaw",    owned = "Dragon Claw",    npc = {"Sabi"},                 frag = 1500,   args = {"BlackbeardReward","DragonClaw","2"} },
+}
+__DIO_BuyJobT = {}     -- [key] = tick() lan thu mua gan nhat (chong spam remote/notify)
+__DIO_BUY_RETRY = 8    -- giay toi thieu giua 2 lan thu mua CUNG 1 style
 do
-    -- [FIX BUY-FLAG 12-09-2026] flag "BuyMelee_X" (KHONG prefix "_G."): ban cu ghi "_G.BuyMelee_X"
-    --   nen _G[j.flag] LUON nil => __AnyOn() false mai mai => driver thoat ngay, khong bao gio bay/mua.
-    local __DIO_BuyJobs = {
-        { flag = "BuyMelee_BuyBlackLeg",      key = "BuyBlackLeg",      owned = "Black Leg",      npc = {"Dark Step Teacher"},    beli = 150000, args = {"BuyBlackLeg"} },
-        { flag = "BuyMelee_BuyElectro",       key = "BuyElectro",       owned = "Electro",        npc = {"Mad Scientist"},        beli = 500000, args = {"BuyElectro"} },
-        { flag = "BuyMelee_BuyFishmanKarate", key = "BuyFishmanKarate", owned = "Fishman Karate", npc = {"Water Kung Fu Teacher"},beli = 750000, args = {"BuyFishmanKarate"} },
-        { flag = "BuyMelee_BuyDragonClaw",    key = "BuyDragonClaw",    owned = "Dragon Claw",    npc = {"Sabi"},                 frag = 1500,   args = {"BlackbeardReward","DragonClaw","2"} },
-    }
     local __warned = {}
     local function __Owned(n)
         local ok, v = pcall(GetBP, n)
         if ok then return v ~= nil end
         return false
     end
-    local function __AnyOn()
+    __DIO_BuyAnyOn = function()
         for _, j in ipairs(__DIO_BuyJobs) do
             if _G[j.flag] then return true end
         end
@@ -13304,7 +13578,7 @@ do
         if __DIO_BuyDriverRunning then return end
         __DIO_BuyDriverRunning = true
         spawn(function()
-            while __AnyOn() do
+            while __DIO_BuyAnyOn() do
                 pcall(function()
                     local ch = plr.Character
                     if not ch or not ch:FindFirstChild("HumanoidRootPart") then return end
@@ -13322,7 +13596,10 @@ do
                             else
                                 __warned[j.key] = nil
                                 local enough = (not j.beli or beli >= j.beli) and (not j.frag or frag >= j.frag)
-                                if enough then
+                                -- [FIX BUY-SPAM] cooldown 8s/style: den noi ma chua so huu (mua loi /
+                                -- thieu tien phat sinh) -> cho 8s moi thu lai, khong spam remote+notify.
+                                if enough and (not __DIO_BuyJobT[j.key] or (tick() - __DIO_BuyJobT[j.key]) >= __DIO_BUY_RETRY) then
+                                    __DIO_BuyJobT[j.key] = tick()
                                     BuyMelee(j.npc, function() return not _G[j.flag] end, unpack(j.args))
                                     break -- 1 job / vong, cac vong sau moi xet tiep
                                 end
@@ -13336,6 +13613,19 @@ do
         end)
     end
 end
+
+-- [FIX BUY-AUTOSTART 12-09-2026] WATCHDOG "MAI MAI": co toggle Buy Melee BAT ma driver chua
+-- chay (click som hon load / UI replay saved setting / driver vua thoat) -> TU khoi dong lai.
+-- Day la cau tra loi cho "tween chi duoc 1 lan": du callback bi lo, he van tu chay tiep.
+task.spawn(function()
+    while __DIO_wait(1) do
+        pcall(function()
+            if __DIO_BuyAnyOn() and not __DIO_BuyDriverRunning and __DIO_BuyDriverStart then
+                __DIO_BuyDriverStart()
+            end
+        end)
+    end
+end)
 
 Tabs.Shop:AddSection("Accessory")
 Tabs.Shop:AddButton({
