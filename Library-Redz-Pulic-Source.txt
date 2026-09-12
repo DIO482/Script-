@@ -1,3 +1,9 @@
+--[[
+    REDZ LIBRARY V5 — Reskin UI (giống DIO Loader)
+    Chỉ sửa phần UI + Search: nền phẳng, tab nằm ngang dưới header,
+    viền/nhấn màu xanh lá, ô search nằm trong thanh tab.
+    Toggle / Slider / Dropdown / Keybind và toàn bộ logic chức năng giữ nguyên 100%.
+]]
 
 local a=cloneref or(function(...)return...end)
 
@@ -32,9 +38,9 @@ local r={
 Darker={
 Colors={
 Background=ColorSequence.new{
-ColorSequenceKeypoint.new(0.00,Color3.fromRGB(25,25,25)),
-ColorSequenceKeypoint.new(0.50,Color3.fromRGB(32.5,32.5,32.5)),
-ColorSequenceKeypoint.new(1.00,Color3.fromRGB(25,25,25))
+ColorSequenceKeypoint.new(0.00,Color3.fromRGB(17,18,17)),
+ColorSequenceKeypoint.new(0.50,Color3.fromRGB(17,18,17)),
+ColorSequenceKeypoint.new(1.00,Color3.fromRGB(17,18,17))
 },
 Primary=Color3.fromRGB(80,200,90),
 OnPrimary=Color3.fromRGB(35,110,50),
@@ -849,41 +855,36 @@ end local al=function(
 
 al, am, an)
 local ao=E("TextButton","Button",an,{
-Size=UDim2.new(1,0,0,26),
+AutomaticSize=Enum.AutomaticSize.X,
+Size=UDim2.new(0,0,0,24),
 AutoButtonColor=false,
-Text="",
-Elements={
-Corner=UDim.new(0,6)
-},
-ThemeTag={
-BackgroundColor3="Colors.Buttons.Default"
-},
-Childs={
-E("TextLabel","Title",{
-BackgroundTransparency=1,
 Text=am.Title,
 TextSize=11,
-TextXAlignment=Enum.TextXAlignment.Left,
+TextXAlignment=Enum.TextXAlignment.Center,
 TextTransparency=0,
 TextTruncate=Enum.TextTruncate.AtEnd,
+BackgroundTransparency=1,
+Elements={
+Corner=UDim.new(0,4),
+Padding={
+PaddingLeft=UDim.new(0,12),
+PaddingRight=UDim.new(0,12)
+}
+},
 ThemeTag={
+BackgroundColor3="Colors.Buttons.Holding",
 TextColor3="Colors.Text.Default",
 Font="Font.Medium"
 }
 })
-}
-})
 
-local ap=E("Frame",ao,{
-Position=UDim2.new(0,1,0.5,0),
-AnchorPoint=Vector2.new(0,0.5),
-Size=UDim2.fromOffset(4,4),
+local ap=E("Frame","Indicator",ao,{
+Position=UDim2.new(0,0,1,0),
+AnchorPoint=Vector2.new(0,1),
+Size=UDim2.new(1,0,0,2),
 BackgroundTransparency=1,
 ThemeTag={
 BackgroundColor3="Colors.Primary"
-},
-Elements={
-Corner=UDim.new(0.5,0)
 }
 })
 
@@ -914,8 +915,8 @@ Padding=UDim.new(0,5)
 }
 })
 
-local ar=E("ImageLabel",ao,{
-Position=UDim2.new(0,8,0.5),
+local ar=E("ImageLabel","Icon",ao,{
+Position=UDim2.new(0,6,0.5),
 Size=UDim2.new(0,13,0,13),
 AnchorPoint=Vector2.new(0,0.5),
 BackgroundTransparency=1,
@@ -925,10 +926,8 @@ Image=am.Icon or""
 
 
 local as=string.sub(ar.Image,1,13)=="rbxassetid://"
-local at=ao.Title
 ar.Visible=as
-at.Size=UDim2.new(1,as and-25 or-15,1)
-at.Position=UDim2.fromOffset(as and 25 or 15)end
+ao.UIPadding.PaddingLeft=UDim.new(0,as and 24 or 12)end
 
 
 u(ar:GetPropertyChangedSignal"Image",as)
@@ -2947,13 +2946,11 @@ local aG=UDim2.new(1,0,1,150)
 local aH=0.45
 
 local aI={
-J(aE,"BackgroundTransparency",0,aH),
-J(aE,"Size",UDim2.fromOffset(4,16),aH)
+J(aE,"BackgroundTransparency",0,aH)
 }
 
 local aJ={
-J(aE,"BackgroundTransparency",1,aH),
-J(aE,"Size",UDim2.fromOffset(4,4),aH)
+J(aE,"BackgroundTransparency",1,aH)
 }
 
 local aK=C:new()
@@ -2967,7 +2964,7 @@ end end local aM=function()
 
 
 aL(aI)
-J(aC,"BackgroundColor3",w(s.CurrentTheme,"Colors.Primary"),aH):Play()
+J(aC,"BackgroundTransparency",0.5,aH):Play()
 ay.Selected=true
 aK:changeRendering(true)
 aK:update()
@@ -2978,7 +2975,7 @@ aF:Play()end local aN=function()
 
 
 aL(aJ)
-J(aC,"BackgroundColor3",w(s.CurrentTheme,"Colors.Buttons.Default"),aH):Play()
+J(aC,"BackgroundTransparency",1,aH):Play()
 ay.Selected=false
 aD.Parent=nil
 aK:changeRendering(false)end
@@ -3648,15 +3645,14 @@ end local aa=function(
  
 aa, ab)
 local ac=ab.Size.Y.Offset
-local ad=UDim2.new(0,aa.TabSize or s.Default.TabSize,1,-ac)
-local ae=UDim2.new(1,-ad.X.Offset,1,-ac)
+local ad=UDim2.new(1,0,0,34)
+local ae=UDim2.new(1,0,1,-(ac+34))
 
 local af=E("ScrollingFrame","TabsScroll",{
-AutomaticCanvasSize=Enum.AutomaticSize.Y,
-ScrollingDirection=Enum.ScrollingDirection.Y,
-Position=UDim2.new(0,0,1,0),
-AnchorPoint=Vector2.new(0,1),
-ScrollBarThickness=2.2,
+AutomaticCanvasSize=Enum.AutomaticSize.X,
+ScrollingDirection=Enum.ScrollingDirection.X,
+Position=UDim2.new(0,0,0,ac),
+ScrollBarThickness=0,
 BackgroundTransparency=1,
 ScrollBarImageTransparency=0.2,
 CanvasSize=UDim2.new(),
@@ -3667,21 +3663,24 @@ ScrollBarImageColor3="Colors.ScrollBar"
 },
 Elements={
 Padding={
-PaddingLeft=UDim.new(0,10),
-PaddingRight=UDim.new(0,10),
-PaddingTop=UDim.new(0,10),
-PaddingBottom=UDim.new(0,10)
+PaddingLeft=UDim.new(0,12),
+PaddingRight=UDim.new(0,12),
+PaddingTop=UDim.new(0,5),
+PaddingBottom=UDim.new(0,5)
 },
 ListLayout={
-Padding=UDim.new(0,5)
+FillDirection=Enum.FillDirection.Horizontal,
+HorizontalAlignment=Enum.HorizontalAlignment.Left,
+VerticalAlignment=Enum.VerticalAlignment.Center,
+SortOrder=Enum.SortOrder.LayoutOrder,
+Padding=UDim.new(0,6)
 }
 }
 })
 
 local ag=E("Frame","Containers",{
 Size=ae,
-AnchorPoint=Vector2.new(1,1),
-Position=UDim2.new(1,0,1,0),
+Position=UDim2.new(0,0,0,ac+34),
 BackgroundTransparency=1,
 ClipsDescendants=true
 })
@@ -4067,30 +4066,14 @@ local at,au=aa(af,an)
 at.Parent=al
 au.Parent=al
 
--- Ô vuông chữ nhật bao gồm cả search + tabs (1 border duy nhất)
-local leftBorderFrame=E("Frame","LeftPanelBorder",al,{
-Size=UDim2.new(0,at.Size.X.Offset,1,-an.Size.Y.Offset),
-Position=UDim2.new(0,0,0,an.Size.Y.Offset),
-BackgroundTransparency=1,
-BorderSizePixel=0,
-Elements={
-Corner=UDim.new(0,4),
-Stroke={
-ThemeTag={Color="Colors.Primary"},
-Thickness=1,
-ApplyStrokeMode=Enum.ApplyStrokeMode.Border
-}
-}
-})
-
--- Viền xanh bao quanh panel Content (phải)
+-- Viền xanh bao quanh panel Content
 E("UIStroke","ContentStroke",au,{
 ThemeTag={Color="Colors.Primary"},
 Thickness=1,
 ApplyStrokeMode=Enum.ApplyStrokeMode.Border
 })
 
--- Đường kẻ ngang màu xanh dưới TopBar
+-- Đường kẻ ngang màu xanh dưới TopBar (ngăn header với thanh tab)
 E("Frame","TopBarSeparator",an,{
 Size=UDim2.new(1,0,0,1),
 Position=UDim2.new(0,0,1,-1),
@@ -4100,13 +4083,13 @@ BackgroundTransparency=0.3,
 ThemeTag={BackgroundColor3="Colors.Primary"}
 })
 
--- Đường kẻ dọc 1px phân cách trái/phải
-local avSeparator=E("Frame","TabSeparator",al,{
-Size=UDim2.new(0,1,1,-an.Size.Y.Offset),
-Position=UDim2.new(0,at.Size.X.Offset,0,an.Size.Y.Offset),
+-- Đường kẻ ngang màu xanh dưới thanh tab (giống ảnh)
+E("Frame","TabBarSeparator",al,{
+Size=UDim2.new(1,0,0,1),
+Position=UDim2.new(0,0,0,at.Position.Y.Offset+at.Size.Y.Offset-1),
 BorderSizePixel=0,
-ThemeTag={BackgroundColor3="Colors.Primary"},
-BackgroundTransparency=0.3
+BackgroundTransparency=0.3,
+ThemeTag={BackgroundColor3="Colors.Primary"}
 })
 
 local av=table.freeze{
@@ -4135,8 +4118,8 @@ BackgroundColor3="Colors.OnPrimary"
 })
 
 local ax=E("Frame","ControlTabsSize",ak,{
-Size=UDim2.new(0,16,0.75,-30),
-Position=UDim2.new(0,at.Size.X.Offset,0.5,15),
+Size=UDim2.new(0,14,0,6),
+Position=UDim2.new(0.5,0,0,an.Size.Y.Offset+at.Size.Y.Offset),
 AnchorPoint=Vector2.new(0.5,0.5),
 BackgroundTransparency=1,
 Active=true,
@@ -4171,20 +4154,23 @@ end)
 u(ax:GetPropertyChangedSignal"Position",function()
 ay(ax)
 local az=ax.Position
-at.Size=UDim2.new(0,az.X.Offset,1,-an.Size.Y.Offset)
-au.Size=UDim2.new(1,-at.Size.X.Offset,1,-an.Size.Y.Offset)
-af.TabSize=az.X.Offset
--- Cập nhật border + separator theo tab panel
-leftBorderFrame.Size=UDim2.new(0,az.X.Offset,1,-an.Size.Y.Offset)
-avSeparator.Position=UDim2.new(0,az.X.Offset,0,an.Size.Y.Offset)
+local aB=math.clamp(az.Y.Offset-an.Size.Y.Offset,26,60)
+at.Size=UDim2.new(1,0,0,aB)
+au.Size=UDim2.new(1,0,1,-(an.Size.Y.Offset+aB))
+au.Position=UDim2.new(0,0,0,an.Size.Y.Offset+aB)
+af.TabSize=aB
+local aC=al.TabBarSeparator
+if aC then
+aC.Position=UDim2.new(0,0,0,an.Size.Y.Offset+aB-1)
+end
 end)
 
 D.Draggable(aw,ad,0.68,function(az,aA,aB,aC)
 return UDim2.fromOffset(math.clamp(aA,430,1000),math.clamp(aC,200,500))
 end)
 
-D.Draggable(ax,ad,0.68,function(aA,aB)
-return UDim2.new(0,math.clamp(aB,135,210),0.5,15)
+D.Draggable(ax,ad,0.68,function(aA,aB,aC,aD)
+return UDim2.new(0.5,0,0,math.clamp(aD,an.Size.Y.Offset+26,an.Size.Y.Offset+60))
 end)
 
 local aA={
@@ -4233,20 +4219,13 @@ u(ar.Activated,function()
     as:Dialog(aA)
 end)
 
-local searchContainerHeight = 35
+local searchContainerHeight = 26
 
 local searchContainer = E("Frame", "SearchContainer", al, {
-    Size = UDim2.new(0, at.Size.X.Offset, 0, searchContainerHeight),
-    Position = UDim2.new(0, 0, 0, an.Size.Y.Offset), -- Bắt đầu từ mép dưới của TopBar
+    Size = UDim2.new(0, 210, 0, searchContainerHeight),
+    Position = UDim2.new(0, 8, 0, an.Size.Y.Offset + 4), -- Nằm trong thanh tab, bên trái các tab
     BackgroundTransparency = 1,
-    Elements = {
-        Padding = {
-            PaddingLeft = UDim.new(0, 10),
-            PaddingRight = UDim.new(0, 10),
-            PaddingTop = UDim.new(0, 5),
-            PaddingBottom = UDim.new(0, 5)
-        }
-    }
+    ZIndex = 5
 })
 
 -- Background của Search Box (màu nền bo góc) + viền xanh
@@ -4269,7 +4248,7 @@ local searchInput = E("TextBox", "SearchBar", searchInputBg, {
     Size = UDim2.new(1, -25, 1, 0), -- Chiều rộng trừ đi khoảng trống cho Icon
     Position = UDim2.new(0, 8, 0, 0), -- Cách lề trái 8px
     BackgroundTransparency = 1,
-    PlaceholderText = "Search Section and Function",
+    PlaceholderText = "Search Section And Function",
     Text = "",
     TextSize = 12,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -4293,15 +4272,8 @@ local searchIcon = E("ImageLabel", "SearchIcon", searchInputBg, {
     }
 })
 
--- Điều chỉnh lại kích thước của danh sách Tab (TabsScroll) để nhường chỗ cho Search Box
-at.Size = UDim2.new(0, at.Size.X.Offset, 1, -(an.Size.Y.Offset + searchContainerHeight))
-
-u(ax:GetPropertyChangedSignal("Position"), function()
-    searchContainer.Size = UDim2.new(0, ax.Position.X.Offset, 0, searchContainerHeight)
-    at.Size = UDim2.new(0, ax.Position.X.Offset, 1, -(an.Size.Y.Offset + searchContainerHeight))
-    leftBorderFrame.Size = UDim2.new(0, ax.Position.X.Offset, 1, -an.Size.Y.Offset)
-    avSeparator.Position = UDim2.new(0, ax.Position.X.Offset, 0, an.Size.Y.Offset)
-end)
+-- Tab bắt đầu sau ô search (chung 1 thanh ngang)
+at.UIPadding.PaddingLeft = UDim.new(0, 222)
 
 u(searchInput:GetPropertyChangedSignal("Text"), function()
     as:PerformSearch(searchInput.Text)
