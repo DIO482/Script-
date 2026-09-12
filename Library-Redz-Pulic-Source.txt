@@ -856,13 +856,13 @@ end local al=function(
 al, am, an)
 local ao=E("TextButton","Button",an,{
 AutomaticSize=Enum.AutomaticSize.X,
-Size=UDim2.new(0,0,0,24),
+Size=UDim2.new(0,0,0,22),
 AutoButtonColor=false,
 Text=am.Title,
 TextSize=11,
 TextXAlignment=Enum.TextXAlignment.Center,
+TextYAlignment=Enum.TextYAlignment.Center,
 TextTransparency=0,
-TextTruncate=Enum.TextTruncate.AtEnd,
 BackgroundTransparency=1,
 Elements={
 Corner=UDim.new(0,4),
@@ -879,7 +879,7 @@ Font="Font.Medium"
 })
 
 local ap=E("Frame","Indicator",ao,{
-Position=UDim2.new(0,0,1,0),
+Position=UDim2.new(0,0,1,2),
 AnchorPoint=Vector2.new(0,0),
 Size=UDim2.new(1,0,0,2),
 BackgroundTransparency=1,
@@ -2945,6 +2945,7 @@ local aB=T[aA]and T[aA].Container
 
 if aB then
 aB.Parent=ay
+aB.AnchorPoint=Vector2.new(0,0)
 if ax==2 then
 aB.Position=UDim2.new(az==2 and 0.5 or 0,0,0,0)
 aB.Size=UDim2.new(0.5,0,1,0)
