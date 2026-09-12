@@ -57,6 +57,8 @@ Default=Color3.fromRGB(28,28,30)
 Border={
 Holding=Color3.fromRGB(60,60,60),
 Default=Color3.fromRGB(38,38,38),
+Green=Color3.fromRGB(80,200,90),
+GreenDim=Color3.fromRGB(35,110,50),
 },
 Text={
 Default=Color3.fromRGB(255,255,255),
@@ -3945,6 +3947,10 @@ BackgroundTransparency="BackgroundTransparency"
 },
 Elements={
 Corner=UDim.new(0,8),
+Stroke={
+ThemeTag={Color="Colors.Primary"},
+Thickness=1.5
+},
 Gradient={
 Rotation=45,
 ThemeTag={
@@ -4047,6 +4053,15 @@ local at,au=aa(af,an)
 at.Parent=al
 au.Parent=al
 
+-- Đường kẻ viền dọc màu xanh giữa panel Tab và panel nội dung
+local avSeparator=E("Frame","TabSeparator",al,{
+Size=UDim2.new(0,1,1,-an.Size.Y.Offset),
+Position=UDim2.new(0,at.Size.X.Offset,0,an.Size.Y.Offset),
+BorderSizePixel=0,
+ThemeTag={BackgroundColor3="Colors.Primary"},
+BackgroundTransparency=0.5
+})
+
 local av=table.freeze{
 ContainerHolder=au,
 TabsContainer=at,
@@ -4112,6 +4127,8 @@ local az=ax.Position
 at.Size=UDim2.new(0,az.X.Offset,1,-an.Size.Y.Offset)
 au.Size=UDim2.new(1,-at.Size.X.Offset,1,-an.Size.Y.Offset)
 af.TabSize=az.X.Offset
+-- Cập nhật vị trí đường kẻ viền dọc xanh khi kéo resize
+avSeparator.Position=UDim2.new(0,az.X.Offset,0,an.Size.Y.Offset)
 end)
 
 D.Draggable(aw,ad,0.68,function(az,aA,aB,aC)
@@ -4184,14 +4201,18 @@ local searchContainer = E("Frame", "SearchContainer", al, {
     }
 })
 
--- Background của Search Box (màu nền bo góc)
+-- Background của Search Box (màu nền bo góc) + viền xanh
 local searchInputBg = E("Frame", "SearchBg", searchContainer, {
     Size = UDim2.fromScale(1, 1),
     ThemeTag = {
         BackgroundColor3 = "Colors.Stroke"
     },
     Elements = {
-        Corner = UDim.new(0, 6)
+        Corner = UDim.new(0, 6),
+        Stroke = {
+            ThemeTag = {Color = "Colors.Border.Green"},
+            Thickness = 1
+        }
     }
 })
 
@@ -4231,6 +4252,8 @@ u(ax:GetPropertyChangedSignal("Position"), function()
     searchContainer.Size = UDim2.new(0, ax.Position.X.Offset, 0, searchContainerHeight)
     -- Giữ nguyên logic trừ đi chiều cao của TopBar + SearchBox cho TabsScroll
     at.Size = UDim2.new(0, ax.Position.X.Offset, 1, -(an.Size.Y.Offset + searchContainerHeight))
+    -- Cập nhật vị trí đường kẻ xanh theo tab panel
+    avSeparator.Position = UDim2.new(0, ax.Position.X.Offset, 0, an.Size.Y.Offset)
 end)
 
 u(searchInput:GetPropertyChangedSignal("Text"), function()
@@ -4241,3 +4264,4 @@ return as
 end
 
 return s
+ 
