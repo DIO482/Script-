@@ -154,6 +154,9 @@ local __SVC_LIGHT= game:GetService("Lighting")
 
 local RunService = __SVC_RUN
 local Stats = __SVC_STAT
+-- [BOOTFIX 2026-09-13] Boot tracer: dong "DIO BOOT: ..." duoi dong FPS cho biet
+-- script dung o dau neu treo (services/remotes/hooks/commf/quests/library/...).
+__DIO_BOOT = function() end
 
 pcall(function()
     local fpsGui = Instance.new("ScreenGui", game.CoreGui)
@@ -169,6 +172,23 @@ pcall(function()
     fpsLabel.TextSize = 18
     fpsLabel.Text = "FPS: ... | Ping: ..."
     fpsLabel.TextXAlignment = Enum.TextXAlignment.Left
+    local bootLabel = Instance.new("TextLabel", fpsGui)
+    bootLabel.Name = "DIO_BootStatus"
+    bootLabel.Position = UDim2.new(0, 10, 0, 42)
+    bootLabel.Size = UDim2.new(0, 260, 0, 22)
+    bootLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    bootLabel.BackgroundTransparency = 0.4
+    bootLabel.TextColor3 = Color3.fromRGB(0, 255, 170)
+    bootLabel.Font = Enum.Font.Code
+    bootLabel.TextSize = 14
+    bootLabel.TextXAlignment = Enum.TextXAlignment.Left
+    bootLabel.Text = "DIO BOOT: ..."
+    __DIO_BOOT = function(s)
+        pcall(function()
+            bootLabel.Text = "DIO BOOT: " .. tostring(s)
+        end)
+    end
+    __DIO_BOOT("services")
 
     local lastTime = tick()
     local frames = 0
@@ -570,10 +590,19 @@ end)
 -- thi dung toggle "Disable Notify" san co trong tab Settings.
 -- hookfunction(error, function() end)   -- DA TAT CO Y
 -- hookfunction(warn,  function() end)   -- DA TAT CO Y
-local Remotes = {
-    RFJobsRemoteFunction = replicated.Modules.Net["RF/JobsRemoteFunction"], 
-    RFCraft = replicated:WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RF/Craft")
-}
+__DIO_BOOT("remotes")
+-- [BOOTFIX] Ban cu index truc tiep replicated.Modules.Net (crash neu game doi cau
+-- truc) + WaitForChild KHONG timeout (treo vinh vien). Gio: timeout 10s + pcall.
+local Remotes = {}
+pcall(function()
+    local __mods = replicated:WaitForChild("Modules", 10)
+    local __net = __mods and __mods:WaitForChild("Net", 10)
+    if __net then
+        Remotes.RFJobsRemoteFunction = __net:FindFirstChild("RF/JobsRemoteFunction") or __net:WaitForChild("RF/JobsRemoteFunction", 5)
+        Remotes.RFCraft = __net:FindFirstChild("RF/Craft") or __net:WaitForChild("RF/Craft", 5)
+    end
+end)
+if Remotes.RFCraft == nil then warn("[DIO] Modules/Net/RF structure not found - fishing/craft features disabled") end
 EquipWeapon = function(text)
   if not text then return end
   -- [FIX PERF 59] da cam dung vu khi thi khong EquipTool lai (truoc day goi 4 lan/s moi lan farm retarget)
@@ -1101,6 +1130,10 @@ Useskills = function(weapon, skill)
     vim1:SendKeyEvent(false, "Y", false, game);
   end
 end
+__DIO_BOOT("hooks")
+-- [BOOTFIX] Boc pcall: executor khong ho tro getrawmetatable/setreadonly/hookfunction
+-- thi bo qua chuc nang aim-rewrite thay vi giet ca script.
+local __DIO_hookOk = pcall(function()
 local gg = getrawmetatable(game)
 local old = gg.__namecall
 setreadonly(gg, false)
@@ -1119,6 +1152,7 @@ gg.__namecall = newcclosure(function(...)
     end
   return old(...)
 end)
+end) -- [BOOTFIX] end pcall(hooks)
 GetConnectionEnemies = function(a)
   for i,v in pairs(replicated:GetChildren()) do
     if v:IsA("Model") and  ((typeof(a) == "table" and table.find(a, v.Name)) or v.Name == a) and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
@@ -1638,7 +1672,20 @@ task.spawn(function()
 end)
 
 local ReplicatedStorage = __SVC_RS
-local CommF = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
+__DIO_BOOT("commf")
+-- [BOOTFIX] WaitForChild co timeout; neu game doi cau truc thi dung dummy (warn)
+-- thay vi treo vinh vien - UI van len, cac tinh nang khac van chay.
+local CommF = nil
+pcall(function()
+    local __rm = ReplicatedStorage:WaitForChild("Remotes", 10)
+    CommF = __rm and __rm:WaitForChild("CommF_", 10) or nil
+end)
+if CommF == nil then
+    warn("[DIO] Remotes/CommF_ not found (game structure changed?) - related features disabled")
+    CommF = setmetatable({}, {__index = function()
+        return function() warn("[DIO] CommF_ missing, call ignored") return nil end
+    end})
+end
 local TweenService = __SVC_TWN
 local RunService = __SVC_RUN
 local Players = __SVC_PLR
@@ -2377,6 +2424,7 @@ QuestB = function()
 -- ngay truoc doan tao UI. Neu Update 30 doi ten "Quests"/"GuideModule" thi WaitForChild
 -- TREO VO HAN (khong loi, khong UI - dung trieu chung cua ban), con require() loi thi
 -- chet ngang. Them timeout 10s + pcall: thieu module thi hub van len UI, chi rieng
+__DIO_BOOT("quests")
 -- tinh nang quest tu dong bao thieu.
 local Quests, GuideModule
 do
@@ -2484,11 +2532,57 @@ QuestNeta = function()
         [6] = GetQuestPoint()            
     }
 end
+__DIO_BOOT("library")
 
--- [MERGED 2026-09-13] Khoi tao redz kieu CU (lay tu ban FIXED(21)): 1 dong truc tiep,
--- khong pcall, khong PlayerGui-force, khong Fluent fallback. Neu lib loi se bao loi
--- ro rang thay vi im lang hien fallback.
-local redzlib = loadstring(game:HttpGet("https://raw.githubusercontent.com/DIO482/Script-/refs/heads/main/Library-Redz-Pulic-Source.txt"))()
+-- [NETFIX 2026-09-13] Tai redz co MIRROR DU PHONG + bao loi HIEN (thay vi chet im):
+--  * Thu link goc truoc (y nhu ban cu), hong thi thu jsDelivr (noi dung giong 100%,
+--    ha tang khac - thuong van mo duoc khi raw.githubusercontent bi chan).
+--  * Ca 2 deu hong -> hien bang loi + thong bao ro ly do (khong Fluent).
+local redzlib, __DIO_libErr
+for _, __DIO_libURL in ipairs({
+    "https://raw.githubusercontent.com/DIO482/Script-/refs/heads/main/Library-Redz-Pulic-Source.txt",
+    "https://cdn.jsdelivr.net/gh/DIO482/Script-@main/Library-Redz-Pulic-Source.txt",
+}) do
+    local __ok, __res = pcall(function()
+        return loadstring(game:HttpGet(__DIO_libURL))()
+    end)
+    if __ok and __res ~= nil then
+        redzlib = __res
+        break
+    end
+    __DIO_libErr = "[" .. tostring(__DIO_libURL:match("https?://([^/]+)")) .. "] " .. tostring(__res)
+end
+if redzlib == nil then
+    local __msg = "Khong tai duoc Library! Doi DNS 1.1.1.1 / doi mang roi chay lai.\nChi tiet: " .. tostring(__DIO_libErr)
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "DIO Hub - Loi tai Library",
+            Text = __msg:sub(1, 250),
+            Duration = 12,
+        })
+    end)
+    pcall(function()
+        local __pg = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+        local __sg = Instance.new("ScreenGui")
+        __sg.Name = "DIO_LibError"
+        __sg.ResetOnSpawn = false
+        __sg.Parent = __pg
+        local __fr = Instance.new("TextButton")
+        __fr.Size = UDim2.fromOffset(420, 150)
+        __fr.Position = UDim2.new(0.5, -210, 0.4, -75)
+        __fr.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        __fr.TextColor3 = Color3.fromRGB(255, 120, 120)
+        __fr.TextSize = 14
+        __fr.TextWrapped = true
+        __fr.Font = Enum.Font.Code
+        __fr.Text = "DIO HUB - LIBRARY LOAD FAILED (bam de tat)\n\n" .. __msg
+        __fr.Parent = __sg
+        __fr.MouseButton1Click:Connect(function()
+            __sg:Destroy()
+        end)
+    end)
+    error("[DIO] redzlib load failed: " .. tostring(__DIO_libErr))
+end
 local Window = redzlib:MakeWindow({
     Title = "DIO Hub ",
     SubTitle = "DIO Loader Script | Blox Fruit",
@@ -2522,6 +2616,7 @@ local Tabs = {
     Combat = Window:MakeTab({ Title = "PvP", Icon = "" }),
     Misc = Window:MakeTab({ Title = "Misc", Icon = "" })
 }
+__DIO_BOOT("window")
 
 -- ==============================================================
 -- [SAVE SETTING] - GHÉP TỪ FILE BANANA: bọc AddToggle/AddDropdown/AddSlider
@@ -2666,6 +2761,7 @@ Tabs.Info:AddDiscordInvite({
 	Members = 3774, 
 	Online = 1006, 
 })
+__DIO_BOOT("discord")
 
 Tabs.Status:AddSection("Status Server")
 
@@ -12803,6 +12899,7 @@ task.spawn(function()
         end
     end
 end)
+__DIO_BOOT("tabs-2/3")
 
 Tabs.Combat:AddSection("Combat / AimBot")
 
@@ -14799,6 +14896,7 @@ FastAttackModule = FastAttackModule or {} -- [SAVE SETTING] GLOBAL: slider "Fast
 --   * GIU 2 thu de khong resurrect benh FPS cu: (a) cap 6 mob/volley — script user khong cap nhung
 --     moi diem hit them = server tra them VFX (ly do FPS teo ngay tu dau; muon tang sua so 6 nay);
 --     (b) vong __DIO_wait(Rate) duy nhat thay cho RunService.Heartbeat per-frame (60Hz) — sau khi
+__DIO_BOOT("fastattack")
 --     BOOT-FIX, Rate 0.03 chay dung ~33 don/s that, muon nhanh nua keo slider "Fast Attack Delay" xuong 1.
 FastAttackModule.Rate = FastAttackModule.Rate or 0.03
 FastAttackModule.Enabled = true
@@ -14984,6 +15082,7 @@ Window:Notify({
    Duration = 7
 }) 
 
+__DIO_BOOT("READY")
 
 end -- end StartDioHub
 
