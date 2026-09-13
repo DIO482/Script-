@@ -1,3 +1,117 @@
+
+-- ============================================================================
+-- DIO HUB PREMIUM - FIXED & OPTIMIZED 2026-09-13
+-- Features:
+--  * getgenv().Team auto select (Pirates/Marines) with 7s wait for character load
+--  * getgenv().SaveSettings true/false controls file save
+--  * getgenv().Key + 10h file cache key system integrated Fluent UI
+--  * Fast attack can hit players (Enemies + Players + Characters)
+--  * Fixed toggles: AutoKillMob, Auto Farm Dough King, +Hop, Buy Melee, Auto Start Raid
+--  * Optimized spawn/__DIO_wait like Banana/OMG Hub
+-- ============================================================================
+
+-- [CONFIG] User can set before load
+getgenv().Team = getgenv().Team or "Pirates" -- Pirates/Marines
+getgenv().SaveSettings = (getgenv().SaveSettings == nil) and true or getgenv().SaveSettings -- true/false
+getgenv().Key = getgenv().Key or "" -- DIOHUB-129361064575-GETKEY
+
+-- [CONSTANTS]
+local CORRECT_KEY = "DIOHUB-129361064575-GETKEY"
+local SAVE_FOLDER = "DIOHub_V3"
+local KEY_FILE = SAVE_FOLDER .. "/KeyCache.json"
+local SETTINGS_FILE = SAVE_FOLDER .. "/Settings.json"
+
+local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local plr = Players.LocalPlayer
+
+-- [TEAM AUTO SELECT]
+local function AutoSelectTeam()
+    local ok, err = pcall(function()
+        local comm = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
+        local team = tostring(getgenv().Team or "Pirates")
+        if team ~= "Pirates" and team ~= "Marines" then team = "Pirates" end
+        -- Only invoke if team not already selected or team mismatch
+        if plr.Team == nil or tostring(plr.Team) ~= team then
+            comm:InvokeServer("SetTeam2", team)
+        end
+    end)
+    if not ok then
+        warn("[DIO] Auto Team failed: "..tostring(err))
+    end
+end
+
+-- Wait for game load like original
+repeat __DIO_wait() until game:IsLoaded()
+pcall(function()
+    local mainGui = plr:FindFirstChild("PlayerGui") and plr.PlayerGui:FindFirstChild("Main")
+    local loading = mainGui and mainGui:FindFirstChild("Loading")
+    if loading then
+        repeat __DIO_wait() until not loading.Visible
+    end
+end)
+
+-- Auto select team then wait 7s for character to fully load
+AutoSelectTeam()
+__DIO_wait(7)
+
+-- [KEY SYSTEM - 10h cache]
+local function ensureFolder()
+    pcall(function()
+        if makefolder and (not isfolder or not isfolder(SAVE_FOLDER)) then
+            makefolder(SAVE_FOLDER)
+        end
+    end)
+end
+
+local function saveKeyCache()
+    ensureFolder()
+    pcall(function()
+        if writefile then
+            local data = {
+                key = CORRECT_KEY,
+                time = os.time(),
+                hwid = (gethwid and gethwid() or game:GetService("RbxAnalyticsService"):GetClientId() or "unknown")
+            }
+            writefile(KEY_FILE, HttpService:JSONEncode(data))
+        end
+    end)
+end
+
+local function isKeyCacheValid()
+    if not (isfile and readfile) then return false end
+    if not isfile(KEY_FILE) then return false end
+    local ok, data = pcall(function()
+        return HttpService:JSONDecode(readfile(KEY_FILE))
+    end)
+    if not ok or type(data) ~= "table" then return false end
+    if data.key ~= CORRECT_KEY then return false end
+    if not data.time then return false end
+    -- 10 hours = 36000 seconds
+    if os.time() - tonumber(data.time) > 36000 then
+        -- expired, delete
+        pcall(function() if delfile then delfile(KEY_FILE) end end)
+        return false
+    end
+    return true
+end
+
+local function isKeyValid()
+    if tostring(getgenv().Key) == CORRECT_KEY then
+        saveKeyCache()
+        return true
+    end
+    if isKeyCacheValid() then
+        return true
+    end
+    return false
+end
+
+-- If key already valid via getgenv or cache, skip UI
+local function StartDioHub()
+
+
 -- ==========================================================================
 -- [LUA OPT] CACHE GLOBAL -> LOCAL (upvalue)
 --
@@ -111,7 +225,7 @@ end
 -- Sec/chu ky giong nhau -> chung THUC DUNG FRAME dinh ky = FPS gao nhip dai mai. Giay do bang 2 lop:
 --   (a) RAMP: trong 10s dau sau load, tic dau cua moi loop moi duon ra 0.08s/loop (cap 4s) -> nen dan khoi dong.
 --   (b) PHASE JITTER vinh duen: moi loop (moi thread) co phase rieng 0..0.15s -> khong bao gio thuc dung frame nua.
--- task.wait() per-frame (85 cho, giu nguyen) KHONG qua day -> vong keo block van giu per-frame that.
+-- __DIO_wait() per-frame (85 cho, giu nguyen) KHONG qua day -> vong keo block van giu per-frame that.
 __DIO_BootT0 = tick()
 __DIO_BootN = 0
 __DIO_ThreadPhase = setmetatable({}, {__mode = "k"}) -- weak key: thread chet thi phase tu giai phong
@@ -130,11 +244,11 @@ __DIO_wait = function(t)
             __DIO_ThreadPhase[__co] = __ph
             if tick() - __DIO_BootT0 < 10 and __DIO_BootN < 200 then
                 __DIO_BootN = __DIO_BootN + 1
-                task.wait(math.min(__DIO_BootN * 0.08, 4)) -- ramp CHI tac dung 1 lan (tic dau tien cua loop)
+                __DIO_wait(math.min(__DIO_BootN * 0.08, 4)) -- ramp CHI tac dung 1 lan (tic dau tien cua loop)
             end
         end
     end
-    return task.wait(t + __ph)
+    return __DIO_wait(t + __ph)
 end
 spawn = function(f) -- [FIX BOOT-RAMP 2/2] ramp tic dau cua loop; het cua so boot thi spawn nhu thuong (nut bam UI khong bi treo vi di lam sau load)
     if tick() - __DIO_BootT0 < 10 and __DIO_BootN < 200 then
@@ -159,15 +273,10 @@ pcall(function()
 end)
 
 _G.SaveData = _G.SaveData or {}
--- [FIX SAVE-TOGGLE] master switch cua auto-save: toggle "Auto Save Serve old" (Settings tab)
--- bat/tat viec ghi file moi khi doi cai dat. Tat = chi giu trong RAM (khong ghi file).
--- mac dinh ON (nil -> true). SetSetting o duoi doc bien nay.
-_G.DIO_AutoSave = (_G.DIO_AutoSave ~= false)
+-- [NEW] Master switch from getgenv().SaveSettings
+_G.DIO_AutoSave = (getgenv().SaveSettings ~= false)
 
 SaveSettings = function()
-    -- [FIX SAVE-TOGGLE-2B] HARD GATE tai dung diem ghi file duy nhat: khi toggle
-    -- "Auto Save Serve old" = TAT thi KHONG ghi file duoi bat ky hoan canh nao (SetSetting,
-    -- timer, vong lap khac). LoadSettings (chi DOC) khong bao gio di qua day.
     if _G.DIO_AutoSave == false then return false end
     if not writefile then return false end
     local ok = pcall(function()
@@ -177,6 +286,7 @@ SaveSettings = function()
 end
 
 LoadSettings = function()
+    if _G.DIO_AutoSave == false then return false end
     if not (isfile and isfile(SaveFileName)) then return false end
     local ok, data = pcall(function()
         return __SVC_HTTP:JSONDecode(readfile(SaveFileName))
@@ -189,45 +299,26 @@ LoadSettings = function()
 end
 
 GetSetting = function(name, default)
+    if _G.DIO_AutoSave == false then return default end
     local v = _G.SaveData[name]
     if v == nil then return default end
     return v
 end
 
 SetSetting = function(name, value)
+    if _G.DIO_AutoSave == false then return end
     _G.SaveData[name] = value
-    -- [FIX SAVE-TOGGLE] chi ghi file khi nguoi dung CHUA tat "Auto Save Serve old"
-    -- [FIX SAVE-TOGGLE-2C] (bug user bao: "TAT Auto Save van ghi setting") — ngoai 2A/2B,
-    -- con 1 lo hong thu tu: wrapper UI goi SetSetting TRUOC khi Callback cua toggle chay
-    -- (_G.DIO_AutoSave = Value) nen luot CHINH TAT toggle van ghi file 1 lan cuoi (flag van
-    -- true tai thoi diem SetSetting). Sua: neu chinh chinh cai toggle chu quan nay thi cap
-    -- nhat flag NGAY tai day — Tat (false) = khong ghi file lan nao (kể cả luot vua tat),
-    -- Bat (true) = ghi lai ON de lan sau load dung trang thai.
-    if name == "UI/Settings/Auto Save Serve old" then
-        _G.DIO_AutoSave = (value == true)
-        if value ~= true then return end
-    end
-    if _G.DIO_AutoSave ~= false then pcall(SaveSettings) end
+    pcall(SaveSettings)
 end
 
-LoadSettings() -- nạp cài đặt đã lưu từ lần chạy trước
-
--- [FIX SAVE-TOGGLE-2A] (bug user bao: "Auto Save TAT nhung van tu ghi setting")
--- Root-cause: flag _G.DIO_AutoSave chi duoc (a) khoi tao = true (dong ~165) va (b) doi lai
--- trang thai da luu SAU 3 giay khi wrapper replay Callback(saved) cua toggle. Trong ~3 giay dau
--- sau khi load, flag van = true => bat ky toggle nao duoc chinh som trong cua so do deu ghi file,
--- DU nguoi dung da de Auto Save = OFF o phien truoc (file da luu key = false). 
--- Fix: doc TRANG THAI DA LUU cua chinh toggle nay TU FILE ngay sau LoadSettings (key dung =
--- key wrapper sinh ra: "UI/Settings/Auto Save Serve old") va ap vao flag ngay lap tuc.
-do
-    local __savedAS = _G.SaveData and _G.SaveData["UI/Settings/Auto Save Serve old"]
-    if __savedAS ~= nil then
-        _G.DIO_AutoSave = (__savedAS == true)
-    end
+if _G.DIO_AutoSave ~= false then
+    LoadSettings()
 end
+
+
 
 repeat 
-    task.wait() 
+    __DIO_wait() 
 until game:IsLoaded()
 
 local main = plr.PlayerGui:WaitForChild("Main", 10)
@@ -235,7 +326,7 @@ local loading = main and main:WaitForChild("Loading", 10)
 
 if loading then
     repeat 
-        task.wait() 
+        __DIO_wait() 
     until not loading.Visible
 end
 World1 = game.PlaceId == 2753915549 or game.PlaceId == 85211729168715
@@ -578,7 +669,7 @@ task.spawn(function()
         local mode = _G.ModeFarm
         if (mode ~= "Obrit" and mode ~= "Dodge") or __DIO_Dodging then
             -- khong o mode dieu khien (Normal), hoac dang ne don Sea Beast -> nhuong quyen.
-            -- [FIX CHUNK1-C] truoc day nhanh rong + task.wait() o dau vong = 60 lan/s vinh
+            -- [FIX CHUNK1-C] truoc day nhanh rong + __DIO_wait() o dau vong = 60 lan/s vinh
             -- vien tu khi load du khi KHONG dung Obrit/Dodge. Ngu 0.2s (Kill dang ky target
             -- theo nhinp Sec=0.25s nen tre 0.2s khong mat phan ung).
             lastT = tick()
@@ -639,7 +730,7 @@ task.spawn(function()
                     __DIO_Block.CFrame = goal
                 end
             end)
-            task.wait() -- [FIX CHUNK1-D] chi chay moi frame khi dang o Obrit/Dodge
+            __DIO_wait() -- [FIX CHUNK1-D] chi chay moi frame khi dang o Obrit/Dodge
         end
     end
 end)
@@ -691,15 +782,15 @@ local Attack = {}
 				_tp(__DIO_FarmPos(model, 30, 0, 180)) -- [FIX MODEFARM]
 			end
 			if RandomCFrame then
-				wait(.5)
+				__DIO_wait(.5)
 				_tp(model.HumanoidRootPart.CFrame * CFrame.new(0, 30, 25))
-				wait(.5)
+				__DIO_wait(.5)
 				_tp(model.HumanoidRootPart.CFrame * CFrame.new(25, 30, 0))
-				wait(.5)
+				__DIO_wait(.5)
 				_tp(model.HumanoidRootPart.CFrame * CFrame.new(-25, 30 , 0))
-				wait(.5)
+				__DIO_wait(.5)
 				_tp(model.HumanoidRootPart.CFrame * CFrame.new(0, 30, 25))
-				wait(.5)
+				__DIO_wait(.5)
 				_tp(model.HumanoidRootPart.CFrame * CFrame.new(-25, 30, 0))
 			end
 		end
@@ -721,15 +812,15 @@ local Attack = {}
 				_tp(__DIO_FarmPos(model, 30, 8, 180)) -- [FIX MODEFARM]
 			end
 			if RandomCFrame then
-				wait(0.1)
+				__DIO_wait(0.1)
 				_tp(model.HumanoidRootPart.CFrame * CFrame.new(0, 30, 25))
-				wait(0.1)
+				__DIO_wait(0.1)
 				_tp(model.HumanoidRootPart.CFrame * CFrame.new(25, 30, 0))
-				wait(0.1)
+				__DIO_wait(0.1)
 				_tp(model.HumanoidRootPart.CFrame * CFrame.new(-25, 30 , 0))
-				wait(0.1)
+				__DIO_wait(0.1)
 				_tp(model.HumanoidRootPart.CFrame * CFrame.new(0, 30, 25))
-				wait(0.1)
+				__DIO_wait(0.1)
 				_tp(model.HumanoidRootPart.CFrame * CFrame.new(-25, 30, 0))
 			end
 		end
@@ -749,9 +840,9 @@ local Attack = {}
 				_tp(__DIO_FarmPos(model, 10, 0, 90)) -- [FIX MODEFARM] cao do/obrit theo slider
 			else
 				notween(model.HumanoidRootPart.CFrame * CFrame.new(0, 50, 8))
-				wait(.85)
+				__DIO_wait(.85)
 				notween(model.HumanoidRootPart.CFrame * CFrame.new(0, 400, 0))
-				wait(1)
+				__DIO_wait(1)
 			end
 		end
 	end
@@ -765,15 +856,15 @@ local Attack = {}
 			weaponSc("Sword")
 			_tp(model.HumanoidRootPart.CFrame * CFrame.new(0, 30, 0))
 			if RandomCFrame then
-				wait(0.1)
+				__DIO_wait(0.1)
 				_tp(model.HumanoidRootPart.CFrame * CFrame.new(0, 30, 25))
-				wait(0.1)
+				__DIO_wait(0.1)
 				_tp(model.HumanoidRootPart.CFrame * CFrame.new(25, 30, 0))
-				wait(0.1)
+				__DIO_wait(0.1)
 				_tp(model.HumanoidRootPart.CFrame * CFrame.new(-25, 30 , 0))
-				wait(0.1)
+				__DIO_wait(0.1)
 				_tp(model.HumanoidRootPart.CFrame * CFrame.new(0, 30, 25))
-				wait(0.1)
+				__DIO_wait(0.1)
 				_tp(model.HumanoidRootPart.CFrame * CFrame.new(-25, 30, 0))
 			end
 		end
@@ -1277,16 +1368,16 @@ function __DIO_DoDodge(height)
         local h = c and c:FindFirstChild("HumanoidRootPart")
         if not h then break end
         h.CFrame = CFrame.new(h.Position.X, baseY, h.Position.Z)
-        task.wait()
+        __DIO_wait()
     until (not __DIO_DodgeSeabeast() and not __DIO_TerrorDodge()) or (tick() - t0) > 6
 
-    task.wait(0.35) -- grace: hitbox don con song them chut sau khi part bien mat
+    __DIO_wait(0.35) -- grace: hitbox don con song them chut sau khi part bien mat
     __DIO_Dodging = false
 end
 
 -- Watcher: chi chay khi dang bat mot trong cac toggle bien
 task.spawn(function()
-    while task.wait(0.1) do   -- [FIX FPS-SEA-4] 20Hz -> 10Hz (0.05): moi nhịp quet _WorldOrigin 2 lan
+    while __DIO_wait(0.1) do   -- [FIX FPS-SEA-4] 20Hz -> 10Hz (0.05): moi nhịp quet _WorldOrigin 2 lan
         -- [FIX FPS-SEA-6] GATE TRUOC: neu KHONG bat Dodge + khong co toggle bien nao thi
         -- BO QUA NGAY (0 lan scan). Truoc day doan early-scan nam TRUOC gate -> quet SeaBeasts
         -- + Enemies 10 lan/s VO DIEU KIEN du tat het -> chinh la nguon lag "bat toggle nao cung
@@ -1349,12 +1440,12 @@ end
 DropFruits = function()
   for _,v3 in next, plr.Backpack:GetChildren() do
     if string.find(v3.Name, "Fruit") then
-      EquipWeapon(v3.Name) wait(.1)
+      EquipWeapon(v3.Name) __DIO_wait(.1)
       if plr.PlayerGui.Main.Dialogue.Visible == true then plr.PlayerGui.Main.Dialogue.Visible = false end EquipWeapon(v3.Name) plr.Character:FindFirstChild(v3.Name).EatRemote:InvokeServer("Drop")
     end
   end
   for a,b2 in pairs(plr.Character:GetChildren()) do
-    if string.find(b2.Name, "Fruit") then EquipWeapon(b2.Name) wait(.1)
+    if string.find(b2.Name, "Fruit") then EquipWeapon(b2.Name) __DIO_wait(.1)
     if plr.PlayerGui.Main.Dialogue.Visible == true then plr.PlayerGui.Main.Dialogue.Visible = false end EquipWeapon(b2.Name) plr.Character:FindFirstChild(b2.Name).EatRemote:InvokeServer("Drop")
     end
   end
@@ -1426,7 +1517,7 @@ getInfinity_Ability = function(Method, Var)
               -- (chi goi ham nay khi Value=true) -> TAT toggle (_G.InfSoru=false) khong bao gio
               -- lam thoat loop: Soru INF dinh "khong the tat" toi khi chet/respawn. Chuyen sang
               -- doc _G.InfSoru (global, callback TAT set false) -> loop tu thoat ngay sau khi tat.
-              repeat wait(Sec) v.LastUse = 0 until not _G.InfSoru or not (plr.Character and plr.Character:FindFirstChild("Humanoid")) or (plr.Character.Humanoid.Health <= 0) -- [FIX AUDIT-L6][FIX PERF 30]
+              repeat __DIO_wait(Sec) v.LastUse = 0 until not _G.InfSoru or not (plr.Character and plr.Character:FindFirstChild("Humanoid")) or (plr.Character.Humanoid.Health <= 0) -- [FIX AUDIT-L6][FIX PERF 30]
             end
           end
         end
@@ -1479,10 +1570,10 @@ task.spawn(function()
         if v ~= __prevOF then __prevOF = v getgenv().OnFarm = v end
     end
 end)
--- [FIX BUG-2 CRITICAL] Ban cu: task.wait() = 60/s. Khi OnFarm=true: GetChildren + n*CanCollide=false
+-- [FIX BUG-2 CRITICAL] Ban cu: __DIO_wait() = 60/s. Khi OnFarm=true: GetChildren + n*CanCollide=false
 -- MOI FRAME du part da la false (1,500 redundant physics writes/s). Khi OnFarm=false van viet =true.
 -- Fix: (a) Them guard "and e.CanCollide" / "and not e.CanCollide" -> chi write khi gia tri THAY DOI;
---      (b) Phan CFrame teleport giu nguyen task.wait() (per-frame can thiet de theo sat mob);
+--      (b) Phan CFrame teleport giu nguyen __DIO_wait() (per-frame can thiet de theo sat mob);
 --      (c) Phan CanCollide tach rieng vao gate 0.1s (10/s du, khong can 60/s).
 local __DIO_BlockNoClipLast = 0
 -- [SPAM-1 KEEP] init 1-lan cho character load, giu per-frame nhu goc
@@ -1494,7 +1585,7 @@ local __DIO_BlockNoClipLast = 0
 -- restore CanCollide DUNG MOT LAN roi ngu 0.2s thay vi quet mai.
 task.spawn(function()
     local a = game.Players.LocalPlayer
-    repeat task.wait() until a.Character and a.Character.PrimaryPart
+    repeat __DIO_wait() until a.Character and a.Character.PrimaryPart
     block.CFrame = a.Character.PrimaryPart.CFrame
     local __restored = false
     local step = function()          -- tao 1 lan duy nhat, khong alloc moi frame
@@ -1536,7 +1627,7 @@ task.spawn(function()
     end
     while true do
         pcall(step)
-        if getgenv().OnFarm then task.wait() else __DIO_wait(0.2) end -- khong farm = khong can 60Hz
+        if getgenv().OnFarm then __DIO_wait() else __DIO_wait(0.2) end -- khong farm = khong can 60Hz
     end
 end)
 
@@ -1720,17 +1811,17 @@ end
 function totopofgreattree()
     if getdis(CFrame.new(28310.0234, 14895.1123, 109.456741)) > 1500 then
         ReplicatedStorage.Remotes.CommF_:InvokeServer("requestEntrance", Vector3.new(28310.0234, 14895.1123, 109.456741))
-        wait(0.3)
+        __DIO_wait(0.3)
     end
     
     local targetCF = CFrame.new(28607.5352, 14896.5449, 106.011726)
     _tp(targetCF)
     
     repeat
-        wait()
+        __DIO_wait()
     until getdis(targetCF) <= 5
     
-    wait(0.5)
+    __DIO_wait(0.5)
     for i = 1, 4 do
         ReplicatedStorage.Remotes.CommF_:InvokeServer("RaceV4Progress", "TeleportBack")
     end
@@ -1789,11 +1880,11 @@ function requestentrance(pos)
             and x.X == 3024.1709 and x.Y == 2280.69434 and x.Z == -7325.12793
             and ReplicatedStorage.Remotes.CommF_:InvokeServer("RaceV4Progress", "Check") >= 2 then
             totopofgreattree()
-            wait(1)
+            __DIO_wait(1)
         elseif y < getdis(pos) then
             local requestPos = typeof(x) == "Vector3" and x or x.Position
             ReplicatedStorage.Remotes.CommF_:InvokeServer("requestEntrance", requestPos)
-            wait(1)
+            __DIO_wait(1)
         end
     end
 end
@@ -1820,7 +1911,7 @@ _tp = function(target)
     -- [FIX FPS-A] NGUON DROP FPS SO 1: requestentrance() duoc goi trong MOI lan _tp (~4 lan/s
     -- khi farm, 286 diem goi _tp trong hub). Ham do: (a) tao 1 TABLE MOI 4-10 Vector3 moi lan
     -- (garbage lien tuc -> GC spike = FPS gao nhip), (b) o sea3 con goi checkinventory ->
-    -- duyet toan bo inventory, (c) co the dinh wait(1) NGAY GIUA duong tween.
+    -- duyet toan bo inventory, (c) co the dinh __DIO_wait(1) NGAY GIUA duong tween.
     -- Thuc te requestentrance chi CAN khi tp XA (qua cong dao). Gate lai:
     --   - chi chay khi diem den cach > 1500 stud (tp gan = farm cung bai thi bo qua hoan toan)
     --   - va toi da 1 lan / 2s.
@@ -2891,24 +2982,24 @@ local function __DIO_FireGhostSkill(mob)
             if __aHRP then
                 MousePos = __aHRP.Position + Vector3.new(0, 2, 0)
                 _G.DIO_SkillAim = true
-                task.spawn(function() task.wait(0.7) _G.DIO_SkillAim = false end)
+                task.spawn(function() __DIO_wait(0.7) _G.DIO_SkillAim = false end)
             end
             EquipWeapon(_G.SelectWeapon)
             local eq = plr.Character and plr.Character:FindFirstChildOfClass("Tool")
             local wt = eq and eq.ToolTip or "Melee"
             if wt == "Sword" then
-                Useskills("Sword","Z") task.wait(0.15)
+                Useskills("Sword","Z") __DIO_wait(0.15)
                 Useskills("Sword","X")
             elseif wt == "Blox Fruit" then
-                Useskills("Blox Fruit","Z") task.wait(0.15)
-                Useskills("Blox Fruit","X") task.wait(0.15)
+                Useskills("Blox Fruit","Z") __DIO_wait(0.15)
+                Useskills("Blox Fruit","X") __DIO_wait(0.15)
                 Useskills("Blox Fruit","C")
             elseif wt == "Gun" then
-                Useskills("Gun","Z") task.wait(0.15)
+                Useskills("Gun","Z") __DIO_wait(0.15)
                 Useskills("Gun","X")
             else
-                Useskills("Melee","Z") task.wait(0.15)
-                Useskills("Melee","X") task.wait(0.15)
+                Useskills("Melee","Z") __DIO_wait(0.15)
+                Useskills("Melee","X") __DIO_wait(0.15)
                 Useskills("Melee","C")
             end
         end)
@@ -2973,7 +3064,7 @@ end
 -- Cleanup định kỳ 5s để không tích lũy dead refs
 task.spawn(function()
     while true do
-        task.wait(5)
+        __DIO_wait(5)
         pcall(__DIO_GhostClean)
     end
 end)
@@ -3004,7 +3095,7 @@ end)
 --   (d) Chọn quái GẦN NHẤT (GetNearestMob) thay vì con đầu tiên trong danh sách.
 --
 -- TỐI ƯU GIỮ TỪ DIO: poll Sec (4/s), mọi thân vòng bọc pcall (mob chết giữa chừng
--- không giết thread), dùng __DIO_wait thay task.wait, bỏ qua toàn bộ thao tác khi
+-- không giết thread), dùng __DIO_wait thay __DIO_wait, bỏ qua toàn bộ thao tác khi
 -- chưa có quest. KHÔNG tạo table mới trong vòng nóng.
 -- ============================================================================
 
@@ -3490,7 +3581,7 @@ ChestBP = Tabs.Main:AddToggle({
 
             if not __DIO_ChestBPConn then
                 __DIO_ChestBPConn = LocalPlayer.CharacterAdded:Connect(function()
-                    task.wait(0.5)
+                    __DIO_wait(0.5)
                     if _G.AutoChestBP then
                         runChestLoop()
                     end
@@ -3681,31 +3772,38 @@ Tabs.Main:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.AutoKillMob = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
     end
 })
 spawn(function()
-    while __DIO_wait(1) do -- [FIX PERF 62] 0.1 -> 1 (yeu cau user: uu tien FPS; vong poll gated nen logic khong time-out)
+    while __DIO_wait(1) do
         if _G.AutoKillMob then
             pcall(function()
-                if __SVC_WS.Enemies:FindFirstChild(getgenv().SelectMob) then
-                    for i, v in pairs(__SVC_WS.Enemies:GetChildren()) do
-                        if v.Name == getgenv().SelectMob then
-                            if v:FindFirstChild("Humanoid")
-                            and v:FindFirstChild("HumanoidRootPart")
-                            and v.Humanoid.Health > 0 then                                
-                                repeat
-                                    -- [FIX FPS-FINAL-8] Heartbeat:Wait() = 60Hz Attack.Kill khi bat
-                                    -- Auto Kill Mob (600-1800 lan/phut goi EquipWeapon/BringEnemy/_tp)
-                                    -- trong khi moi loop kill khac trong hub chay 0.25s. 10Hz van la
-                                    -- "attack lien tuc" (kill nhanh nhu cu) nhung giam 6x churn CPU.
-                                    __DIO_wait(0.1)
-                                    Attack.Kill(v,_G.AutoKillMob)
-                                until not _G.AutoKillMob or not v.Parent or v.Humanoid.Health <= 0                                
-                            end
-                        end
+                local mobName = getgenv().SelectMob
+                if not mobName or mobName == "" then return end
+                local mob = GetConnectionEnemies(mobName)
+                if mob then
+                    repeat
+                        __DIO_wait(0.1)
+                        if not _G.AutoKillMob then break end
+                        Attack.Kill(mob, _G.AutoKillMob)
+                    until not _G.AutoKillMob or not mob.Parent or mob:FindFirstChild("Humanoid") == nil or mob.Humanoid.Health <= 0
+                else
+                    local pos = PosMsList and PosMsList[mobName]
+                    if pos then
+                        _tp(pos)
+                        __DIO_wait(0.5)
                     end
                 end
             end)
+        end
+    end
+end)
+
         end
     end
 end)
@@ -3994,6 +4092,11 @@ Tabs.Main:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.AutoFarmIsland = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
     end
 })
 
@@ -4098,7 +4201,7 @@ spawn(function()
                     local result = replicated.Remotes.CommF_:InvokeServer("EliteHunter")
                     if result == nil or string.find(result, "Cooldown") then
                       
-                        wait(10)
+                        __DIO_wait(10)
                         return
                     end
                     __DIO_wait(1)
@@ -4136,7 +4239,7 @@ spawn(function()
                             until not _G.FarmEliteHunt or not boss.Parent or boss.Humanoid.Health <= 0 or not questGui.Visible
                         else
                            
-                            wait(5)
+                            __DIO_wait(5)
                         end
                     else
                        
@@ -4162,6 +4265,11 @@ Tabs.Main:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.AutoReceivePlayerQuest = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
     end
 })
 
@@ -4170,6 +4278,11 @@ Tabs.Main:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.AutoPlayerHunter = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
     end
 })
 
@@ -4572,8 +4685,13 @@ Name = "Accept Cake Prince Quests",
 Description = "",
 Default = false,
 Callback = function(Value)
-  _G.AcceptQuestC = Value
-end
+        _G.AcceptQuestC = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
+    end
 })
 
 CakeSM = Tabs.Main:AddToggle({
@@ -4607,6 +4725,11 @@ Tabs.Main:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.AutoDoughKing = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
     end
 })
 
@@ -4674,6 +4797,11 @@ Tabs.Main:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.AutoAttackDoughKing = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
     end
 })
 spawn(function()
@@ -4700,6 +4828,11 @@ Tabs.Main:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.AutoHop_Dough = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
     end
 })
 
@@ -4932,8 +5065,13 @@ Name = "Accept Bone Quests",
 Description = "",
 Default = false,
 Callback = function(Value)
-  _G.AcceptQuestB = Value
-end
+        _G.AcceptQuestB = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
+    end
 })
 
 Tabs.Main:AddToggle({
@@ -4949,12 +5087,12 @@ spawn(function()
       pcall(function()
         local v = GetConnectionEnemies("Soul Reaper")
 	    if v then
-          repeat __DIO_wait(Sec) Attack.Kill(v,_G.AutoHytHallow) until v.Humanoid.Health <= 0 or _G.AutoHytHallow == false -- [FIX LAG] task.wait()->__DIO_wait(Sec)
+          repeat __DIO_wait(Sec) Attack.Kill(v,_G.AutoHytHallow) until v.Humanoid.Health <= 0 or _G.AutoHytHallow == false -- [FIX LAG] __DIO_wait()->__DIO_wait(Sec)
         else
           if not GetBP("Hallow Essence") then
             repeat __DIO_wait(1)replicated.Remotes.CommF_:InvokeServer("Bones","Buy",1,1)until _G.AutoHytHallow == false or GetBP("Hallow Essence") -- [FIX SPAM-1] 10Hz->1Hz (server trade, mua nhanh hon khong loi)
           else
-            repeat wait(.1) _tp(CFrame.new(-8932.322265625, 146.83154296875, 6062.55078125))until _G.AutoHytHallow == false or ((plr.Character.HumanoidRootPart.Position - CFrame.new(-8932.322265625, 146.83154296875, 6062.55078125).Position).Magnitude <= 5) -- [FIX PERF 23] CFrame== hang so float khong bao gio khop -> treo repeat; doi thanh khoang cach
+            repeat __DIO_wait(.1) _tp(CFrame.new(-8932.322265625, 146.83154296875, 6062.55078125))until _G.AutoHytHallow == false or ((plr.Character.HumanoidRootPart.Position - CFrame.new(-8932.322265625, 146.83154296875, 6062.55078125).Position).Magnitude <= 5) -- [FIX PERF 23] CFrame== hang so float khong bao gio khop -> treo repeat; doi thanh khoang cach
 		    EquipWeapon("Hallow Essence")
           end
         end
@@ -5148,7 +5286,7 @@ end})
 local function sendSkillKey(skillKey)
     local virtualInputManager = __SVC_VIM
     virtualInputManager:SendKeyEvent(true, skillKey, false, game)
-    wait(0.05)
+    __DIO_wait(0.05)
     virtualInputManager:SendKeyEvent(false, skillKey, false, game)
 end
 
@@ -5160,11 +5298,11 @@ local function equipAndUseSkill(toolType)
     for _, item in pairs(backpack:GetChildren()) do
         if item:IsA("Tool") and item.ToolTip == toolType then
             item.Parent = character
-            wait(0.12)
+            __DIO_wait(0.12)
             for _, skill in ipairs({"Z", "X", "C", "V", "F"}) do
                 if not _G.FarmPhaBinh then break end
                 pcall(function() sendSkillKey(skill) end)
-                wait(0.12)
+                __DIO_wait(0.12)
             end
             item.Parent = backpack
             break
@@ -5204,7 +5342,7 @@ spawn(function()
                             arrived = true
                             break
                         end
-                        wait(0.1)
+                        __DIO_wait(0.1)
                     end
 
                     if _G.FarmPhaBinh and arrived then
@@ -5363,6 +5501,11 @@ BossQ = Tabs.Main:AddToggle({
     Default = true,
     Callback = function(Value)
         _G.AcceptQuestBoss = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
     end
 })
 
@@ -5452,7 +5595,7 @@ spawn(function()
           local v = GetConnectionEnemies(mastery1)
 		  if v then		   
 		    HealthM = v.Humanoid.MaxHealth * 70 / 100
-		    repeat wait()
+		    repeat __DIO_wait()
 		      MousePos = v.HumanoidRootPart.Position
 		      Attack.Mas(v,_G.FarmMastery_Dev)
 		    until _G.FarmMastery_Dev == false or v.Humanoid.Health <= 0 or not v.Parent         		         		        
@@ -5463,7 +5606,7 @@ spawn(function()
           local v = GetConnectionEnemies(mastery2)
 		  if v then		
 		    HealthM = v.Humanoid.MaxHealth * 70 / 100
-		    repeat wait()
+		    repeat __DIO_wait()
 		      MousePos = v.HumanoidRootPart.Position
 		      Attack.Mas(v,_G.FarmMastery_Dev)
 		    until _G.FarmMastery_Dev == false or v.Humanoid.Health <= 0 or not v.Parent		        
@@ -5501,15 +5644,15 @@ spawn(function()
                 SoulGuitar = true
 		        plr.Character:FindFirstChildOfClass("Tool").RemoteEvent:FireServer("TAP", MousePos)
 		        if _G.FarmMastery_G then
-		          vim1:SendMouseButtonEvent(0, 0, 0, true, game, 1);wait(0.05)
-                  vim1:SendMouseButtonEvent(0, 0, 0, false, game, 1);wait(0.05)
+		          vim1:SendMouseButtonEvent(0, 0, 0, true, game, 1);__DIO_wait(0.05)
+                  vim1:SendMouseButtonEvent(0, 0, 0, false, game, 1);__DIO_wait(0.05)
                 end
 		      elseif plr.Character:FindFirstChildOfClass("Tool") and plr.Character:FindFirstChildOfClass("Tool").Name ~= 'Skull Guitar' then
 		        SoulGuitar = false
 		        RE_ShootGunEvent:FireServer(MousePos, { v.HumanoidRootPart })
 		        if _G.FarmMastery_G then
-		          vim1:SendMouseButtonEvent(0, 0, 0, true, game, 1);wait(0.05)
-                  vim1:SendMouseButtonEvent(0, 0, 0, false, game, 1);wait(0.05)
+		          vim1:SendMouseButtonEvent(0, 0, 0, true, game, 1);__DIO_wait(0.05)
+                  vim1:SendMouseButtonEvent(0, 0, 0, false, game, 1);__DIO_wait(0.05)
                 end
 		      end		            		
 		    until _G.FarmMastery_G == false or v.Humanoid.Health <= 0 or not v.Parent    
@@ -5532,15 +5675,15 @@ spawn(function()
                 SoulGuitar = true
 		        plr.Character:FindFirstChildOfClass("Tool").RemoteEvent:FireServer("TAP", MousePos)
 		        if _G.FarmMastery_G then
-		          vim1:SendMouseButtonEvent(0, 0, 0, true, game, 1);wait(0.05)
-                  vim1:SendMouseButtonEvent(0, 0, 0, false, game, 1);wait(0.05)
+		          vim1:SendMouseButtonEvent(0, 0, 0, true, game, 1);__DIO_wait(0.05)
+                  vim1:SendMouseButtonEvent(0, 0, 0, false, game, 1);__DIO_wait(0.05)
                 end
 		      elseif plr.Character:FindFirstChildOfClass("Tool") and plr.Character:FindFirstChildOfClass("Tool").Name ~= 'Skull Guitar' then
 		        SoulGuitar = false
 		        RE_ShootGunEvent:FireServer(MousePos, { v.HumanoidRootPart })
 		        if _G.FarmMastery_G then
-		          vim1:SendMouseButtonEvent(0, 0, 0, true, game, 1);wait(0.05)
-                  vim1:SendMouseButtonEvent(0, 0, 0, false, game, 1);wait(0.05)
+		          vim1:SendMouseButtonEvent(0, 0, 0, true, game, 1);__DIO_wait(0.05)
+                  vim1:SendMouseButtonEvent(0, 0, 0, false, game, 1);__DIO_wait(0.05)
                 end
 		      end		            		
 		    until _G.FarmMastery_G == false or v.Humanoid.Health <= 0 or not v.Parent    
@@ -5731,7 +5874,7 @@ __DIO_FireMeleeSwordNow = function(mob)
             if mhrp then
                 MousePos = mhrp.Position + Vector3.new(0, 2, 0)
                 _G.DIO_SkillAim = true
-                task.spawn(function() task.wait(0.9) _G.DIO_SkillAim = false end)
+                task.spawn(function() __DIO_wait(0.9) _G.DIO_SkillAim = false end)
             end
             local __hasMelee = __DIO_HasTip("Melee")
             local __hasSword = __DIO_HasTip("Sword")
@@ -5743,12 +5886,12 @@ __DIO_FireMeleeSwordNow = function(mob)
                 return
             end
             if __hasMelee then
-                Useskills("Melee", "Z") task.wait(0.15)
-                Useskills("Melee", "X") task.wait(0.15)
-                Useskills("Melee", "C") task.wait(0.15)
+                Useskills("Melee", "Z") __DIO_wait(0.15)
+                Useskills("Melee", "X") __DIO_wait(0.15)
+                Useskills("Melee", "C") __DIO_wait(0.15)
             end
             if __hasSword then
-                Useskills("Sword", "Z") task.wait(0.15)
+                Useskills("Sword", "Z") __DIO_wait(0.15)
                 Useskills("Sword", "X")
             end
         end)
@@ -5923,24 +6066,7 @@ Tabs.Settings:AddSlider({
 -- [FIX TWEEN-INIT 12-09-2026] _G.TweenSpeed = gia tri slider NGAY (saved hoac 190): Neartween TAT => _tp dung dung toc do slider tu giay 0.
 _G.TweenSpeed = math.clamp(math.floor((tonumber(GetSetting("UI/Settings/Speed Tween", 190)) or 190) + 0.5), 1, 500)
 Tabs.Settings:AddSection("Settings / Configure")
-SaveSetting = Tabs.Settings:AddToggle({
-Name = "Auto Save Serve old", 
-Description = "", 
-Default = true,
-Callback = function(Value)
-  _G.DIO_AutoSave = Value
-end})
-Tabs.Settings:AddToggle({
-    Name = "Auto Hop Server with time",
-    Default = false,
-    Callback = function(Value)
-        _G.AutoHopServer = Value
-        if not Value then
-            _G.HopTimer = nil
-        end
-    end
-})
-
+-- [REMOVED] Auto Save Serve old toggle replaced by getgenv().SaveSettings
 spawn(function()
     while __DIO_wait(1) do
         if _G.AutoHopServer then
@@ -6034,7 +6160,7 @@ spawn(function()
       if _G.RaceClickAutov3 then
         repeat
           replicated.Remotes.CommE:FireServer("ActivateAbility") 
-          wait(30)
+          __DIO_wait(30)
         until not _G.RaceClickAutov3   
       end 
     end)
@@ -6060,7 +6186,7 @@ spawn(function()
 end)
 
 RandomAround = Tabs.Settings:AddToggle({
-Name = "Auto Turn on Spin  xyz", 
+Name = "Auto Turn on Spin (x,y,z) ", 
 Description = "", 
 Default = false,
 Callback = function(Value)
@@ -6097,7 +6223,7 @@ Tabs.Settings:AddToggle({
             local vu = __SVC_VU
             __DIO_AFKConn = __SVC_PLR.LocalPlayer.Idled:Connect(function()
                 vu:Button2Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
-                wait(1)
+                __DIO_wait(1)
                 vu:Button2Up(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
             end)
         elseif not Value and __DIO_AFKConn then
@@ -6263,6 +6389,11 @@ Tabs.Fish:AddDropdown({
     Default = "Fishing Rod",
     Callback = function(Value)
         _G.SelectedRod = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
     end
 })
 
@@ -6312,6 +6443,11 @@ FishingToggle = Tabs.Fish:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.AutoFishing = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
     end
 })
 
@@ -6356,7 +6492,7 @@ task.spawn(function()
 
                     if TargetPos and (State == "ReeledIn" or ServerState == "ReeledIn") then
                         FishingRequest:InvokeServer("StartCasting")
-                        task.wait()
+                        __DIO_wait()
                         FishingRequest:InvokeServer("CastLineAtLocation", TargetPos, 100, true)
                     elseif ServerState == "Biting" then
                         FishingRequest:InvokeServer("Catching", true)
@@ -6542,7 +6678,7 @@ spawn(function()
                   local __zouT = tick()
                   repeat __DIO_wait(0.25) replicated.Remotes.CommF_:InvokeServer("F_","TravelZou") until not _G.AutoZou or Check == 1 or tick() - __zouT > 8
                 else
-                  replicated.Remotes.CommF_:InvokeServer("F_","ZQuestProgress","Check") wait(.1)
+                  replicated.Remotes.CommF_:InvokeServer("F_","ZQuestProgress","Check") __DIO_wait(.1)
                   replicated.Remotes.CommF_:InvokeServer("F_","ZQuestProgress","Begin")
                 end
               elseif replicated.Remotes["CommF_"]:InvokeServer("ZQuestProgress", "Check") == 1 then
@@ -6610,19 +6746,19 @@ spawn(function()
               repeat __DIO_wait(0.25) _tp(CFrame.new(-1836, 11, 1714)) until not _G.AutoZou or (Root.Position - CFrame.new(-1836, 11, 1714).Position).Magnitude <= 5 -- [FIX PERF 60b] so sanh float == khong bao gio khop -> step khong bao gio xong
               if ((Root.Position - CFrame.new(-1836, 11, 1714).Position).Magnitude <= 5) then notween(CFrame.new(-1836, 11, 1714))end -- [FIX PERF 60b]
               notween(CFrame.new(-1850.49329, 13.1789551, 1750.89685))
-              wait(.1)
+              __DIO_wait(.1)
               notween(CFrame.new(-1858.87305, 19.3777466, 1712.01807))
-              wait(.1)
+              __DIO_wait(.1)
               notween(CFrame.new(-1803.94324, 16.5789185, 1750.89685))
-              wait(.1)
+              __DIO_wait(.1)
               notween(CFrame.new(-1858.55835, 16.8604317, 1724.79541))
-              wait(.1)
+              __DIO_wait(.1)
               notween(CFrame.new(-1869.54224, 15.987854, 1681.00659))
-              wait(.1)
+              __DIO_wait(.1)
               notween(CFrame.new(-1800.0979, 16.4978027, 1684.52368))
-              wait(.1)
+              __DIO_wait(.1)
               notween(CFrame.new(-1819.26343, 14.795166, 1717.90625))
-              wait(.1)
+              __DIO_wait(.1)
               notween(CFrame.new(-1813.51843, 14.8604736, 1724.79541))
             end
           end
@@ -6647,18 +6783,18 @@ spawn(function()
         if workspace.Map.Turtle:FindFirstChild("TushitaGate") then
           if not GetBP("Holy Torch") then
             _tp(CFrame.new(5148.03613, 162.352493, 910.548218))
-            wait(0.7)
+            __DIO_wait(0.7)
           else
             EquipWeapon("Holy Torch")
             __DIO_wait(1)
             repeat __DIO_wait(0.25) _tp(CFrame.new(-10752, 417, -9366)) until not _G.Auto_Tushita or (CFrame.new(-10752, 417, -9366).Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10
-            wait(.7)
+            __DIO_wait(.7)
             repeat __DIO_wait(0.25) _tp(CFrame.new(-11672, 334, -9474)) until not _G.Auto_Tushita or (CFrame.new(-11672, 334, -9474).Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10
-            wait(.7)
+            __DIO_wait(.7)
             repeat __DIO_wait(0.25) _tp(CFrame.new(-12132, 521, -10655)) until not _G.Auto_Tushita or (CFrame.new(-12132, 521, -10655).Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10
-            wait(.7)
+            __DIO_wait(.7)
             repeat __DIO_wait(0.25) _tp(CFrame.new(-13336, 486, -6985)) until not _G.Auto_Tushita or (CFrame.new(-13336, 486, -6985).Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10
-            wait(.7)
+            __DIO_wait(.7)
             repeat __DIO_wait(0.25) _tp(CFrame.new(-13489, 332, -7925)) until not _G.Auto_Tushita or (CFrame.new(-13489, 332, -7925).Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10
           end
         else
@@ -6820,35 +6956,35 @@ spawn(function()
                  fireclickdetector(workspace.Map["Haunted Castle"].Tablet.Segment1:FindFirstChild("ClickDetector"))
                end
              until z1 == _z1 or not _G.Auto_Soul_Guitar
-            repeat wait()
+            repeat __DIO_wait()
               local z2 = getRT(2)
               local _z2 = getT(3)
               if z2 and _z2 then
                 fireclickdetector(workspace.Map["Haunted Castle"].Tablet.Segment3:FindFirstChild("ClickDetector"))
               end
             until z2 == _z2 or not _G.Auto_Soul_Guitar
-          repeat wait()
+          repeat __DIO_wait()
             local z3 = getRT(3)
             local _z3 = getT(4)
             if z3 and _z3 then
               fireclickdetector(workspace.Map["Haunted Castle"].Tablet.Segment4:FindFirstChild("ClickDetector"))
             end
           until z3 == _z3 or not _G.Auto_Soul_Guitar
-          repeat wait()
+          repeat __DIO_wait()
             local z4 = getRT(4)
             local _z4 = getT(7)
             if z4 and _z4 then
               fireclickdetector(workspace.Map["Haunted Castle"].Tablet.Segment7:FindFirstChild("ClickDetector"))
             end
           until z4 == _z4 or not _G.Auto_Soul_Guitar
-        repeat wait()
+        repeat __DIO_wait()
           local z5 = getRT(5)
           local _z5 = getT(10)
           if z5 and _z5 then
             fireclickdetector(workspace.Map["Haunted Castle"].Tablet.Segment10:FindFirstChild("ClickDetector"))    
           end
         until z5 == _z5 or not _G.Auto_Soul_Guitar
-        repeat wait()    
+        repeat __DIO_wait()    
           fireclickdetector(workspace.Map["Haunted Castle"].Tablet.Segment2:FindFirstChild("ClickDetector"))
           fireclickdetector(workspace.Map["Haunted Castle"].Tablet.Segment5:FindFirstChild("ClickDetector"))
           fireclickdetector(workspace.Map["Haunted Castle"].Tablet.Segment6:FindFirstChild("ClickDetector"))
@@ -6953,7 +7089,7 @@ spawn(function()
             end _tp(v.HumanoidRootPart.CFrame * CFrame.new(0,20,0))
           until not _G.CDK or not v.Parent or v.Humanoid.Health <= 0                                
         else
-          _tp(CFrame.new(-12318.193359375, 601.9518432617188, -6538.662109375)) wait(.5)
+          _tp(CFrame.new(-12318.193359375, 601.9518432617188, -6538.662109375)) __DIO_wait(.5)
           _tp(workspace.Map.Turtle.Cursed.BossDoor.CFrame)
         end
       end
@@ -7024,7 +7160,7 @@ spawn(function()
                         if v:IsA("ProximityPrompt") then fireproximityprompt(v) end
                       end
                     until (workspace.Map.HellDimension.Torch1.Particles.Position - Root.Position).Magnitude < 5
-                    wait(2) _G.T1Yama = true
+                    __DIO_wait(2) _G.T1Yama = true
                   until not _G.CDK_YM or _G.T1Yama or tonumber(replicated.Remotes.CommF_:InvokeServer("CDKQuest","Progress")["Evil"]) == 3
                   repeat __DIO_wait(0.25)
                     repeat __DIO_wait(0.25)
@@ -7033,7 +7169,7 @@ spawn(function()
                         if v:IsA("ProximityPrompt") then fireproximityprompt(v)end
                       end
                     until (workspace.Map.HellDimension.Torch2.Particles.Position - Root.Position).Magnitude < 5
-                    wait(2) _G.T2Yama = true
+                    __DIO_wait(2) _G.T2Yama = true
                   until _G.T2Yama or _G.CDK_YM == false or tonumber(replicated.Remotes.CommF_:InvokeServer("CDKQuest","Progress")["Evil"]) == 3
                     repeat __DIO_wait(0.25)
                       repeat __DIO_wait(0.25) 
@@ -7042,7 +7178,7 @@ spawn(function()
                           if v:IsA("ProximityPrompt") then fireproximityprompt(v)end
                         end
                       until (workspace.Map.HellDimension.Torch3.Particles.Position - Root.Position).Magnitude < 5 
-                      wait(2) _G.T3Yama = true
+                      __DIO_wait(2) _G.T3Yama = true
                     until _G.T3Yama or _G.CDK_YM == false or tonumber(replicated.Remotes.CommF_:InvokeServer("CDKQuest","Progress")["Evil"]) == 3
                   end
                   for i,v in pairs(workspace.Enemies:GetChildren()) do
@@ -7110,8 +7246,8 @@ spawn(function()
     pcall(function()
       if _G.CDK_TS then
         if tostring(replicated.Remotes.CommF_:InvokeServer("CDKQuest", "OpenDoor")) ~= "opened" then
-          wait(.7) replicated.Remotes.CommF_:InvokeServer("CDKQuest", "OpenDoor")
-          wait(.3) replicated.Remotes.CommF_:InvokeServer("CDKQuest", "OpenDoor", true)
+          __DIO_wait(.7) replicated.Remotes.CommF_:InvokeServer("CDKQuest", "OpenDoor")
+          __DIO_wait(.3) replicated.Remotes.CommF_:InvokeServer("CDKQuest", "OpenDoor", true)
         else
           if replicated.Remotes.CommF_:InvokeServer("CDKQuest","Progress")["Finished"] == nil then
             replicated.Remotes.CommF_:InvokeServer("CDKQuest","StartTrial","Good")
@@ -7122,20 +7258,20 @@ spawn(function()
               QuestTushita_3 = false
               repeat __DIO_wait(0.25) _tp(CFrame.new(-4602.5107421875, 16.446542739868164, -2880.998046875)) until (CFrame.new(-4602.5107421875, 16.446542739868164, -2880.998046875).Position - __SVC_PLR.LocalPlayer.Character.HumanoidRootPart.Position).Magnitude <= 3 or not _G.CDK_TS or tonumber(replicated.Remotes.CommF_:InvokeServer("CDKQuest","Progress")["Good"]) == 1
               if (CFrame.new(-4602.5107421875, 16.446542739868164, -2880.998046875).Position - __SVC_PLR.LocalPlayer.Character.HumanoidRootPart.Position).Magnitude <= 10 then
-                wait(.7) replicated.Remotes.CommF_:InvokeServer("CDKQuest","BoatQuest",workspace.NPCs:FindFirstChild("Luxury Boat Dealer"),"Check")
-                wait(.5) replicated.Remotes.CommF_:InvokeServer("CDKQuest","BoatQuest",workspace.NPCs:FindFirstChild("Luxury Boat Dealer"))
+                __DIO_wait(.7) replicated.Remotes.CommF_:InvokeServer("CDKQuest","BoatQuest",workspace.NPCs:FindFirstChild("Luxury Boat Dealer"),"Check")
+                __DIO_wait(.5) replicated.Remotes.CommF_:InvokeServer("CDKQuest","BoatQuest",workspace.NPCs:FindFirstChild("Luxury Boat Dealer"))
               end
-                wait(1) repeat __DIO_wait(0.25) _tp(CFrame.new(4001.185302734375, 10.089399337768555, -2654.86328125)) until (CFrame.new(4001.185302734375, 10.089399337768555, -2654.86328125).Position - __SVC_PLR.LocalPlayer.Character.HumanoidRootPart.Position).Magnitude <= 3 or not _G.CDK_TS or tonumber(replicated.Remotes.CommF_:InvokeServer("CDKQuest","Progress")["Good"]) == 1
+                __DIO_wait(1) repeat __DIO_wait(0.25) _tp(CFrame.new(4001.185302734375, 10.089399337768555, -2654.86328125)) until (CFrame.new(4001.185302734375, 10.089399337768555, -2654.86328125).Position - __SVC_PLR.LocalPlayer.Character.HumanoidRootPart.Position).Magnitude <= 3 or not _G.CDK_TS or tonumber(replicated.Remotes.CommF_:InvokeServer("CDKQuest","Progress")["Good"]) == 1
                 if (CFrame.new(4001.185302734375, 10.089399337768555, -2654.86328125).Position - __SVC_PLR.LocalPlayer.Character.HumanoidRootPart.Position).Magnitude <= 10 then
-                wait(.7) replicated.Remotes.CommF_:InvokeServer("CDKQuest","BoatQuest",workspace.NPCs:FindFirstChild("Luxury Boat Dealer"),"Check")
-                wait(.5) replicated.Remotes.CommF_:InvokeServer("CDKQuest","BoatQuest",workspace.NPCs:FindFirstChild("Luxury Boat Dealer"))
+                __DIO_wait(.7) replicated.Remotes.CommF_:InvokeServer("CDKQuest","BoatQuest",workspace.NPCs:FindFirstChild("Luxury Boat Dealer"),"Check")
+                __DIO_wait(.5) replicated.Remotes.CommF_:InvokeServer("CDKQuest","BoatQuest",workspace.NPCs:FindFirstChild("Luxury Boat Dealer"))
                 end
-                  wait(1) repeat __DIO_wait(0.25) _tp(CFrame.new(-9530.763671875, 7.245208740234375, -8375.5087890625)) until (CFrame.new(-9530.763671875, 7.245208740234375, -8375.5087890625).Position - __SVC_PLR.LocalPlayer.Character.HumanoidRootPart.Position).Magnitude <= 3 or not _G.CDK_TS or tonumber(replicated.Remotes.CommF_:InvokeServer("CDKQuest","Progress")["Good"]) == 1
+                  __DIO_wait(1) repeat __DIO_wait(0.25) _tp(CFrame.new(-9530.763671875, 7.245208740234375, -8375.5087890625)) until (CFrame.new(-9530.763671875, 7.245208740234375, -8375.5087890625).Position - __SVC_PLR.LocalPlayer.Character.HumanoidRootPart.Position).Magnitude <= 3 or not _G.CDK_TS or tonumber(replicated.Remotes.CommF_:InvokeServer("CDKQuest","Progress")["Good"]) == 1
                   if (CFrame.new(-9530.763671875, 7.245208740234375, -8375.5087890625).Position - __SVC_PLR.LocalPlayer.Character.HumanoidRootPart.Position).Magnitude <= 10 then
-                    wait(.7) replicated.Remotes.CommF_:InvokeServer("CDKQuest","BoatQuest",workspace.NPCs:FindFirstChild("Luxury Boat Dealer"),"Check")
-                    wait(.5) replicated.Remotes.CommF_:InvokeServer("CDKQuest","BoatQuest",workspace.NPCs:FindFirstChild("Luxury Boat Dealer"))
+                    __DIO_wait(.7) replicated.Remotes.CommF_:InvokeServer("CDKQuest","BoatQuest",workspace.NPCs:FindFirstChild("Luxury Boat Dealer"),"Check")
+                    __DIO_wait(.5) replicated.Remotes.CommF_:InvokeServer("CDKQuest","BoatQuest",workspace.NPCs:FindFirstChild("Luxury Boat Dealer"))
                   end
-                  wait(1)
+                  __DIO_wait(1)
                   elseif tonumber(replicated.Remotes.CommF_:InvokeServer("CDKQuest","Progress")["Good"]) == -4 then
                     QuestTushita_1 = false
                     QuestTushita_2 = true
@@ -7177,7 +7313,7 @@ spawn(function()
                          if v:IsA("ProximityPrompt") then fireproximityprompt(v) end
                        end
                      until (CFrame.new(-22529.6171875, 5275.77392578125, 3873.5712890625).Position - game.Players.LocalPlayer.Character.HumanoidRootPart.Position).Magnitude < 5
-                     wait(2)
+                     __DIO_wait(2)
                     _G.DoneT1 = true
                   until not _G.CDK_TS or _G.DoneT1
                   repeat __DIO_wait(0.25)
@@ -7187,7 +7323,7 @@ spawn(function()
                          if v:IsA("ProximityPrompt") then fireproximityprompt(v) end
                        end
                     until (CFrame.new(-22637.291015625, 5281.365234375, 3749.28857421875).Position - game.Players.LocalPlayer.Character.HumanoidRootPart.Position).Magnitude < 5
-                    wait(2) _G.DoneT2 = true
+                    __DIO_wait(2) _G.DoneT2 = true
                   until _G.DoneT2 or _G.CDK_TS == false
                   repeat __DIO_wait(0.25)
                     repeat __DIO_wait(0.25) 
@@ -7196,7 +7332,7 @@ spawn(function()
                         if v:IsA("ProximityPrompt") then fireproximityprompt(v) end
                       end
                     until (CFrame.new(-22791.14453125, 5277.16552734375, 3764.570068359375).Position - game.Players.LocalPlayer.Character.HumanoidRootPart.Position).Magnitude < 5
-                    wait(2) _G.DoneT3 = true
+                    __DIO_wait(2) _G.DoneT3 = true
                   until _G.DoneT3 or _G.CDK_TS == false
                   for i,v in pairs(workspace.Enemies:GetChildren()) do
                     if (v:FindFirstChild("HumanoidRootPart").Position - CFrame.new(-22695.7012, 5270.93652, 3814.42847, 0.11794927, 3.32185834e-08, 0.99301964, -8.73070718e-08, 1, -2.30819008e-08, -0.99301964, -8.3975138e-08, 0.11794927).Position).Magnitude <= 300 then
@@ -7292,7 +7428,7 @@ spawn(function()
 		 _G.Raiding = false
 		 _G.Auto_Awakener = false
 		if plr.Data.Fragments.Value >= 5000 then
-          replicated.Remotes.CommF_:InvokeServer("Thunder God", "Talk") wait(Sec)
+          replicated.Remotes.CommF_:InvokeServer("Thunder God", "Talk") __DIO_wait(Sec)
           replicated.Remotes.CommF_:InvokeServer("Thunder God", "Sure")
         end
         elseif replicated.Remotes.CommF_:InvokeServer("Awakener","Check") == nil or replicated.Remotes.CommF_:InvokeServer("Awakener","Check") == 0 then
@@ -7341,17 +7477,17 @@ spawn(function()
 	      if workspace.Map.Jungle.QuestPlates.Door.Transparency == 0 then
 		    if (CFrame.new(-1612.55884, 36.9774132, 148.719543, 0.37091279, 3.0717151e-09, -0.928667724, 3.97099491e-08, 1, 1.91679348e-08, 0.928667724, -4.39869794e-08, 0.37091279).Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 100 then
 		      _tp(plr.Character.HumanoidRootPart.CFrame)
-		      wait(0.5)
+		      __DIO_wait(0.5)
 		      plr.Character.HumanoidRootPart.CFrame = workspace.Map.Jungle.QuestPlates.Plate1.Button.CFrame
-		      wait(0.5)
+		      __DIO_wait(0.5)
 		      plr.Character.HumanoidRootPart.CFrame = workspace.Map.Jungle.QuestPlates.Plate2.Button.CFrame
-		      wait(0.5)
+		      __DIO_wait(0.5)
 		      plr.Character.HumanoidRootPart.CFrame = workspace.Map.Jungle.QuestPlates.Plate3.Button.CFrame
-	    	  wait(0.5)
+	    	  __DIO_wait(0.5)
 		      plr.Character.HumanoidRootPart.CFrame = workspace.Map.Jungle.QuestPlates.Plate4.Button.CFrame
-		      wait(0.5)
+		      __DIO_wait(0.5)
 		      plr.Character.HumanoidRootPart.CFrame = workspace.Map.Jungle.QuestPlates.Plate5.Button.CFrame
-		      wait(0.5) 
+		      __DIO_wait(0.5) 
 		    else
 		      _tp(CFrame.new(-1612.55884, 36.9774132, 148.719543, 0.37091279, 3.0717151e-09, -0.928667724, 3.97099491e-08, 1, 1.91679348e-08, 0.928667724, -4.39869794e-08, 0.37091279))
 		    end
@@ -7367,11 +7503,11 @@ spawn(function()
 		      else
 		        if replicated.Remotes.CommF_:InvokeServer("ProQuestProgress","SickMan") ~= 0 then
 		          replicated.Remotes.CommF_:InvokeServer("ProQuestProgress","GetCup")
-			      wait(0.5)
+			      __DIO_wait(0.5)
 			      EquipWeapon("Cup")
-			      wait(0.5)
+			      __DIO_wait(0.5)
 			      replicated.Remotes.CommF_:InvokeServer("ProQuestProgress","FillCup",plr.Character.Cup)
-			      wait(Sec)
+			      __DIO_wait(Sec)
 			      replicated.Remotes.CommF_:InvokeServer("ProQuestProgress","SickMan") 
 		        else
 		 	      if replicated.Remotes.CommF_:InvokeServer("ProQuestProgress","RichSon") == nil then
@@ -7564,7 +7700,7 @@ spawn(function()
     pcall(function()
       if _G.KeysRen then
         if plr.Backpack:FindFirstChild(RenMon[3]) or plr.Character:FindFirstChild(RenMon[3]) then
-          EquipWeapon(RenMon[3]) wait(.1)
+          EquipWeapon(RenMon[3]) __DIO_wait(.1)
           _tp(CFrame.new(6571.1201171875, 299.23028564453, -6967.841796875))
         else
           local v = GetConnectionEnemies(RenMon)
@@ -7676,7 +7812,7 @@ spawn(function()
 	      local v = GetConnectionEnemies("Cursed Captain")
 	      if v then repeat __DIO_wait(0.25)Attack.Kill(v, _G.AutoEcBoss) until not _G.AutoEcBoss or not v.Parent or v.Humanoid.Health <= 0
 	      else
-	        replicated.Remotes.CommF_:InvokeServer("requestEntrance",Vector3.new(923.21252441406, 126.9760055542, 32852.83203125)) wait(.5)
+	        replicated.Remotes.CommF_:InvokeServer("requestEntrance",Vector3.new(923.21252441406, 126.9760055542, 32852.83203125)) __DIO_wait(.5)
 	        _tp(CFrame.new(916.928589, 181.092773, 33422))
 	      end
 	    end	
@@ -7701,7 +7837,7 @@ spawn(function()
           local v = GetConnectionEnemies("Darkbeard")          
 		  if v then repeat __DIO_wait(0.25)Attack.Kill(v,_G.Auto_Def_DarkCoat)until _G.Auto_Def_DarkCoat == false or not v.Parent or v.Humanoid.Health <= 0 end -- [FIX AUDIT-L4] `Helath` la typo: property nil -> `nil <= 0` loi moi vong, pcall nuot => repeat chi chay 1 Attack.Kill moi giay va khong bao gio nhan dien boss chet
         elseif not GetBP("Fist of Darkness") and not GetConnectionEnemies("Darkbeard") then
-          repeat wait(.1) _G.AutoFarmChest = true until not _G.Auto_Def_DarkCoat or GetBP("Fist of Darkness") or GetConnectionEnemies("Darkbeard") _G.AutoFarmChest = false
+          repeat __DIO_wait(.1) _G.AutoFarmChest = true until not _G.Auto_Def_DarkCoat or GetBP("Fist of Darkness") or GetConnectionEnemies("Darkbeard") _G.AutoFarmChest = false
         end
       end)
     end
@@ -7830,7 +7966,7 @@ spawn(function()
         local v = GetConnectionEnemies("Captain Elephant")
 	    if v then repeat __DIO_wait(0.25)Attack.Kill(v,_G.TwinHook)until not _G.TwinHook or v.Humanoid.Health <= 0
 	    else
-          replicated.Remotes.CommF_:InvokeServer("requestEntrance",Vector3.new(-12471.169921875, 374.94024658203, -7551.677734375)) wait(.2)
+          replicated.Remotes.CommF_:InvokeServer("requestEntrance",Vector3.new(-12471.169921875, 374.94024658203, -7551.677734375)) __DIO_wait(.2)
           _tp(CFrame.new(-13376.7578125, 433.28689575195, -8071.392578125))
 	    end
       end
@@ -7919,7 +8055,7 @@ spawn(function()
             if (plr.Character.HumanoidRootPart.Position - Rainbow1.Position).Magnitude > 5 then -- [FIX PERF 24] CFrame== hang so khong bao gio khop -> step "Bet" khong bao gio chay
               _tp(Rainbow1)
             elseif (plr.Character.HumanoidRootPart.Position - Rainbow1.Position).Magnitude <= 5 then
-              wait(1)
+              __DIO_wait(1)
               replicated.Remotes.CommF_:InvokeServer("HornedMan","Bet")
             end
           end
@@ -8116,7 +8252,7 @@ spawn(function()
 	      _tp(Kv2Pos5)
 	    end
 	  elseif not __DIO_GetCurrentQuest().IsActive then -- [FIX QUEST-FN]
-	    replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress","Citizen") wait(.1)
+	    replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress","Citizen") __DIO_wait(.1)
 	    replicated.Remotes.CommF_:InvokeServer("StartQuest","CitizenQuest",1)
 	  end
 	  if replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress","Citizen") == 2 then
@@ -8128,24 +8264,24 @@ spawn(function()
 	      replicated.Remotes.CommF_:InvokeServer("requestEntrance",Vector3.new(-12471.169921875, 374.94024658203, -7551.677734375))
 	      for i,v in pairs(workspace:GetDescendants()) do
 	        if v.Name == "Apple" then
-	          v.Handle.CFrame = plr.Character.HumanoidRootPart.CFrame * CFrame.new(0,1,10) wait()
-		      firetouchinterest(plr.Character.HumanoidRootPart,v.Handle,0) wait()		    
+	          v.Handle.CFrame = plr.Character.HumanoidRootPart.CFrame * CFrame.new(0,1,10) __DIO_wait()
+		      firetouchinterest(plr.Character.HumanoidRootPart,v.Handle,0) __DIO_wait()		    
 	        end
 	      end
 	    elseif not GetBP("Banana") then
 	      _tp(CFrame.new(2286.0078125,73.13391876220703,-7159.80908203125))
 	      for i,v in pairs(workspace:GetDescendants()) do
 	        if v.Name == "Banana" then
-	          v.Handle.CFrame = plr.Character.HumanoidRootPart.CFrame * CFrame.new(0,1,10) wait()
-		      firetouchinterest(plr.Character.HumanoidRootPart,v.Handle,0) wait()		    
+	          v.Handle.CFrame = plr.Character.HumanoidRootPart.CFrame * CFrame.new(0,1,10) __DIO_wait()
+		      firetouchinterest(plr.Character.HumanoidRootPart,v.Handle,0) __DIO_wait()		    
 	        end
 	      end	    
 	    elseif not GetBP("Pineapple") then
 	      _tp(CFrame.new(-712.8272705078125,98.5770492553711,5711.9541015625))
 	      for i,v in pairs(workspace:GetDescendants()) do
 	        if v.Name == "Pineapple" then
-	          v.Handle.CFrame = plr.Character.HumanoidRootPart.CFrame * CFrame.new(0,1,10) wait()
-		      firetouchinterest(plr.Character.HumanoidRootPart,v.Handle,0) wait()		    
+	          v.Handle.CFrame = plr.Character.HumanoidRootPart.CFrame * CFrame.new(0,1,10) __DIO_wait()
+		      firetouchinterest(plr.Character.HumanoidRootPart,v.Handle,0) __DIO_wait()		    
 	        end
 	      end	    
 	    end	  
@@ -8157,7 +8293,7 @@ spawn(function()
 	      if plr.Backpack:FindFirstChild("Fruit Bowl") or plr.Character:FindFirstChild("Fruit Bowl") then
 	        if (plr.Character.HumanoidRootPart.Position - Kv2Pos3.Position).Magnitude > 5 then _tp(Kv2Pos3)
 		    elseif (plr.Character.HumanoidRootPart.Position - Kv2Pos3.Position).Magnitude <= 5 then -- [FIX PERF 27b]
-		      replicated.Remotes.CommF_:InvokeServer("KenTalk2","Start") wait(.1)
+		      replicated.Remotes.CommF_:InvokeServer("KenTalk2","Start") __DIO_wait(.1)
 		      replicated.Remotes.CommF_:InvokeServer("KenTalk2","Buy")
 	        end			 		    
 	      end
@@ -8214,23 +8350,23 @@ spawn(function()
             end
           elseif replicated.Remotes.CommF_:InvokeServer("BartiloQuestProgress","Bartilo") == 2 then
           repeat __DIO_wait(0.25) _tp(CFrame.new(-1830.83972, 10.5578213, 1680.60229, 0.979988456, -2.02152783e-08, -0.199054286, 2.20792113e-08, 1, 7.1442483e-09, 0.199054286, -1.13962431e-08, 0.979988456))until (CFrame.new(-1830.83972, 10.5578213, 1680.60229, 0.979988456, -2.02152783e-08, -0.199054286, 2.20792113e-08, 1, 7.1442483e-09, 0.199054286, -1.13962431e-08, 0.979988456).Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 1 or _G.Bartilo_Quest == false
-          wait(0.5)
+          __DIO_wait(0.5)
           plr.Character.HumanoidRootPart.CFrame = workspace.Map.Dressrosa.BartiloPlates.Plate1.CFrame
-          wait(0.5)
+          __DIO_wait(0.5)
           plr.Character.HumanoidRootPart.CFrame = workspace.Map.Dressrosa.BartiloPlates.Plate2.CFrame
-          wait(0.5)
+          __DIO_wait(0.5)
           plr.Character.HumanoidRootPart.CFrame = workspace.Map.Dressrosa.BartiloPlates.Plate3.CFrame
-          wait(0.5)
+          __DIO_wait(0.5)
           plr.Character.HumanoidRootPart.CFrame = workspace.Map.Dressrosa.BartiloPlates.Plate4.CFrame
-          wait(0.5)
+          __DIO_wait(0.5)
           plr.Character.HumanoidRootPart.CFrame = workspace.Map.Dressrosa.BartiloPlates.Plate5.CFrame
-          wait(0.5)
+          __DIO_wait(0.5)
           plr.Character.HumanoidRootPart.CFrame = workspace.Map.Dressrosa.BartiloPlates.Plate6.CFrame
-          wait(0.5)
+          __DIO_wait(0.5)
           plr.Character.HumanoidRootPart.CFrame = workspace.Map.Dressrosa.BartiloPlates.Plate7.CFrame
-          wait(0.5)
+          __DIO_wait(0.5)
           plr.Character.HumanoidRootPart.CFrame = workspace.Map.Dressrosa.BartiloPlates.Plate8.CFrame
-          wait(2.5)
+          __DIO_wait(2.5)
         end
       end
     end)
@@ -8259,7 +8395,7 @@ spawn(function()
           else
             _tp(CFrame.new(-12443.8671875, 332.40396118164, -7675.4892578125))
             if (Vector3.new(-12443.8671875, 332.40396118164, -7675.4892578125) - plr.Character.HumanoidRootPart.Position).Magnitude <= 30 then
-              wait(1.5) replicated.Remotes.CommF_:InvokeServer("StartQuest","CitizenQuest",1)
+              __DIO_wait(1.5) replicated.Remotes.CommF_:InvokeServer("StartQuest","CitizenQuest",1)
             end
           end
         elseif plr.Data.Level.Value >= 1800 and replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress").KilledBoss == false then
@@ -8274,7 +8410,7 @@ spawn(function()
           else
             _tp(CFrame.new(-12443.8671875, 332.40396118164, -7675.4892578125))
             if (CFrame.new(-12443.8671875, 332.40396118164, -7675.4892578125).Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 4 then
-              wait(1.5)
+              __DIO_wait(1.5)
               replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress","Citizen")
             end
           end
@@ -8348,38 +8484,66 @@ __DIO_BuyKick = function()
 end
 Tabs.Shop:AddSection("Fighting Melee Styles")
 __DIO_BuyMeleeToggles.BuyBlackLeg = Tabs.Shop:AddToggle({
-Name = "Buy Black Leg", 
-Description = "", 
+Name = "Buy  BlackLeg",
+Description = "",
 Default = false,
 Callback = function(Value)
   _G.BuyMelee_BuyBlackLeg = (Value == true)
-  if Value then __DIO_BuyKick() end
+  if Value then
+    __DIO_BuyKick()
+  else
+    -- [FIX BUY-TOGGLE-OFF] tat thi dung tween ngay
+    StopTween(false)
+    __DIO_CurTarget = nil
+    if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+  end
 end})
 __DIO_BuyMeleeToggles.BuyElectro = Tabs.Shop:AddToggle({
-Name = "Buy Electro", 
-Description = "", 
+Name = "Buy  Electro",
+Description = "",
 Default = false,
 Callback = function(Value)
   _G.BuyMelee_BuyElectro = (Value == true)
-  if Value then __DIO_BuyKick() end
+  if Value then
+    __DIO_BuyKick()
+  else
+    -- [FIX BUY-TOGGLE-OFF] tat thi dung tween ngay
+    StopTween(false)
+    __DIO_CurTarget = nil
+    if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+  end
 end})
 __DIO_BuyMeleeToggles.BuyFishmanKarate = Tabs.Shop:AddToggle({
-Name = "Buy Fishman Karate", 
-Description = "", 
+Name = "Buy  FishmanKarate",
+Description = "",
 Default = false,
 Callback = function(Value)
   _G.BuyMelee_BuyFishmanKarate = (Value == true)
-  if Value then __DIO_BuyKick() end
+  if Value then
+    __DIO_BuyKick()
+  else
+    -- [FIX BUY-TOGGLE-OFF] tat thi dung tween ngay
+    StopTween(false)
+    __DIO_CurTarget = nil
+    if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+  end
 end})
 __DIO_BuyMeleeToggles.BuyDragonClaw = Tabs.Shop:AddToggle({
-Name = "Buy DragonClaw", 
-Description = "", 
+Name = "Buy  DragonClaw",
+Description = "",
 Default = false,
 Callback = function(Value)
   _G.BuyMelee_BuyDragonClaw = (Value == true)
-  if Value then __DIO_BuyKick() end
+  if Value then
+    __DIO_BuyKick()
+  else
+    -- [FIX BUY-TOGGLE-OFF] tat thi dung tween ngay
+    StopTween(false)
+    __DIO_CurTarget = nil
+    if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+  end
 end})
-SuperHuman = Tabs.Quests:AddToggle({
+SuperHuman = Tabs.Shop:AddToggle({
 Name = "Auto Superhuman", 
 Description = "", 
 Default = false,
@@ -8426,7 +8590,7 @@ spawn(function()
     end
   end
 end)
-DeathStep = Tabs.Quests:AddToggle({
+DeathStep = Tabs.Shop:AddToggle({
 Name = "Auto DeathStep", 
 Description = "", 
 Default = false,
@@ -8472,7 +8636,7 @@ spawn(function()
     end
   end
 end)
-SharkManV2 = Tabs.Quests:AddToggle({
+SharkManV2 = Tabs.Shop:AddToggle({
 Name = "Auto Sharkman Karate", 
 Description = "", 
 Default = false,
@@ -8514,7 +8678,7 @@ spawn(function()
     end
   end
 end)
-ElectricClaw = Tabs.Quests:AddToggle({
+ElectricClaw = Tabs.Shop:AddToggle({
 Name = "Auto ElectricClaw", 
 Description = "", 
 Default = false,
@@ -8547,7 +8711,7 @@ spawn(function()
     end
   end
 end)
-DragonTalon = Tabs.Quests:AddToggle({
+DragonTalon = Tabs.Shop:AddToggle({
 Name = "Auto DragonTalon", 
 Description = "", 
 Default = false,
@@ -8577,7 +8741,7 @@ spawn(function()
     end
   end
 end)
-Godhuman = Tabs.Quests:AddToggle({
+Godhuman = Tabs.Shop:AddToggle({
 Name = "Auto Godhuman", 
 Description = "", 
 Default = false,
@@ -8632,7 +8796,7 @@ spawn(function()
     end)
   end
 end)
-SanguineArt = Tabs.Quests:AddToggle({
+SanguineArt = Tabs.Shop:AddToggle({
 Name = "Auto SanguineArt", 
 Description = "", 
 Default = false,
@@ -8826,6 +8990,11 @@ Tabs.Race:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.AutoMysticIsland = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
     end
 })
 
@@ -8982,7 +9151,7 @@ task.spawn(function()
   while __DIO_wait(1) do -- [FIX PERF 62] 0.3 -> 1 (yeu cau user: uu tien FPS; vong poll gated nen logic khong time-out)
     if LookM then
       pcall(MoveCamtoMoon) -- [FIX PERF 41] pcall: HumanoidRootPart truy cap truc tiep trong MoveCamtoMoon
-      wait(.1)
+      __DIO_wait(.1)
       replicated.Remotes.CommE:FireServer("ActivateAbility")
     end
   end
@@ -9009,7 +9178,7 @@ task.spawn(function()
             pcall(MoveCamtoMoon) -- [FIX PERF 42] pcall chong thread chet khi respawn
             replicated.Remotes.CommE:FireServer("ActivateAbility")            
             UIS:SendKeyEvent(true, "T", false, game)
-            wait(0.5)
+            __DIO_wait(0.5)
             UIS:SendKeyEvent(false, "T", false, game)
         end
     end
@@ -9380,14 +9549,14 @@ spawn(function()
               Useskills("Melee","Z")
 	          Useskills("Melee","X")
 	          Useskills("Melee","C")
-              wait(.1)
+              __DIO_wait(.1)
               Useskills("Sword","Z")
               Useskills("Sword","X")
-              wait(.1)
+              __DIO_wait(.1)
               Useskills("Blox Fruit","Z")
               Useskills("Blox Fruit","X")
               Useskills("Blox Fruit","C")
-              wait(.1)
+              __DIO_wait(.1)
               Useskills("Gun","Z")
               Useskills("Gun","X")
             until _G.Complete_Trials == false or not GetSeaBeastTrial()
@@ -9505,24 +9674,24 @@ spawn(function()
             _G.FishBoat = false
             _G.SailBoats = false               
           elseif NameBelt == "Green" then
-            repeat task.wait()
+            repeat __DIO_wait()
               _G.SailBoats = true
             until not _G.Dojoo or not progress
             _G.SailBoats = false
           elseif NameBelt == "Purple" then
-            repeat task.wait()
+            repeat __DIO_wait()
               _G.FarmEliteHunt = true
             until not _G.Dojoo or not progress
             _G.FarmEliteHunt = false
           elseif NameBelt == "Red" then
-            repeat task.wait()
+            repeat __DIO_wait()
               _G.SailBoats = true
               _G.FishBoat = true
             until not _G.Dojoo or not progress
             _G.SailBoats = false
             _G.FishBoat = false                      
           elseif NameBelt == "Black" then
-            repeat task.wait()              
+            repeat __DIO_wait()              
               if workspace.Map:FindFirstChild("PrehistoricIsland") or workspace._WorldOrigin.Locations:FindFirstChild("Prehistoric Island") then    
                 _G.Prehis_Find = true                   
                 if workspace.Map.PrehistoricIsland.Core.ActivationPrompt:FindFirstChild("ProximityPrompt",true) then
@@ -9570,7 +9739,7 @@ spawn(function()
         if a == true and not BackTODoJo() then
           if x == 1 then
             if v == "Hydra Enforcer" or v == "Venomous Assailant" then            
-              repeat wait()
+              repeat __DIO_wait()
                 DragonMobClear(true, v, CFrame.new(4620.61572265625, 1002.2954711914062, 399.0868835449219))
               until not _G.FarmBlazeEM or not a or BackTODoJo()                            
             end      
@@ -9583,14 +9752,14 @@ spawn(function()
                 Useskills("Melee","Z")
 	            Useskills("Melee","X")
 	            Useskills("Melee","C")
-                wait(.5)
+                __DIO_wait(.5)
                 Useskills("Sword","Z")
                 Useskills("Sword","X")
-                wait(.5)
+                __DIO_wait(.5)
                 Useskills("Blox Fruit","Z")
                 Useskills("Blox Fruit","X")
                 Useskills("Blox Fruit","C")
-                wait(.5)
+                __DIO_wait(.5)
                 Useskills("Gun","Z")
                 Useskills("Gun","X")
                 end
@@ -9660,7 +9829,7 @@ spawn(function()
     pcall(function()
       if _G.DragoV1 then     
         if GetM("Dragon Egg") <= 0 then
-        repeat wait()
+        repeat __DIO_wait()
           _G.Prehis_Find = true
           _G.Prehis_Skills = true
           _G.Prehis_DE = true
@@ -9695,7 +9864,7 @@ spawn(function()
             local playerRoot = game.Players.LocalPlayer.Character.HumanoidRootPart.Position;
             local Magnited = (FlowerPos - playerRoot).Magnitude;
             if (Magnited <= 100) then
-              vim1:SendKeyEvent(true, "E", false, game) wait(1.5) vim1:SendKeyEvent(false, "E", false, game)
+              vim1:SendKeyEvent(true, "E", false, game) __DIO_wait(1.5) vim1:SendKeyEvent(false, "E", false, game)
             else
               _tp(CFrame.new(FlowerPos));
             end
@@ -9741,13 +9910,13 @@ spawn(function()
       pcall(function()
         if workspace.Map:FindFirstChild("DracoTrial") then
           replicated.Remotes.DracoTrial:InvokeServer()                  
-          wait(.5)
+          __DIO_wait(.5)
           repeat __DIO_wait(0.25) _tp(CFrame.new(-39934.9765625, 10685.359375, 22999.34375)) until not _G.Relic123 or (Root.Position - CFrame.new(-39934.9765625, 10685.359375, 22999.34375)).Magnitude <= 5
           repeat __DIO_wait(0.25) _tp(CFrame.new(-40511.25390625, 9376.4013671875, 23458.37890625)) until not _G.Relic123 or (Root.Position - CFrame.new(-40511.25390625, 9376.4013671875, 23458.37890625)).Magnitude <= 5
-          wait(2.5)
+          __DIO_wait(2.5)
           repeat __DIO_wait(0.25) _tp(CFrame.new(-39914.65625, 10685.384765625, 23000.177734375)) until not _G.Relic123 or (Root.Position - CFrame.new(-39914.65625, 10685.384765625, 23000.177734375)).Magnitude <= 5
           repeat __DIO_wait(0.25) _tp(CFrame.new(-40045.83203125, 9376.3984375, 22791.287109375)) until not _G.Relic123 or (Root.Position - CFrame.new(-40045.83203125, 9376.3984375, 22791.287109375)).Magnitude <= 5
-          wait(2.5)
+          __DIO_wait(2.5)
           repeat __DIO_wait(0.25) _tp(CFrame.new(-39908.5, 10685.4052734375, 22990.04296875)) until not _G.Relic123 or (Root.Position - CFrame.new(-39908.5, 10685.4052734375, 22990.04296875)).Magnitude <= 5
           repeat __DIO_wait(0.25) _tp(CFrame.new(-39609.5, 9376.400390625, 23472.94335975)) until not _G.Relic123 or (Root.Position - CFrame.new(-39609.5, 9376.400390625, 23472.94335975)).Magnitude <= 5 
         else
@@ -9949,6 +10118,11 @@ Tabs.Prehistoric:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.Prehis_Find = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
     end
 })
 
@@ -10038,6 +10212,11 @@ Tabs.Prehistoric:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.AutoStartPrehistoric = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
     end
 })
 spawn(function()
@@ -10052,7 +10231,7 @@ spawn(function()
                             if plr:DistanceFromCharacter(promptPart.CFrame.Position) <= 150 then
                                 fireproximityprompt(promptPart.ProximityPrompt, math.huge)
                                 vim1:SendKeyEvent(true, "E", false, game)
-                                wait(1.5)
+                                __DIO_wait(1.5)
                                 vim1:SendKeyEvent(false, "E", false, game)
                             end
                             _tp(promptPart.CFrame)
@@ -10073,6 +10252,11 @@ Tabs.Prehistoric:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.Prehis_Skills = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
     end
 })
 
@@ -10137,7 +10321,7 @@ spawn(function()
                 local golem = GetConnectionEnemies("Lava Golem")
                 if golem and golem:FindFirstChild("Humanoid") then
                     repeat
-                        wait(0.1)
+                        __DIO_wait(0.1)
                         Attack.Kill(golem, true)
                         golem.Humanoid:ChangeState(15)
                     until not _G.Prehis_Skills
@@ -10177,21 +10361,21 @@ spawn(function()
 
                     if glow and glow.Enabled then
                         repeat
-                            wait(0.1)
+                            __DIO_wait(0.1)
                             if __DIO_PrehisHasGolem() then break end -- tra tween cho golem lap tuc
                             _tp(layer.CFrame)
 
                             if plr:DistanceFromCharacter(layer.CFrame.Position) <= 150 then
                                 MousePos = layer.CFrame.Position
-                                Useskills("Melee","Z") wait(.4)
+                                Useskills("Melee","Z") __DIO_wait(.4)
                                 if __DIO_PrehisHasGolem() then break end
-                                Useskills("Melee","X") wait(.4)
+                                Useskills("Melee","X") __DIO_wait(.4)
                                 if __DIO_PrehisHasGolem() then break end
-                                Useskills("Melee","C") wait(.4)
+                                Useskills("Melee","C") __DIO_wait(.4)
                                 if __DIO_PrehisHasGolem() then break end
-                                Useskills("Blox Fruit","Z") wait(.4)
+                                Useskills("Blox Fruit","Z") __DIO_wait(.4)
                                 if __DIO_PrehisHasGolem() then break end
-                                Useskills("Blox Fruit","X") wait(.4)
+                                Useskills("Blox Fruit","X") __DIO_wait(.4)
                                 if __DIO_PrehisHasGolem() then break end
                                 Useskills("Blox Fruit","C")
                             end
@@ -10415,6 +10599,11 @@ Q = Tabs.SeaEvent:AddDropdown({
 	Default = "Guardian", 
 	Callback = function(Value)
         _G.SelectedBoat = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
     end
 })
 Tabs.SeaEvent:AddButton({
@@ -10587,8 +10776,8 @@ spawn(function()
       if _G.Piranha then local a={"Piranha"}if CheckPiranha()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) Attack.Kill(c,_G.Piranha)until _G.Piranha==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
       if _G.MobCrew then local a={"Fish Crew Member"}if CheckFishCrew()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) Attack.Kill(c,_G.MobCrew)until _G.MobCrew==false or not c.Parent or c.Humanoid.Health<=0 end end end end end                 
       if _G.HCM then local a={"Haunted Crew Member"}if CheckHauntedCrew()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) Attack.Kill(c,_G.HCM)until _G.HCM==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
-      if _G.SeaBeast1 then if workspace.SeaBeasts:FindFirstChild("SeaBeast1")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)_tp(CFrame.new(b.HumanoidRootPart.Position.X,__SVC_WS.Map["WaterBase-Plane"].Position.Y+200,b.HumanoidRootPart.Position.Z))if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then AitSeaSkill_Custom=b.HumanoidRootPart.CFrame;MousePos=AitSeaSkill_Custom.Position;if CheckF()then weaponSc("Blox Fruit")Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")else Useskills("Melee","Z")Useskills("Melee","X")Useskills("Melee","C")wait(.1)Useskills("Sword","Z")Useskills("Sword","X")wait(.1)Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")wait(.1)Useskills("Gun","Z")Useskills("Gun","X")end end until _G.SeaBeast1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
-      if _G.Leviathan1 then if workspace.SeaBeasts:FindFirstChild("Leviathan")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Leviathan Segment")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)_tp(CFrame.new(b.HumanoidRootPart.Position.X,__SVC_WS.Map["WaterBase-Plane"].Position.Y+200,b.HumanoidRootPart.Position.Z))if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then MousePos=b:FindFirstChild("Leviathan Segment").Position;if CheckF()then weaponSc("Blox Fruit")Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")else Useskills("Melee","Z")Useskills("Melee","X")Useskills("Melee","C")wait(.1)Useskills("Sword","Z")Useskills("Sword","X")wait(.1)Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")wait(.1)Useskills("Gun","Z")Useskills("Gun","X")end end until _G.Leviathan1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
+      if _G.SeaBeast1 then if workspace.SeaBeasts:FindFirstChild("SeaBeast1")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)_tp(CFrame.new(b.HumanoidRootPart.Position.X,__SVC_WS.Map["WaterBase-Plane"].Position.Y+200,b.HumanoidRootPart.Position.Z))if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then AitSeaSkill_Custom=b.HumanoidRootPart.CFrame;MousePos=AitSeaSkill_Custom.Position;if CheckF()then weaponSc("Blox Fruit")Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")else Useskills("Melee","Z")Useskills("Melee","X")Useskills("Melee","C")__DIO_wait(.1)Useskills("Sword","Z")Useskills("Sword","X")__DIO_wait(.1)Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")__DIO_wait(.1)Useskills("Gun","Z")Useskills("Gun","X")end end until _G.SeaBeast1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
+      if _G.Leviathan1 then if workspace.SeaBeasts:FindFirstChild("Leviathan")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Leviathan Segment")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)_tp(CFrame.new(b.HumanoidRootPart.Position.X,__SVC_WS.Map["WaterBase-Plane"].Position.Y+200,b.HumanoidRootPart.Position.Z))if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then MousePos=b:FindFirstChild("Leviathan Segment").Position;if CheckF()then weaponSc("Blox Fruit")Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")else Useskills("Melee","Z")Useskills("Melee","X")Useskills("Melee","C")__DIO_wait(.1)Useskills("Sword","Z")Useskills("Sword","X")__DIO_wait(.1)Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")__DIO_wait(.1)Useskills("Gun","Z")Useskills("Gun","X")end end until _G.Leviathan1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
       if _G.FishBoat then
         if CheckEnemiesBoat() then
             for a,b in pairs(workspace.Enemies:GetChildren()) do
@@ -10603,9 +10792,9 @@ spawn(function()
                       weaponSc("Blox Fruit") Useskills("Blox Fruit","Z") Useskills("Blox Fruit","X") Useskills("Blox Fruit","C")
                     else
                       Useskills("Melee","Z") Useskills("Melee","X") Useskills("Melee","C")
-                      wait(.1) Useskills("Sword","Z") Useskills("Sword","X")
-                      wait(.1) Useskills("Blox Fruit","Z") Useskills("Blox Fruit","X") Useskills("Blox Fruit","C")
-                      wait(.1) Useskills("Gun","Z") Useskills("Gun","X")
+                      __DIO_wait(.1) Useskills("Sword","Z") Useskills("Sword","X")
+                      __DIO_wait(.1) Useskills("Blox Fruit","Z") Useskills("Blox Fruit","X") Useskills("Blox Fruit","C")
+                      __DIO_wait(.1) Useskills("Gun","Z") Useskills("Gun","X")
                     end
                   end
                 until _G.FishBoat == false or not b:FindFirstChild("VehicleSeat") or b.Health.Value <= 0
@@ -10627,9 +10816,9 @@ spawn(function()
                       weaponSc("Blox Fruit") Useskills("Blox Fruit","Z") Useskills("Blox Fruit","X") Useskills("Blox Fruit","C")
                     else
                       Useskills("Melee","Z") Useskills("Melee","X") Useskills("Melee","C")
-                      wait(.1) Useskills("Sword","Z") Useskills("Sword","X")
-                      wait(.1) Useskills("Blox Fruit","Z") Useskills("Blox Fruit","X") Useskills("Blox Fruit","C")
-                      wait(.1) Useskills("Gun","Z") Useskills("Gun","X")
+                      __DIO_wait(.1) Useskills("Sword","Z") Useskills("Sword","X")
+                      __DIO_wait(.1) Useskills("Blox Fruit","Z") Useskills("Blox Fruit","X") Useskills("Blox Fruit","C")
+                      __DIO_wait(.1) Useskills("Gun","Z") Useskills("Gun","X")
                     end
                   end
                 until _G.PGB == false or not b:FindFirstChild("VehicleSeat") or b.Health.Value <= 0
@@ -10807,6 +10996,11 @@ Tabs.SeaEvent:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.FrozenDimension = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
     end
 })
 
@@ -11691,7 +11885,7 @@ __DIO_GachaRollOnce = function()
                 GachaWindow:Open(__DIO_GACHA_NAME, priceArg)
             end)
 
-            task.wait(1.2)
+            __DIO_wait(1.2)
             if not _G.Random_Auto then return end -- tat toggle giua chung -> dung, khong bam
 
             local targetGuis = {}
@@ -11803,7 +11997,7 @@ __DIO_GachaRollOnce = function()
     return true
 end
 
--- Vong random fruit: chi chay khi toggle BAT. Nhip 3s (roll gacha co animation + task.wait(1.2)
+-- Vong random fruit: chi chay khi toggle BAT. Nhip 3s (roll gacha co animation + __DIO_wait(1.2)
 -- ben trong) -> khong spam remote/GUI. pcall + khoa __DIO_GachaBusy nen khong bao gio chay trung.
 spawn(function()
   while __DIO_wait(3) do
@@ -12013,8 +12207,13 @@ AutoChipBeli = Tabs.Raids:AddToggle({
     Description = "",
     Default = false,
     Callback = function(Value)
-    _G.AutoChipBeli = Value
-end
+        _G.AutoChipBeli = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
+    end
 })
 
 task.spawn(function()
@@ -12035,8 +12234,13 @@ AutoChipFruit = Tabs.Raids:AddToggle({
     Description = "",
     Default = false,
     Callback = function(Value)
-    _G.AutoChipFruit = Value
-end
+        _G.AutoChipFruit = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
+    end
 })
 
 task.spawn(function()
@@ -12069,6 +12273,11 @@ StartR = Tabs.Raids:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.Auto_StartRaid = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
     end
 })
 
@@ -12271,7 +12480,7 @@ Tabs.Raids:AddToggle({
         StopTween(_G.TpLab)
         task.spawn(function() -- [FIX PERF 66] while ngay trong callback BAM thread UI (khong the tat bang cach khac); spawn de no tu chay rieng
         while _G.TpLab do
-            __DIO_wait(0.5) -- [FIX PERF 66] wait() moi frame -> 0.5s (topos tu giu vi tri lien tuc nen du)
+            __DIO_wait(0.5) -- [FIX PERF 66] __DIO_wait() moi frame -> 0.5s (topos tu giu vi tri lien tuc nen du)
             if _G.TpLab then
                 if World2 and _G.TpLab then
                     topos(CFrame.new(-6438.73535, 250.645355, -4501.50684))
@@ -12372,6 +12581,11 @@ Tabs.Raids:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.AutoFarmDungeon = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
     end
 })
 
@@ -12591,6 +12805,11 @@ Tabs.Combat:AddDropdown({
     Options = PlrList,
     Callback = function(Value)
         _G.PlayersList = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
     end
 })
 
@@ -12603,7 +12822,7 @@ Tabs.Combat:AddToggle({
         spawn(function()
             pcall(function()
                 while _G.TpPly do
-                    wait()
+                    __DIO_wait()
                     _tp(__SVC_PLR[_G.PlayersList].Character.HumanoidRootPart.CFrame)
                 end
             end)
@@ -12645,6 +12864,11 @@ Tabs.Combat:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.AimMethod = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
     end
 })
 
@@ -12687,6 +12911,11 @@ Tabs.Combat:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.AimCam = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
     end
 })
 
@@ -12715,7 +12944,7 @@ task.spawn(function()
                 -- -> `Mag > dist` loi moi vong, pcall nuot sau DUNG 1 lan set camera/giay (camera aim gan nhu chet).
                 -- Sua: lay target moi vong qua closestplayer(), nil-guard Character/HRP, thoat khi tat toggle.
                 repeat
-                    task.wait()
+                    __DIO_wait()
                     if not _G.AimCam then break end
                     local __aimT = closestplayer()
                     if __aimT and __aimT.Character and __aimT.Character:FindFirstChild("HumanoidRootPart") then
@@ -12783,6 +13012,11 @@ Tabs.Combat:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.AutoPvP = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
     end
 })
 
@@ -12807,6 +13041,11 @@ Tabs.Combat:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.SafeMode = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
     end
 })
 
@@ -12989,10 +13228,10 @@ local function updateFlySpeed(value)
 end
 
 player.CharacterAdded:Connect(function(character)
-    wait(1)
+    __DIO_wait(1)
     if flying then
         toggleFly(false)
-        wait(0.1)
+        __DIO_wait(0.1)
         toggleFly(true)
     end
 end)
@@ -13107,6 +13346,11 @@ Tabs.Combat:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.NoAimTeam = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
     end
 })
 
@@ -13116,6 +13360,11 @@ Tabs.Combat:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.AcceptAlly = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
     end
 })
 
@@ -14245,7 +14494,7 @@ Callback = function(Value)
 
   task.spawn(function()
     while _G.RTXMode do
-      __DIO_wait(1) -- [FIX PERF 65] wait() 60 lan/s -> 1 lan/s du vi Lighting khong tu reset
+      __DIO_wait(1) -- [FIX PERF 65] __DIO_wait() 60 lan/s -> 1 lan/s du vi Lighting khong tu reset
       pcall(function()
         a.Ambient = Color3.fromRGB(33, 33, 33)
         a.Brightness = 0.3
@@ -14344,6 +14593,11 @@ DisableHitVFX = Tabs.Hop:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.DestroyHit = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
     end
 })
 
@@ -14540,14 +14794,62 @@ FastAttackModule.Enabled = true
 local __FA_attackEvent, __FA_hitEvent
 __FA_GetTargets = function(playerPos)
     local targets = {}
-    -- [FIX FPS-SEA-5] khi dang NGOI THUYEN (Sit) thi khong can fast-attack tool: bo qua ngay,
-    -- khong quet Enemies 33 lan/s trong luc lai thuyen di tim Leviathan/Prehis/Kitsune (nguon
-    -- CPU tich luy khi server dong: list Enemies rat dai ma quet mai 75-stud radius rong).
     local __cFA = plr.Character
     local __hFA = __cFA and __cFA:FindFirstChildOfClass("Humanoid")
     if not __cFA or not __hFA or __hFA.Sit or __hFA.Health <= 0 then
         return targets
     end
+    -- Enemies
+    local enemies = workspace.Enemies:GetChildren()
+    for i = 1, #enemies do
+        local enemy = enemies[i]
+        local hum = enemy:FindFirstChild("Humanoid")
+        local hrp = enemy:FindFirstChild("HumanoidRootPart")
+        if hum and hrp and hum.Health > 0 then
+            if (hrp.Position - playerPos).Magnitude <= 75 then
+                table.insert(targets, {enemy, hrp})
+                if #targets >= 6 then break end
+            end
+        end
+    end
+    -- Players PvP (fix fast attack can't hit player)
+    if #targets < 6 then
+        for _, p in ipairs(game.Players:GetPlayers()) do
+            if p ~= plr and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") then
+                local hum = p.Character.Humanoid
+                local hrp = p.Character.HumanoidRootPart
+                if hum.Health > 0 then
+                    local canAttack = true
+                    if _G.NoAimTeam and p.Team == plr.Team then canAttack = false end
+                    if canAttack and (hrp.Position - playerPos).Magnitude <= 75 then
+                        table.insert(targets, {p.Character, hrp})
+                        if #targets >= 6 then break end
+                    end
+                end
+            end
+        end
+    end
+    if #targets < 6 and workspace:FindFirstChild("Characters") then
+        for _, m in ipairs(workspace.Characters:GetChildren()) do
+            if m ~= plr.Character then
+                local hum = m:FindFirstChild("Humanoid")
+                local hrp = m:FindFirstChild("HumanoidRootPart")
+                if hum and hrp and hum.Health > 0 then
+                    if (hrp.Position - playerPos).Magnitude <= 75 then
+                        local owner = game.Players:GetPlayerFromCharacter(m)
+                        local canAttack = true
+                        if owner and _G.NoAimTeam and owner.Team == plr.Team then canAttack = false end
+                        if canAttack then
+                            table.insert(targets, {m, hrp})
+                            if #targets >= 6 then break end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return targets
+end
     local enemies = workspace.Enemies:GetChildren()
     for i = 1, #enemies do
         local enemy = enemies[i]
@@ -14680,3 +14982,144 @@ Window:Notify({
    Image = "rbxassetid://105848560127717",
    Duration = 7
 }) 
+
+
+end -- end StartDioHub
+
+-- [MAIN ENTRY]
+if isKeyValid() then
+    -- Key correct or cached <10h, load directly
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "DIO Hub",
+            Text = "Key valid! Loading hub...",
+            Duration = 3
+        })
+    end)
+    StartDioHub()
+else
+    -- Show Fluent UI Get Key integrated (not external loadstring)
+    local Fluent
+    local okFluent, errFluent = pcall(function()
+        Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+    end)
+    if not okFluent or not Fluent then
+        warn("[DIO] Failed to load Fluent UI, loading hub anyway for debug")
+        StartDioHub()
+        return
+    end
+
+    local Window = Fluent:CreateWindow({
+        Title = "DIO Hub Get Key",
+        SubTitle = "By Dio - Premium Fixed",
+        TabWidth = 155,
+        Size = UDim2.fromOffset(470, 380),
+        Acrylic = false,
+        Theme = "Dark",
+        MinimizeKey = Enum.KeyCode.RightControl
+    })
+
+    local Tabs = {
+        Info = Window:AddTab({ Title = "Discord", Icon = "message-circle" }),
+        GetKey = Window:AddTab({ Title = "Get Key", Icon = "key" }),
+    }
+
+    Tabs.Info:AddParagraph({
+        Title = "Join the Community",
+        Content = "Join our Discord server for updates, support, and new scripts! Key is valid for 10 hours per device."
+    })
+
+    Tabs.Info:AddButton({
+        Title = "Copy Discord Link",
+        Description = "Copies the invite link to your clipboard.",
+        Callback = function()
+            setclipboard("https://discord.gg/NZm9MXzmzn")
+            Fluent:Notify({
+                Title = "Copied!",
+                Content = "Discord link has been copied to your clipboard.",
+                Duration = 5
+            })
+        end
+    })
+
+    Tabs.GetKey:AddParagraph({
+        Title = "Key System",
+        Content = "Click the button below to get your key, then paste it into the text box.\nKey: DIOHUB-129361064575-GETKEY\nCache lasts 10 hours."
+    })
+
+    Tabs.GetKey:AddButton({
+        Title = "Get Key Link",
+        Description = "Copies the link to get your key.",
+        Callback = function()
+            setclipboard("https://link4m.net/4eIVIN")
+            Fluent:Notify({
+                Title = "Copied!",
+                Content = "Key link copied to clipboard. Paste it in your browser.",
+                Duration = 5
+            })
+        end
+    })
+
+    local KeyInput = Tabs.GetKey:AddInput("KeyInput", {
+        Title = "Enter Key",
+        Default = "",
+        Placeholder = "Paste your key here...",
+        Numeric = false,
+        Finished = false,
+        Callback = function(Value) end
+    })
+
+    Tabs.GetKey:AddButton({
+        Title = "Check Key",
+        Description = "Verifies your key.",
+        Callback = function()
+            local enteredKey = KeyInput.Value
+            if enteredKey == CORRECT_KEY then
+                Fluent:Notify({
+                    Title = "Success",
+                    Content = "Valid Key! Loading Hub... (saved 10h)",
+                    Duration = 3
+                })
+                saveKeyCache()
+                -- Also set getgenv().Key for this session
+                getgenv().Key = CORRECT_KEY
+                __DIO_wait(0.5)
+                Window:Destroy()
+                __DIO_wait(0.2)
+                StartDioHub()
+            else
+                Fluent:Notify({
+                    Title = "Error",
+                    Content = "Invalid Key! Please get key from link.",
+                    Duration = 3
+                })
+            end
+        end
+    })
+
+    -- Also allow getgenv().Key pre-filled check via button
+    Tabs.GetKey:AddButton({
+        Title = "Use getgenv().Key",
+        Description = "Check key from getgenv().Key config",
+        Callback = function()
+            if tostring(getgenv().Key) == CORRECT_KEY then
+                Fluent:Notify({Title="Success", Content="getgenv().Key valid! Loading...", Duration=3})
+                saveKeyCache()
+                __DIO_wait(0.5)
+                Window:Destroy()
+                __DIO_wait(0.2)
+                StartDioHub()
+            else
+                Fluent:Notify({Title="Error", Content="getgenv().Key invalid or empty. Enter key manually.", Duration=3})
+            end
+        end
+    })
+
+    Window:SelectTab(2)
+
+    Fluent:Notify({
+        Title = "DIO Hub",
+        Content = "Key System Loaded - Please enter key",
+        Duration = 5
+    })
+end
