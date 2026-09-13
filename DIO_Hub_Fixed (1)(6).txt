@@ -109,6 +109,8 @@ local function isKeyValid()
 end
 
 -- If key already valid via getgenv or cache, skip UI
+
+local __DIO_EarlyOk, __DIO_EarlyErr = pcall(function()
 local function StartDioHub()
 
 
@@ -2509,6 +2511,74 @@ end)
 if not redzlib then
     warn("[DIO] redzlib failed to load, will try Fluent fallback")
 end
+
+
+end)
+if not __DIO_EarlyOk then
+    warn("[DIO] Early setup failed: "..tostring(__DIO_EarlyErr))
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification", {Title="DIO Error", Text="Early setup failed, trying to continue...", Duration=5})
+    end)
+end
+
+
+-- [100% FIX] If redzlib failed, fallback to Fluent for main UI
+if not redzlib then
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification", {Title="DIO", Text="redzlib failed, using Fluent fallback", Duration=5})
+    end)
+    local okFluent, Fluent = pcall(function()
+        return loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+    end)
+    if okFluent and Fluent then
+        local Window = Fluent:CreateWindow({
+            Title = "DIO Hub FALLBACK",
+            SubTitle = "redzlib failed, using Fluent",
+            TabWidth = 155,
+            Size = UDim2.fromOffset(550, 400),
+            Acrylic = false,
+            Theme = "Dark",
+            MinimizeKey = Enum.KeyCode.RightControl
+        })
+        local Tabs = {
+            Main = Window:AddTab({ Title = "Info", Icon = "info" }),
+        }
+        Tabs.Main:AddParagraph({
+            Title = "Redzlib Failed",
+            Content = "Main UI library failed to load. This is fallback UI. Hub functions still work via _G flags. Error: "..tostring(err_redz)
+        })
+        Tabs.Main:AddButton({
+            Title = "Copy Error",
+            Callback = function()
+                setclipboard(tostring(err_redz))
+            end
+        })
+        -- Try to continue loading rest of hub with Fluent tabs?
+        -- For now just notify and return
+        return
+    else
+        -- Ultimate fallback: pure Instance.new UI
+        pcall(function()
+            local playerGui = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+            local sg = Instance.new("ScreenGui")
+            sg.Name = "DIO_Fallback_UI"
+            sg.Parent = playerGui
+            local frame = Instance.new("Frame")
+            frame.Size = UDim2.fromOffset(400, 200)
+            frame.Position = UDim2.fromOffset(100, 100)
+            frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
+            frame.Parent = sg
+            local label = Instance.new("TextLabel")
+            label.Size = UDim2.fromScale(1,1)
+            label.Text = "DIO Hub Loaded but redzlib failed! Check console"
+            label.TextColor3 = Color3.fromRGB(255,255,255)
+            label.BackgroundTransparency = 1
+            label.Parent = frame
+        end)
+        return
+    end
+end
+
 
 local Window = redzlib:MakeWindow({
     Title = "DIO Hub ",
