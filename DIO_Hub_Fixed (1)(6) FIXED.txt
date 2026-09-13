@@ -255,6 +255,7 @@ end
 __DIO_BootT0 = tick()
 __DIO_BootN = 0
 __DIO_ThreadPhase = setmetatable({}, {__mode = "k"}) -- weak key: thread chet thi phase tu giai phong
+__DIO_wait = task.wait -- [FIX 2026-09-13] alias con thieu: moi __DIO_wait() chet o line 277 vi goi nil
 __DIO_wait = function(t)
     t = t or 0.03
     local __co = coroutine.running()
