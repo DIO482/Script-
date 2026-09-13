@@ -2545,6 +2545,150 @@ QuestNeta = function()
         [6] = GetQuestPoint()            
     }
 end
+
+-- ============================================================================
+-- [QUEST-CHECK v1 13-09-2026] HAM CHECK QUEST THUC TE (function user da test thuc te)
+-- + trang thai "GHI NHO" mob + so luong, tong hop hien thi vao UI hub
+-- (tab "Quest And Item" -> section "Quest Status").
+--
+-- NGUYEN TAC CHONG LAG (yeu cau user 13-09):
+--   * TUOI BONG: poll UI moi 0.5s (GetDescendants PlayerGui rat nang -> lag).
+--   * Moi lan quet UI chi xay ra khi:
+--       (1) vung goi InvokeServer "StartQuest" (kiem tra truen + quet sau invoke),
+--       (2) vung BAT toggle co chuc nang nhan quest (quet 1 lan de phong player
+--           da nhan quest san -> script "ghi nho" mob + so luong de giết),
+--       (3) UI quest bat len mot minh (player nhan tay trong game) ->
+--           __DIO_GetCurrentQuest phat hien chuyen tran + quet 1 lan duy nhat,
+--       (4) nut "Check Quest" bam tay.
+--   * Moi lan quet cach nhau toi thieu 0.8s (force) / 2s (thuong) -> nhieu
+--     feature tro cheng cung mot luc van khong khieng UI lag.
+--
+-- CACH DUNG CHO MOI FEATURE CO NHA N QUEST (thay InvokeServer("StartQuest",...)
+-- truc tiep bang __DIO_StartQuestGated):
+--   * Bat toggle:  __DIO_SyncQuestOnEnable("TenFeature")
+--   * Nhan quest:  __DIO_StartQuestGated("TenFeature", "StartQuest", qName, qId)
+--                  (tu dong: kiem tra da giết het mob hien thi chua -> moi invoke
+--                   -> sau invoke quet UI 1 lan ghi nho mob + so luong moi)
+--   * Doc trang thai quest bat ky loi nao: __DIO_GetCurrentQuest() (kieu nhe,
+--     chi doc 1 label, khong quet toan bo PlayerGui)
+-- ============================================================================
+__DIO_QuestState = {
+    Active  = false,  -- co quest dang hien trong UI game hay khong
+    Text    = "",     -- cau hinh quest (vd "Defeat 8 Brute")
+    Mob     = "",     -- ten mob can giết (GHI NHO)
+    Total   = 0,      -- so luong mob can giết (GHI NHO)
+    Current = 0,      -- tien do hien tai (phần x cua x/y)
+    Done    = false,  -- da giết het so luong hien thi -> duoc nhan quest moi
+    Source  = "",     -- feature da ghi (de hien thi UI, khong che doan logic)
+    T       = 0,      -- thoi diem lay du lieu
+}
+__DIO_QuestReadT = 0  -- dong ho gate: chi cho quet UI 1 lan / 0.8s (force) - 2s (thuong)
+
+-- Quet UI quest: dung dung cach function user da test (duyet TextLabel trong
+-- PlayerGui, bat "Đánh bại"/"Defeat"/"Kill" + so "x/y"), sua:
+--   (a) bo bug `str or v.Text` (bien `str` chua bao giuoc duoc dinh nghia),
+--   (b) break som khi du ca ten quest + tien do (giam thoi gian quet),
+--   (c) gate thoi gian de nhieu feature khong quet tro cheng.
+-- Tra ve __DIO_QuestState (luon co Active kham phuc co quest hay khong).
+__DIO_ReadQuest = function(force, source)
+    local now = tick()
+    local minGap = (force and 0.8) or 2
+    if now - __DIO_QuestReadT < minGap then return __DIO_QuestState end
+    __DIO_QuestReadT = now
+    local ok, res = pcall(function()
+        local playerGui = plr and plr:FindFirstChild("PlayerGui")
+        if not playerGui then return nil end
+        local qName, qProg = nil, nil
+        for _, v in pairs(playerGui:GetDescendants()) do
+            if v:IsA("TextLabel") and v.Text and v.Text ~= "" then
+                local text = v.Text
+                -- Bat ten quest (ca tieng Viet "Đánh bại" + tieng Anh)
+                if not qName and (text:find("Đánh bại") or text:find("Defeat", 1, true) or text:find("Kill", 1, true)) then
+                    qName = text
+                end
+                -- Bat so luong mob (dang 0/8, 1/8...) - loai bo UI hien thi Level/EXP
+                if not qProg and (text:match("^%d+/%d+$") or text:match("%d+/%d+")) then
+                    if not text:find("Lv", 1, true) and not text:find("EXP", 1, true) then
+                        qProg = text
+                    end
+                end
+                if qName and qProg then break end
+            end
+        end
+        if not qName then return nil end
+        local cur, tot = qProg:match("(%d+)/(%d+)")
+        cur = tonumber(cur) or 0
+        tot = tonumber(tot) or 0
+        -- Rut ten mob tu cau quest: "Defeat 8 Brute" -> "Brute"
+        local mob = qName:match("^Defeat%s+%d+%.?%s*(.+)$")
+             or qName:match("^Đánh bại%s+%d+%.?%s*(.+)$")
+             or qName:match("^Kill%s+(.+)$")
+        -- Done = da giết het SO LƯỢNG HIEN THI (x/y het). Khong thay so luong
+        -- (UI loi) -> Done = false -> chua duoc nhan quest moi (an toan).
+        return {
+            Text  = qName,
+            Mob   = (mob or ""):gsub("%s+$", ""),
+            Total = tot,
+            Current = cur,
+            Done  = (tot > 0) and (cur >= tot) or false,
+        }
+    end)
+    if ok and res then
+        __DIO_QuestState = {
+            Active = true, Text = res.Text, Mob = res.Mob,
+            Total = res.Total, Current = res.Current, Done = res.Done,
+            Source = (source or __DIO_QuestState.Source or ""), T = now,
+        }
+    else
+        __DIO_QuestState = {
+            Active = false, Text = "", Mob = "",
+            Total = 0, Current = 0, Done = false,
+            Source = (source or __DIO_QuestState.Source or ""), T = now,
+        }
+    end
+    if type(__DIO_UpdateQuestUI) == "function" then pcall(__DIO_UpdateQuestUI) end
+    return __DIO_QuestState
+end
+
+-- Goi TRUOC moi lan invoke StartQuest: chi cho phep nhan quest moi khi quest
+-- cu da GIẾT HET so mob HIENTHI (hoac hien tai khong co quest nao).
+-- Day la ham "giết het mob hien thi -> moi duoc nhan quest tiep" cua user.
+__DIO_QuestCanReceive = function()
+    local s = __DIO_ReadQuest(true)
+    if not s.Active then return true end   -- chua co quest -> duoc nhan
+    return s.Done                           -- chua giết het -> CHUA duoc nhan
+end
+
+-- Goi SAU moi lan invoke StartQuest: cho UI game cap nhat, quet UI 1 lan duy
+-- nhat de "ghi nho" mob + so luong vao __DIO_QuestState + cap nhat UI hub.
+__DIO_AfterStartQuest = function(source)
+    __DIO_wait(0.8)
+    __DIO_ReadQuest(true, source)
+end
+
+-- MOT HAM DUY NHAT de moi feature nhan quest (thay InvokeServer("StartQuest")
+-- truc tiep): (1) check da giết het mob chua, (2) moi khi moi moi invoke,
+-- (3) sau invoke quet 1 lan ghi nho quest moi. Tra ve true = da goi invoke.
+__DIO_StartQuestGated = function(source, ...)
+    if not __DIO_QuestCanReceive() then
+        return false  -- chua giết het so mob hien thi -> khong nhan quest moi
+    end
+    -- [FIX] '...' khong dung duoc trong closure: capture thanh table truen.
+    local __args = { ... }
+    local ok = pcall(function()
+        replicated.Remotes.CommF_:InvokeServer(unpack(__args))
+    end)
+    if ok then
+        __DIO_AfterStartQuest(source)
+    end
+    return ok
+end
+
+-- Goi khi BAT toggle co chuc nang nhan quest: quet UI 1 lan de phong player
+-- da nhan quest san trong game -> script "ghi nho" mob + so luong de giết.
+__DIO_SyncQuestOnEnable = function(source)
+    __DIO_ReadQuest(true, source)
+end
 __DIO_BOOT("library")
 
 -- [NETFIX 2026-09-13] Tai redz co MIRROR DU PHONG + bao loi HIEN (thay vi chet im):
@@ -2630,6 +2774,75 @@ local Tabs = {
     Misc = Window:MakeTab({ Title = "Misc", Icon = "" })
 }
 __DIO_BOOT("window")
+
+-- ============================================================================
+-- [QUEST-CHECK UI 13-09-2026] Phan hien thi trang thai quest trong hub
+-- (tong hop function check quest user da test thuc te).
+-- CHI cap nhat khi co su kien (nhan quest / bat toggle / quet chuyen tran /
+-- bam nut) - KHONG poll 0.5s -> khong gay lag.
+-- ============================================================================
+Tabs.Quests:AddSection("Quest Status")
+
+local __DIO_QuestPara = Tabs.Quests:AddParagraph("Quest Hien Tai", "Chua co quest - script tu dong quet UI 1 lan moi lan nhan quest (khong poll 0.5s).")
+
+__DIO_UpdateQuestUI = function()
+    if not __DIO_QuestPara or type(__DIO_QuestPara.SetDesc) ~= "function" then return end
+    local s = __DIO_QuestState
+    local line
+    if s.Active and s.Text ~= "" then
+        line = "Quest: " .. s.Text .. "\n"
+        if s.Total > 0 then
+            line = line .. "Tien do: " .. tostring(s.Current) .. "/" .. tostring(s.Total)
+            if s.Mob ~= "" then line = line .. "   |   Mob: " .. s.Mob end
+            if s.Done then
+                line = line .. "\n✅ DA GIẾT HET SO MOB HIEN THI - duoc nhan quest moi"
+            else
+                line = line .. "   |   Con lai: " .. tostring(math.max((s.Total or 0) - (s.Current or 0), 0))
+            end
+        else
+            line = line .. "Tien do: (UI chua hien so luong)"
+        end
+        if s.Source ~= "" then line = line .. "\nGhi nho tu: " .. s.Source end
+    else
+        line = "Chua co quest. Script chi quet UI khi: goi nhan quest / bat toggle / UI hien quest / bam nut ben duoi (khong poll 0.5s -> khong lag)."
+    end
+    pcall(function() __DIO_QuestPara:SetDesc(line) end)
+end
+
+Tabs.Quests:AddButton({
+    Name = "Check Quest (quet UI 1 lan)",
+    Description = "Dung function check quest (da test thuc te) quet PlayerGui 1 lan, hien thi ten quest + tien do x/y.",
+    Callback = function()
+        task.spawn(function()
+            local s = __DIO_ReadQuest(true, "Manual")
+            if s.Active then
+                pcall(function() Window:Notify({ Title = "Check Quest", Content = s.Text .. " [" .. tostring(s.Current) .. "/" .. tostring(s.Total) .. "]", Duration = 5 }) end)
+            else
+                pcall(function() Window:Notify({ Title = "Check Quest", Content = "Khong thay quest nao trong UI game.", Duration = 4 }) end)
+            end
+        end)
+    end
+})
+
+Tabs.Quests:AddButton({
+    Name = "Nhan Quest (theo level)",
+    Description = "Check quest hien tai -> moi khi da giết het so mob hien thi moi moi StartQuest quest phu hop level.",
+    Callback = function()
+        task.spawn(function()
+            local qd = QuestNeta()
+            if not qd or not qd[1] then
+                pcall(function() Window:Notify({ Title = "Nhan Quest", Content = "Chua lay duoc danh sach quest (module Quests cua game chua san).", Duration = 5 }) end)
+                return
+            end
+            local okq = __DIO_StartQuestGated("Manual", "StartQuest", qd[3], qd[2])
+            if okq then
+                pcall(function() Window:Notify({ Title = "Nhan Quest", Content = "Da goi StartQuest: " .. tostring(qd[3]) .. " (" .. tostring(qd[1]) .. ")", Duration = 5 }) end)
+            else
+                pcall(function() Window:Notify({ Title = "Nhan Quest", Content = "Quest hien tai chua giết het so mob hien thi -> chua duoc nhan quest moi.", Duration = 5 }) end)
+            end
+        end)
+    end
+})
 
 -- ==============================================================
 -- [SAVE SETTING] - GHÉP TỪ FILE BANANA: bọc AddToggle/AddDropdown/AddSlider
@@ -3231,7 +3444,11 @@ FarmLevel = Tabs.Main:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.Level = Value
-        if not Value then
+        if Value then
+            -- [QUEST-CHECK] BAT: quet UI 1 lan de phong player da nhan quest san
+            -- -> script "ghi nho" moi + so luong de giết (khong poll 0.5s).
+            pcall(__DIO_SyncQuestOnEnable, "FarmLevel")
+        else
             alreadyTeleported = false
             teleporting = false
             __DIO_LvlTryT = 0
@@ -3402,10 +3619,11 @@ task.spawn(function()
                     if not __qBlock then
                         if tick() - __DIO_LvlQTryT > 8 then
                             __DIO_LvlQTryT = tick()
-                            pcall(function()
-                                replicated.Remotes.CommF_:InvokeServer("StartQuest", questData[3], questData[2])
-                            end)
-                            __DIO_wait(1)
+                            -- [QUEST-CHECK FIX] thay cho ban cu "nhan quest moi 0.5s" (spam remote):
+                            -- mo han moi moi moi khi function check quest (user da test) xac nhan
+                            -- quest cu da GIẾT HET so mob HIEN THI (x/y het). Sau invoke quet UI
+                            -- 1 lan duy nhat de "ghi nho" mob + so luong cua quest moi.
+                            __DIO_StartQuestGated("FarmLevel", "StartQuest", questData[3], questData[2])
                         end
                     end
                     if __qBlock then
@@ -3419,6 +3637,18 @@ task.spawn(function()
                 pcall(__DIO_GhostClean)
 
                 local enemyName = questData[1]
+                -- [QUEST-CHECK] script da "ghi nho" ten mob tu UI (function check quest
+                -- user da test): neu UI bao ten mob khac voi bang module va con mob song
+                -- -> uu tien ten tu UI (no la nguon "that" da test thuc te).
+                do
+                    local __st = __DIO_QuestState
+                    if __st.Active and __st.Mob ~= "" and __st.Mob ~= enemyName then
+                        local __en = workspace:FindFirstChild("Enemies")
+                        if __en and __en:FindFirstChild(__st.Mob) then
+                            enemyName = __st.Mob
+                        end
+                    end
+                end
                 local target = __DIO_NearestMob(enemyName, RootF.Position)
                 if target then
                     local switched = false
@@ -4622,7 +4852,11 @@ Cake = Tabs.Main:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.Auto_Cake_Prince = Value
-        if not Value then
+        if Value then
+            -- [QUEST-CHECK] BAT: quet UI 1 lan de phong player da nhan quest san
+            -- -> script "ghi nho" moi + so luong de giết (khong poll 0.5s).
+            pcall(__DIO_SyncQuestOnEnable, "FarmCake")
+        else
             pcall(__DIO_GhostReset)  -- xóa skip-list ghost khi tắt
             __DIO_CakeBoss = nil     -- quên boss cũ để lần bật lại tìm lại từ đầu
         end
@@ -4772,13 +5006,23 @@ task.spawn(function()
                     -- [nil-safe] không giả định PlayerGui.Main.Quest có sẵn (Update 30 có thể đổi UI)
                     local __qm = plr.PlayerGui:FindFirstChild("Main")
                     __qm = __qm and __qm:FindFirstChild("Quest")
-                    if not (__qm and __qm.Visible) then
+                    -- [QUEST-CHECK] Update 30 hay để Quest.Visible KHONG tắt khi quest
+                    -- da het -> them kieu doc 2: trang thai "ghi nho" cua check quest
+                    -- (Active + Done = da giết het so mob hien thi) cung duoc phep xin quest.
+                    -- Khong them vong quet nao moi -> khong lag.
+                    if (not (__qm and __qm.Visible)) or (__DIO_QuestState.Active and __DIO_QuestState.Done) then
                         -- chưa thấy quest -> xin quest khi đang đứng gần NPC (chỉ khi rảnh)
                         if (__DIO_CakeQuestCF.Position - hrp.Position).Magnitude > 40 then
                             TeleportConditional(hrp, __DIO_CakeQuestCF, TELEPORT_DISTANCE_THRESHOLD)
                             return
                         end
                         if tick() - __DIO_CakeQuestT > 6 then
+                            -- [QUEST-CHECK FIX] "kill het mob ROI MOI nhan quest":
+                            -- moi StartQuest khi function check quest (user da test)
+                            -- quet UI 1 lan va xac nhan quest cu da giết het so mob
+                            -- hien thi. Sau invoke quet 1 lan ghi nho quest moi.
+                            -- Chi chay trong CD 6s nen toan bo quet UI gay ra o day
+                            -- toi da ~1 lan / 6s = khong khieng lag.
                             __DIO_CakeQuestT = tick()
                             local q = {
                                 { "StartQuest", "CakeQuest2", 2 },
@@ -4786,8 +5030,8 @@ task.spawn(function()
                                 { "StartQuest", "CakeQuest1", 1 },
                                 { "StartQuest", "CakeQuest1", 2 }
                             }
-                            replicated.Remotes.CommF_:InvokeServer(unpack(q[math.random(1, 4)]))
-                            __DIO_wait(1)
+                            local __cq = q[math.random(1, 4)]
+                            __DIO_StartQuestGated("FarmCake", unpack(__cq))
                         end
                         -- không return: rơi xuống chờ spawn (tránh đứng chụm ngay chân NPC)
                     end
@@ -5036,7 +5280,13 @@ Tabs.Main:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.AutoFarm_Bone = Value
-        if not Value then pcall(__DIO_GhostReset) end  -- xóa skip-list ghost khi tắt
+        if Value then
+            -- [QUEST-CHECK] BAT: quet UI 1 lan de phong player da nhan quest san
+            -- -> script "ghi nho" moi + so luong de giết (khong poll 0.5s).
+            pcall(__DIO_SyncQuestOnEnable, "FarmBone")
+        elseif not Value then
+            pcall(__DIO_GhostReset)  -- xóa skip-list ghost khi tắt
+        end
     end
 })
 
@@ -5133,11 +5383,19 @@ spawn(function()
                 -- Cooldown chung 6s cho CẢ bước xuống NPC lẫn StartQuest: giữa 2 lần thử
                 -- nhân vật đứng yên tại bãi, không bay xuống/xuống nữa = hết flapping.
                 -- ============================================================
-                if _G.AcceptQuestB and QuestUI and not QuestUI.Visible then
+                -- [QUEST-CHECK] Update 30 hay để Quest.Visible KHONG tắt khi quest da het
+                -- -> them kieu doc 2: trang thai "ghi nho" cua check quest (Active + Done =
+                -- da giết het so mob hien thi) cung duoc phep xin quest.
+                if _G.AcceptQuestB and ((QuestUI and not QuestUI.Visible) or (__DIO_QuestState.Active and __DIO_QuestState.Done)) then
                     local npcD = (__DIO_BoneNpcCF.Position - hrp.Position).Magnitude
                     if npcD <= 10 then
                         -- đang đứng cạnh NPC -> thử xin quest nếu hết cooldown
                         if tick() - __DIO_BoneQuestT > 6 then
+                            -- [QUEST-CHECK FIX] "kill het mob ROI MOI nhan quest": moi
+                            -- StartQuest khi function check quest (user da test) quet UI
+                            -- 1 lan va xac nhan da giết het so mob hien thi. Sau invoke
+                            -- quet 1 lan ghi nho quest moi. Toan bo chi chay trong CD 6s
+                            -- -> toi da ~1 lan quet UI / 6s = khong lag.
                             __DIO_BoneQuestT = tick()
                             local quests = {
                                 { "StartQuest", "HauntedQuest1", 1 },
@@ -5145,8 +5403,8 @@ spawn(function()
                                 { "StartQuest", "HauntedQuest2", 1 },
                                 { "StartQuest", "HauntedQuest2", 2 }
                             }
-                            __SVC_RS.Remotes.CommF_:InvokeServer(unpack(quests[math.random(1, #quests)]))
-                            __DIO_wait(1)
+                            local __bq = quests[math.random(1, #quests)]
+                            __DIO_StartQuestGated("FarmBone", unpack(__bq))
                         end
                         -- quay lên bãi chờ cao NGAY (không ngu dưới NPC)
                         if (__DIO_BoneSpawn.Position - hrp.Position).Magnitude > 10 then
@@ -5551,6 +5809,11 @@ FarmBoss = Tabs.Main:AddToggle({
     Default = false,
     Callback = function(value)
         _G.FarmBoss = value
+        if value then
+            -- [QUEST-CHECK] BAT: quet UI 1 lan de phong player da nhan quest san
+            -- -> script "ghi nho" moi + so luong de giết (khong poll 0.5s).
+            pcall(__DIO_SyncQuestOnEnable, "FarmBoss")
+        end
         if value and not __DIO_FarmBossThr then
             __DIO_FarmBossThr = true
         spawn(function()
@@ -5570,7 +5833,10 @@ FarmBoss = Tabs.Main:AddToggle({
                             if not __qB.IsActive then -- [FIX QUEST-FN]
                                 _tp(QuestBeta()[5])
                                 if (Root.Position - QuestBeta()[5].Position).Magnitude <= 5 then
-                                    replicated.Remotes.CommF_:InvokeServer("StartQuest", QuestBeta()[3], QuestBeta()[2])
+                                    -- [QUEST-CHECK] moi moi moi khi da giết het so mob hien thi
+                                    -- (check quest quet UI 1 lan, khong poll) + sau invoke
+                                    -- quet 1 lan ghi nho mob + so luong cua quest moi.
+                                    __DIO_StartQuestGated("FarmBoss", "StartQuest", QuestBeta()[3], QuestBeta()[2])
                                 end
                             elseif __qB.IsActive then -- [FIX QUEST-FN]
                                 if workspace.Enemies:FindFirstChild(QuestBeta()[1]) then
@@ -8321,23 +8587,51 @@ spawn(function()
     end)
   end
 end)
--- [FIX QUEST-FN] Ham doc quest DUNG duong dan UI (Main.Quest.Container.QuestTitle.Title.Text),
--- nil-safe toan bo; UI quest khong co o "TaskName"/"Task" nao het: ten quai nam trong CAU QuestTitle
--- (vd "Defeat 50 Forest Pirates"); quest xong => frame tu an => check hoan thanh = Quest.Visible == false.
+-- [FIX QUEST-FN + QUEST-CHECK v1 13-09-2026] Ham doc quest CHUNG cho toan hub.
+-- Thay the ban cu "doc the duong dan label moi lan goi":
+--   * Moi lan goi chi kiem tra NHE duoc: frame Main.Quest.Visible (1 path, rat re)
+--     -> KHONG quet PlayerGui moi lan (khong poll 0.5s -> khong lag).
+--   * Khi phat hien CHUYEN TRAN (frame bat len / tat di) moi goi __DIO_ReadQuest
+--     (function check quest user da test) quet 1 lan duy nhat de "ghi nho"
+--     mob + so luong vao __DIO_QuestState. Vi vay neu player TAY nhan quest
+--     trong game, lan check tiep theo phat hien va ghi nho luon.
+--   * Duy tri chinh xac interface cu: { IsActive, QuestText, MobTarget, Required, Done }.
 __DIO_GetCurrentQuest = function()
-  local __ok, __res = pcall(function()
-    local __main = plr and plr.PlayerGui and plr.PlayerGui:FindFirstChild("Main")
-    local __q = __main and __main:FindFirstChild("Quest")
-    if not (__q and __q.Visible) then return { IsActive = false } end
-    local __t = __q:FindFirstChild("Container")
-    __t = __t and __t:FindFirstChild("QuestTitle")
-    __t = __t and __t:FindFirstChild("Title")
-    local __text = (__t and __t.Text) or ""
-    local __req, __mob = __text:match("^Defeat%s+(%d+)%s+(.+)$")
-    if not __req then __mob = __text:match("^Defeat%s+(.+)$") end
-    return { IsActive = true, QuestText = __text, MobTarget = __mob or __text, Required = tonumber(__req), Done = false }
-  end)
-  return (__ok and __res) or { IsActive = false }
+  local __vis
+  do
+    local __ok, __res = pcall(function()
+      local __main = plr and plr.PlayerGui and plr.PlayerGui:FindFirstChild("Main")
+      local __q = __main and __main:FindFirstChild("Quest")
+      return __q and __q.Visible
+    end)
+    __vis = (__ok and __res) or false
+  end
+  if __DIO_QuestState.Active and not __vis then
+    -- frame hien quest da tat (da giết het / hoan thanh) -> cap nhat trang thai
+    __DIO_QuestState.Active = false
+    __DIO_QuestState.Text = ""
+    __DIO_QuestState.Mob = ""
+    __DIO_QuestState.Total = 0
+    __DIO_QuestState.Current = 0
+    __DIO_QuestState.Done = true  -- da hoan thanh moi duoc hien nay
+    __DIO_QuestState.T = tick()
+    if type(__DIO_UpdateQuestUI) == "function" then pcall(__DIO_UpdateQuestUI) end
+  elseif (not __DIO_QuestState.Active) and __vis then
+    -- quest hien len ma chua "ghi nho" (player nhan tay trong game, hoac feature
+    -- moi bat) -> quet UI 1 lan de ghi nho mob + so luong (co gate 2s ben trong)
+    __DIO_ReadQuest(false)
+  end
+  local s = __DIO_QuestState
+  if not s.Active or s.Text == "" then return { IsActive = false } end
+  local __req, __mob = s.Text:match("^Defeat%s+(%d+)%s+(.+)$")
+  if not __req then __mob = s.Text:match("^Defeat%s+(.+)$") end
+  return {
+    IsActive = true,
+    QuestText = s.Text,
+    MobTarget = __mob or s.Mob or s.Text,
+    Required = tonumber(__req) or s.Total,
+    Done = s.Done,
+  }
 end
 -- [FIX QUEST-FN] Ham RIENG cho quest "Defeat 50 Forest Pirates" (Auto Observation V2 / Auto Done Citizen).
 __DIO_ForestQuest50 = function()
@@ -8379,10 +8673,10 @@ spawn(function()
 	    else
 	      _tp(Kv2Pos5)
 	    end
-	  elseif not __DIO_GetCurrentQuest().IsActive then -- [FIX QUEST-FN]
-	    replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress","Citizen") __DIO_wait(.1)
-	    replicated.Remotes.CommF_:InvokeServer("StartQuest","CitizenQuest",1)
-	  end
+  elseif not __DIO_GetCurrentQuest().IsActive then -- [FIX QUEST-FN]
+    replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress","Citizen") __DIO_wait(.1)
+    __DIO_StartQuestGated("Citizen", "StartQuest","CitizenQuest",1) -- [QUEST-CHECK] chi moi khi da giết het mob hien thi
+  end
 	  if replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress","Citizen") == 2 then
 	    _tp(CFrame.new(-12513.51953125, 340.1137390136719, -9873.048828125))
 	  end
@@ -8465,7 +8759,7 @@ spawn(function()
               _tp(CFrame.new(-461.533203, 72.3478546, 300.311096, 0.050853312, -0, -0.998706102, 0, 1, -0, 0.998706102, 0, 0.050853312))
             until (CFrame.new(-461.533203, 72.3478546, 300.311096, 0.050853312, -0, -0.998706102, 0, 1, -0, 0.998706102, 0, 0.050853312).Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 20 or _G.Bartilo_Quest == false
             if (CFrame.new(-461.533203, 72.3478546, 300.311096, 0.050853312, -0, -0.998706102, 0, 1, -0, 0.998706102, 0, 0.050853312).Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 1 then
-              replicated.Remotes.CommF_:InvokeServer("StartQuest", "BartiloQuest",1)
+              __DIO_StartQuestGated("Bartilo", "StartQuest", "BartiloQuest",1) -- [QUEST-CHECK] chi moi khi da giết het mob hien thi
             end
           end
           elseif replicated.Remotes.CommF_:InvokeServer("BartiloQuestProgress","Bartilo") == 1 then
@@ -8523,7 +8817,7 @@ spawn(function()
           else
             _tp(CFrame.new(-12443.8671875, 332.40396118164, -7675.4892578125))
             if (Vector3.new(-12443.8671875, 332.40396118164, -7675.4892578125) - plr.Character.HumanoidRootPart.Position).Magnitude <= 30 then
-              __DIO_wait(1.5) replicated.Remotes.CommF_:InvokeServer("StartQuest","CitizenQuest",1)
+              __DIO_wait(1.5) __DIO_StartQuestGated("Citizen", "StartQuest","CitizenQuest",1) -- [QUEST-CHECK] chi moi khi da giết het mob hien thi
             end
           end
         elseif plr.Data.Level.Value >= 1800 and replicated.Remotes.CommF_:InvokeServer("CitizenQuestProgress").KilledBoss == false then
@@ -15161,7 +15455,7 @@ else
 
     local Window = Fluent:CreateWindow({
         Title = "DIO Hub Get Key",
-        SubTitle = "By Dio - Premium Fixed",
+        SubTitle = "By DIO",
         TabWidth = 155,
         Size = UDim2.fromOffset(470, 380),
         Acrylic = false,
