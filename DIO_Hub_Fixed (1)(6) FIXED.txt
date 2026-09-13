@@ -255,7 +255,19 @@ end
 __DIO_BootT0 = tick()
 __DIO_BootN = 0
 __DIO_ThreadPhase = setmetatable({}, {__mode = "k"}) -- weak key: thread chet thi phase tu giai phong
-__DIO_wait = task.wait -- [FIX 2026-09-13] alias con thieu: moi __DIO_wait() chet o line 277 vi goi nil
+-- [FIX 2026-09-13 v2 - ROOT CAUSE "FPS/Ping hien nhung UI + logic chet"]
+-- Ban truoc viet:
+--     __DIO_wait = task.wait
+--     __DIO_wait = function(t) ... return __DIO_wait(t + __ph) end
+-- Lenh gan thu 2 DE LEN alias task.wait, nen __DIO_wait ben trong ham tham chieu
+-- den CHINH NO -> DE QUY VO HAN -> STACK OVERFLOW ngay lan goi dau tien
+-- (dong `repeat __DIO_wait() until game:IsLoaded()`), giet StartDioHub truoc khi
+-- kip chay remotes/hooks/library/window. ScreenGui FPS/Ping da tao truoc do van
+-- song (connection RenderStepped rieng) -> hien tuong "load thanh cong, co FPS/Ping
+-- nhung khong UI, khong logic".
+-- CACH SUA: giu task.wait GOC trong bien RIENG __DIO_BaseWait (local upvalue);
+-- moi cho goi ben trong ham PHAI goi __DIO_BaseWait, khong duoc goi __DIO_wait.
+local __DIO_BaseWait = task.wait
 __DIO_wait = function(t)
     t = t or 0.03
     local __co = coroutine.running()
@@ -271,11 +283,11 @@ __DIO_wait = function(t)
             __DIO_ThreadPhase[__co] = __ph
             if tick() - __DIO_BootT0 < 10 and __DIO_BootN < 200 then
                 __DIO_BootN = __DIO_BootN + 1
-                __DIO_wait(math.min(__DIO_BootN * 0.08, 4)) -- ramp CHI tac dung 1 lan (tic dau tien cua loop)
+                __DIO_BaseWait(math.min(__DIO_BootN * 0.08, 4)) -- ramp CHI tac dung 1 lan (tic dau tien cua loop)
             end
         end
     end
-    return __DIO_wait(t + __ph)
+    return __DIO_BaseWait(t + __ph)
 end
 spawn = function(f) -- [FIX BOOT-RAMP 2/2] ramp tic dau cua loop; het cua so boot thi spawn nhu thuong (nut bam UI khong bi treo vi di lam sau load)
     if tick() - __DIO_BootT0 < 10 and __DIO_BootN < 200 then
@@ -5471,6 +5483,11 @@ Name = "Choose Material",
 		Options = MaterialList,
 		Callback = function(Value)
 			getgenv().SelectMaterial = Value
+			-- [FIX 2026-09-13 v2] MaterialMon doc bien GLOBAL `SelectMaterial`
+			-- (khong phai getgenv().SelectMaterial). Truoc day chi set getgenv()
+			-- -> MaterialMon khong bao gio match branch nao -> MMon = nil
+			-- -> Auto Farm Materials chet im trong pcall.
+			SelectMaterial = Value
 		end
 		})
 Toggle = Tabs.Main:AddToggle({
@@ -5488,10 +5505,12 @@ spawn(function()
   end
   local function handleEnemySpawns()
     for _, v in pairs(__SVC_WS["_WorldOrigin"].EnemySpawns:GetChildren()) do
-      for _, EnemyName in ipairs(MMon) do
+      for _, EnemyName in ipairs(MMon or {}) do -- [FIX 2026-09-13 v2] MMon co the chua duoc set -> ipairs(nil) chet
         if string.find(v.Name, EnemyName) then
           if (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - v.Position).Magnitude >= 10 then
-            _tp(v.CFrame * Pos)
+            -- [FIX 2026-09-13 v2] `Pos` la global KHONG DINH NGHIA o bat ky dau trong file
+            -- -> `v.CFrame * nil` nem loi, bi pcall nuot im = teleport spawn khong bao gio chay.
+            _tp(v.CFrame * CFrame.new(0, 10, 0))
           end
         end
       end
@@ -5500,8 +5519,8 @@ spawn(function()
   while __DIO_wait(1) do -- [FIX PERF 62] 0.1 -> 1 (yeu cau user: uu tien FPS; vong poll gated nen logic khong time-out)
     if getgenv().AutoMaterial then
       pcall(function()
-        if getgenv().SelectMaterial then MaterialMon(getgenv().SelectMaterial) _tp(MPos) end
-        for _, EnemyName in ipairs(MMon) do
+        if getgenv().SelectMaterial then SelectMaterial = getgenv().SelectMaterial MaterialMon(getgenv().SelectMaterial) _tp(MPos) end -- [FIX 2026-09-13 v2] dong bo global truoc khi goi (ho tro key/toggle duoc nap lai tu save)
+        for _, EnemyName in ipairs(MMon or {}) do -- [FIX 2026-09-13 v2] nil-guard
           for _, v in pairs(workspace.Enemies:GetChildren()) do processEnemy(v, EnemyName) end
         end
         handleEnemySpawns()
@@ -15087,6 +15106,36 @@ __DIO_BOOT("READY")
 
 end -- end StartDioHub
 
+-- [FIX 2026-09-13 v2] KHONG goi StartDioHub() tran nua: boc pcall + hien loi RA MAN HINH.
+-- Truoc day neu StartDioHub chet giua chung, user chi thay FPS/Ping ma khong biet ly do.
+-- Gio: boot label dong bang "FAILED: ..." + bang do trong PlayerGui ghi chi tiet loi.
+local function __DIO_SafeStart(where)
+    local ok, err = pcall(StartDioHub)
+    if not ok then
+        pcall(function() __DIO_BOOT("FAILED (" .. tostring(where) .. "): " .. tostring(err)) end)
+        warn("[DIO] StartDioHub failed at " .. tostring(where) .. ": " .. tostring(err))
+        pcall(function()
+            local __pg = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+            local sg = Instance.new("ScreenGui")
+            sg.Name = "DIO_FatalError"
+            sg.ResetOnSpawn = false
+            sg.Parent = __pg
+            local fr = Instance.new("TextButton")
+            fr.Size = UDim2.fromOffset(480, 180)
+            fr.Position = UDim2.new(0.5, -240, 0.4, -90)
+            fr.BackgroundColor3 = Color3.fromRGB(30, 15, 15)
+            fr.TextColor3 = Color3.fromRGB(255, 120, 120)
+            fr.TextSize = 14
+            fr.TextWrapped = true
+            fr.Font = Enum.Font.Code
+            fr.Text = "DIO HUB - LOI KHI KHOI DONG (bam de tat)\n[" .. tostring(where) .. "]\n\n" .. tostring(err)
+            fr.Parent = sg
+            fr.MouseButton1Click:Connect(function() sg:Destroy() end)
+        end)
+    end
+    return ok, err
+end
+
 -- [MAIN ENTRY]
 if isKeyValid() then
     -- Key correct or cached <10h, load directly
@@ -15097,7 +15146,7 @@ if isKeyValid() then
             Duration = 3
         })
     end)
-    StartDioHub()
+    __DIO_SafeStart("main-entry")
 else
     -- Show Fluent UI Get Key integrated (not external loadstring)
     local Fluent
@@ -15106,7 +15155,7 @@ else
     end)
     if not okFluent or not Fluent then
         warn("[DIO] Failed to load Fluent UI, loading hub anyway for debug")
-        StartDioHub()
+        __DIO_SafeStart("fluent-fallback")
         return
     end
 
@@ -15187,7 +15236,7 @@ else
                 task.wait(0.5)
                 Window:Destroy()
                 task.wait(0.2)
-                StartDioHub()
+                __DIO_SafeStart("check-key-button")
             else
                 Fluent:Notify({
                     Title = "Error",
@@ -15209,7 +15258,7 @@ else
                 task.wait(0.5)
                 Window:Destroy()
                 task.wait(0.2)
-                StartDioHub()
+                __DIO_SafeStart("getgenv-key-button")
             else
                 Fluent:Notify({Title="Error", Content="getgenv().Key invalid or empty. Enter key manually.", Duration=3})
             end
