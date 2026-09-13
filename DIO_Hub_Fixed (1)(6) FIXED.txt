@@ -2485,92 +2485,10 @@ QuestNeta = function()
     }
 end
 
-local redzlib
-local ok_redz, err_redz = pcall(function()
-    -- [FIXED 2026-09-13] URL chuẩn của chủ repo. Bản Library-Redz-Fixed.txt bị 404
-    -- trên GitHub nên bỏ luôn, dùng thẳng link Public-Source, khỏi tốn 1 request lỗi.
-    redzlib = loadstring(game:HttpGet("https://raw.githubusercontent.com/DIO482/Script-/refs/heads/main/Library-Redz-Pulic-Source.txt"))()
-end)
--- Force UI parent to PlayerGui if CoreGui blocked (fix UI not showing)
-pcall(function()
-    if redzlib then
-        -- Patch gethui behavior after load by checking ScreenGui
-        local coreGui = game:GetService("CoreGui")
-        local playerGui = game.Players.LocalPlayer:FindFirstChild("PlayerGui") or game.Players.LocalPlayer:WaitForChild("PlayerGui")
-        local existing = coreGui:FindFirstChild("redz-library-v5") or (gethui and gethui():FindFirstChild("redz-library-v5")) or playerGui:FindFirstChild("redz-library-v5")
-        if existing and existing.Parent == coreGui then
-            -- Try to move to PlayerGui if CoreGui not visible
-            pcall(function()
-                existing.Parent = playerGui
-            end)
-        end
-    end
-end)
-if not redzlib then
-    warn("[DIO] redzlib failed to load, will try Fluent fallback")
-end
-
--- [FIXED 2026-09-13] Removed stray `end)` + dead EarlyOk check (remnants of the broken wrapper above).
-
-
--- [100% FIX] If redzlib failed, fallback to Fluent for main UI
-if not redzlib then
-    pcall(function()
-        game:GetService("StarterGui"):SetCore("SendNotification", {Title="DIO", Text="redzlib failed, using Fluent fallback", Duration=5})
-    end)
-    local okFluent, Fluent = pcall(function()
-        return loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-    end)
-    if okFluent and Fluent then
-        local Window = Fluent:CreateWindow({
-            Title = "DIO Hub FALLBACK",
-            SubTitle = "redzlib failed, using Fluent",
-            TabWidth = 155,
-            Size = UDim2.fromOffset(550, 400),
-            Acrylic = false,
-            Theme = "Dark",
-            MinimizeKey = Enum.KeyCode.RightControl
-        })
-        local Tabs = {
-            Main = Window:AddTab({ Title = "Info", Icon = "info" }),
-        }
-        Tabs.Main:AddParagraph({
-            Title = "Redzlib Failed",
-            Content = "Main UI library failed to load. This is fallback UI. Hub functions still work via _G flags. Error: "..tostring(err_redz)
-        })
-        Tabs.Main:AddButton({
-            Title = "Copy Error",
-            Callback = function()
-                setclipboard(tostring(err_redz))
-            end
-        })
-        -- Try to continue loading rest of hub with Fluent tabs?
-        -- For now just notify and return
-        return
-    else
-        -- Ultimate fallback: pure Instance.new UI
-        pcall(function()
-            local playerGui = game.Players.LocalPlayer:WaitForChild("PlayerGui")
-            local sg = Instance.new("ScreenGui")
-            sg.Name = "DIO_Fallback_UI"
-            sg.Parent = playerGui
-            local frame = Instance.new("Frame")
-            frame.Size = UDim2.fromOffset(400, 200)
-            frame.Position = UDim2.fromOffset(100, 100)
-            frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
-            frame.Parent = sg
-            local label = Instance.new("TextLabel")
-            label.Size = UDim2.fromScale(1,1)
-            label.Text = "DIO Hub Loaded but redzlib failed! Check console"
-            label.TextColor3 = Color3.fromRGB(255,255,255)
-            label.BackgroundTransparency = 1
-            label.Parent = frame
-        end)
-        return
-    end
-end
-
-
+-- [MERGED 2026-09-13] Khoi tao redz kieu CU (lay tu ban FIXED(21)): 1 dong truc tiep,
+-- khong pcall, khong PlayerGui-force, khong Fluent fallback. Neu lib loi se bao loi
+-- ro rang thay vi im lang hien fallback.
+local redzlib = loadstring(game:HttpGet("https://raw.githubusercontent.com/DIO482/Script-/refs/heads/main/Library-Redz-Pulic-Source.txt"))()
 local Window = redzlib:MakeWindow({
     Title = "DIO Hub ",
     SubTitle = "DIO Loader Script | Blox Fruit",
