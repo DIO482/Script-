@@ -1,6 +1,6 @@
 
 -- ============================================================================
--- DIO HUB PREMIUM - FIXED & OPTIMIZED v1.7  (2026-09-13)
+-- DIO HUB PREMIUM - FIXED & OPTIMIZED 2026-09-13
 -- Features:
 --  * getgenv().Team auto select (Pirates/Marines) with 7s wait for character load
 --  * getgenv().SaveSettings true/false controls file save
@@ -8,18 +8,6 @@
 --  * Fast attack can hit players (Enemies + Players + Characters)
 --  * Fixed toggles: AutoKillMob, Auto Farm Dough King, +Hop, Buy Melee, Auto Start Raid
 --  * Optimized spawn/task.wait like Banana/OMG Hub
--- ----------------------------------------------------------------------------
--- [v1.7] GetQuestData Integration (Quest Check Anti-Lag)
---  * GetQuestData()      : quét PlayerGui 1 lần lấy tên quest + tiến độ "X/Y".
---                          KHÔNG poll 0.5s - chỉ gọi khi bật feature hoặc StartQuest.
---  * ParseQuestProgress(): tách "3/8" -> (3, 8).
---  * __DIO_LvlQ / __DIO_BoneQ / __DIO_CakeQ: tracker kills/total per-feature.
---  * Farm Level  : nhận quest 1 lần, đếm kill, CHỈ nhận lại khi kills >= total.
---  * Farm Bone   : CHỈ xuống NPC nhận quest khi đã kill đủ số mob quest cũ.
---  * Farm Cake   : CHỈ nhận CakeQuest mới khi đã kill đủ số mob quest cũ.
---  * BẬT feature : quét GetQuestData() 1 lần đề phòng player đã có quest sẵn,
---                  ghi kills = tiến độ hiện tại (không bỏ qua kill đã làm).
---  * Sau StartQuest: quét GetQuestData() 1 lần để lấy total mới cho quest tiếp.
 -- ============================================================================
 
 -- [CONFIG] User can set before load
@@ -2557,53 +2545,6 @@ QuestNeta = function()
         [6] = GetQuestPoint()            
     }
 end
-
--- ============================================================================
--- [QUESTDATA v1.7] GetQuestData: quét PlayerGui 1 lần để lấy tên quest + tiến độ.
--- Được test thực tế, quét được text "Đánh bại / Defeat / Kill" và progress "X/Y".
--- KHÔNG gọi theo vòng lặp (GetDescendants PlayerGui rất tốn kém, poll 2Hz = lag).
--- Chỉ gọi khi:
---   (1) Player BẬT feature có nhận quest -> quét 1 lần check đã có quest chưa
---   (2) Ngay TRƯỚC và SAU InvokeServer("StartQuest") để lấy tổng mob mới
--- ============================================================================
-local function GetQuestData()
-    local playerGui = plr:FindFirstChild("PlayerGui")
-    if not playerGui then return nil, nil end
-    local qName, qProgress = nil, nil
-    for _, v in pairs(playerGui:GetDescendants()) do
-        if v:IsA("TextLabel") and v.Text and v.Text ~= "" then
-            local text = v.Text
-            -- Dòng tên quest: chứa từ khoá "Đánh bại" / "Defeat" / "Kill"
-            if text:find("nh b") or text:find("Defeat") or text:find("Kill") then
-            -- "Đánh bại" luôn chứa "nh b" -> an toàn với mọi encoding
-                qName = text
-            end
-            -- Dòng tiến độ: có dạng "số/số", không phải Level/EXP
-            if text:match("%d+/%d+") then
-                if not text:find("Lv") and not text:find("EXP") then
-                    qProgress = text
-                end
-            end
-        end
-    end
-    return qName, qProgress
-end
-
--- Tách "3/8" -> (3, 8)  |  "0/5" -> (0, 5)  |  nil/sai format -> (nil, nil)
-local function ParseQuestProgress(s)
-    if not s then return nil, nil end
-    local cur, tot = s:match("(%d+)/(%d+)")
-    return tonumber(cur), tonumber(tot)
-end
-
--- [STATE] Trạng thái quest per-feature. Reset khi tắt feature hoặc nhận quest mới.
--- kills  = số mob đã giết từ đầu quest hiện tại (bắt đầu từ tiến độ UI nếu có quest sẵn)
--- total  = tổng mob cần giết (lấy từ ParseQuestProgress)
--- 0/0 = chưa có quest -> cho phép nhận quest ngay
-local __DIO_LvlQ  = { kills = 0, total = 0 }   -- Farm Level
-local __DIO_BoneQ = { kills = 0, total = 0 }   -- Farm Bone
-local __DIO_CakeQ = { kills = 0, total = 0 }   -- Farm Cake
-
 __DIO_BOOT("library")
 
 -- [NETFIX 2026-09-13] Tai redz co MIRROR DU PHONG + bao loi HIEN (thay vi chet im):
@@ -3294,23 +3235,7 @@ FarmLevel = Tabs.Main:AddToggle({
             alreadyTeleported = false
             teleporting = false
             __DIO_LvlTryT = 0
-            __DIO_LvlQ = { kills = 0, total = 0 }   -- [v1.7] reset quest tracker
-            pcall(__DIO_GhostReset)  -- xóa skip-list ghost khi tắt
-        else
-            -- [v1.7] BẬT: quét UI 1 lần đề phòng player đã nhận quest sẵn trước khi bật.
-            -- Nếu có quest "X/Y" -> ghi nhớ số đã giết (X) và tổng cần giết (Y).
-            -- Vòng loop KHÔNG cần poll GetQuestData() nữa, chỉ dùng __DIO_LvlQ.
-            task.spawn(function()
-                task.wait(0.5)
-                local ok, qn, qp = pcall(GetQuestData)
-                if ok and qp then
-                    local cur, tot = ParseQuestProgress(qp)
-                    if cur and tot then
-                        __DIO_LvlQ.kills = cur
-                        __DIO_LvlQ.total = tot
-                    end
-                end
-            end)
+            pcall(__DIO_GhostReset)  -- xóa skip-list ghost khi tắt (để lần sau bật lại sạch)
         end
     end
 })
@@ -3470,28 +3395,17 @@ task.spawn(function()
                     end
 
                     -- [FIX QUEST-STUCK - Update 30]
-                    -- [v1.7] Chỉ nhận quest MỚI khi quest cũ đã XONG (kills >= total).
-                    -- __DIO_LvlQ.total == 0 nghĩa là chưa có quest lần nào -> cho phép nhận.
-                    -- Sau StartQuest: quét UI 1 lần lấy total mới, reset kills về 0.
+                    -- Đã tới NPC (hoặc PosQ không có) -> StartQuest có COOLDOWN 8s (tránh spam
+                    -- remote khi Quest.Visible không bật). Xong KHÔNG return nữa: rơi xuống
+                    -- nhánh D để farm mob quest NGAY (nếu quest lỡ không hiện UI, vẫn farm +
+                    -- sẽ thử StartQuest lại sau 8s ở vòng sau — không bao giờ đứng im chỗ NPC).
                     if not __qBlock then
-                        local __lvqDone = (__DIO_LvlQ.total == 0)
-                            or (__DIO_LvlQ.kills >= __DIO_LvlQ.total)
-                        if __lvqDone and tick() - __DIO_LvlQTryT > 8 then
+                        if tick() - __DIO_LvlQTryT > 8 then
                             __DIO_LvlQTryT = tick()
                             pcall(function()
                                 replicated.Remotes.CommF_:InvokeServer("StartQuest", questData[3], questData[2])
                             end)
-                            __DIO_wait(0.6)
-                            -- Quét UI sau StartQuest để lấy tổng mob cần giết cho quest mới
-                            local ok2, qn2, qp2 = pcall(GetQuestData)
-                            if ok2 and qp2 then
-                                local cur2, tot2 = ParseQuestProgress(qp2)
-                                if tot2 then
-                                    __DIO_LvlQ.kills = cur2 or 0
-                                    __DIO_LvlQ.total = tot2
-                                end
-                            end
-                            __DIO_wait(0.4)
+                            __DIO_wait(1)
                         end
                     end
                     if __qBlock then
@@ -3531,10 +3445,6 @@ task.spawn(function()
                        or target.Humanoid.Health <= 0
                     if not switched then
                         -- giết xong thật: hơi nghỉ cho mob respawn + quest đếm kill đồng bộ
-                        -- [v1.7] Đếm kill để biết khi nào được nhận quest mới
-                        if _G.Level and __DIO_LvlQ.total > 0 then
-                            __DIO_LvlQ.kills = __DIO_LvlQ.kills + 1
-                        end
                         __DIO_wait(0.8)
                     end
                     -- switched == true (ghost) -> KHÔNG nghỉ, vào ngay nhánh tìm mob khác
@@ -4847,13 +4757,6 @@ task.spawn(function()
                         if __DIO_GhostCheck(bestMob) then break end
                     until not _G.Auto_Cake_Prince or not bestMob.Parent
                        or (bestMob:FindFirstChild("Humanoid") and bestMob.Humanoid.Health <= 0)
-                    -- [v1.7] Đếm kill quest Cake: chỉ đếm khi mob thật sự chết (không phải ghost break)
-                    if _G.AcceptQuestC and __DIO_CakeQ.total > 0 then
-                        local bmH2 = bestMob:FindFirstChild("Humanoid")
-                        if bmH2 and bmH2.Health <= 0 then
-                            __DIO_CakeQ.kills = __DIO_CakeQ.kills + 1
-                        end
-                    end
                     return
                 end
 
@@ -4870,37 +4773,21 @@ task.spawn(function()
                     local __qm = plr.PlayerGui:FindFirstChild("Main")
                     __qm = __qm and __qm:FindFirstChild("Quest")
                     if not (__qm and __qm.Visible) then
-                        -- [v1.7] Chỉ nhận quest mới khi đã kill đủ số mob của quest cũ.
-                        -- __DIO_CakeQ.total == 0 -> chưa có quest lần nào -> cho phép nhận.
-                        local __cqDone = (__DIO_CakeQ.total == 0)
-                            or (__DIO_CakeQ.kills >= __DIO_CakeQ.total)
-                        if __cqDone then
-                            -- chưa thấy quest -> xin quest khi đang đứng gần NPC (chỉ khi rảnh)
-                            if (__DIO_CakeQuestCF.Position - hrp.Position).Magnitude > 40 then
-                                TeleportConditional(hrp, __DIO_CakeQuestCF, TELEPORT_DISTANCE_THRESHOLD)
-                                return
-                            end
-                            if tick() - __DIO_CakeQuestT > 6 then
-                                __DIO_CakeQuestT = tick()
-                                local q = {
-                                    { "StartQuest", "CakeQuest2", 2 },
-                                    { "StartQuest", "CakeQuest2", 1 },
-                                    { "StartQuest", "CakeQuest1", 1 },
-                                    { "StartQuest", "CakeQuest1", 2 }
-                                }
-                                replicated.Remotes.CommF_:InvokeServer(unpack(q[math.random(1, 4)]))
-                                __DIO_wait(0.6)
-                                -- Quét UI sau StartQuest để lấy tổng mob mới
-                                local ok3, qn3, qp3 = pcall(GetQuestData)
-                                if ok3 and qp3 then
-                                    local c3, t3 = ParseQuestProgress(qp3)
-                                    if t3 then
-                                        __DIO_CakeQ.kills = c3 or 0
-                                        __DIO_CakeQ.total = t3
-                                    end
-                                end
-                                __DIO_wait(0.4)
-                            end
+                        -- chưa thấy quest -> xin quest khi đang đứng gần NPC (chỉ khi rảnh)
+                        if (__DIO_CakeQuestCF.Position - hrp.Position).Magnitude > 40 then
+                            TeleportConditional(hrp, __DIO_CakeQuestCF, TELEPORT_DISTANCE_THRESHOLD)
+                            return
+                        end
+                        if tick() - __DIO_CakeQuestT > 6 then
+                            __DIO_CakeQuestT = tick()
+                            local q = {
+                                { "StartQuest", "CakeQuest2", 2 },
+                                { "StartQuest", "CakeQuest2", 1 },
+                                { "StartQuest", "CakeQuest1", 1 },
+                                { "StartQuest", "CakeQuest1", 2 }
+                            }
+                            replicated.Remotes.CommF_:InvokeServer(unpack(q[math.random(1, 4)]))
+                            __DIO_wait(1)
                         end
                         -- không return: rơi xuống chờ spawn (tránh đứng chụm ngay chân NPC)
                     end
@@ -4921,20 +4808,6 @@ Callback = function(Value)
             StopTween(false)
             __DIO_CurTarget = nil
             if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
-            __DIO_CakeQ = { kills = 0, total = 0 }   -- [v1.7] reset quest tracker
-        else
-            -- [v1.7] BẬT: quét UI 1 lần đề phòng player đã có quest sẵn
-            task.spawn(function()
-                task.wait(0.5)
-                local ok, qn, qp = pcall(GetQuestData)
-                if ok and qp then
-                    local cur, tot = ParseQuestProgress(qp)
-                    if cur and tot then
-                        __DIO_CakeQ.kills = cur
-                        __DIO_CakeQ.total = tot
-                    end
-                end
-            end)
         end
     end
 })
@@ -5252,13 +5125,6 @@ spawn(function()
                         end
                     until not _G.AutoFarm_Bone or not mob.Parent
                        or (mob:FindFirstChild("Humanoid") and mob.Humanoid.Health <= 0)
-                    -- [v1.7] Đếm kill quest Bone: chỉ đếm khi mob thật sự chết (không phải ghost break)
-                    if _G.AcceptQuestB and __DIO_BoneQ.total > 0 then
-                        local bH2 = mob:FindFirstChild("Humanoid")
-                        if bH2 and bH2.Health <= 0 then
-                            __DIO_BoneQ.kills = __DIO_BoneQ.kills + 1
-                        end
-                    end
                     return
                 end
 
@@ -5268,47 +5134,30 @@ spawn(function()
                 -- nhân vật đứng yên tại bãi, không bay xuống/xuống nữa = hết flapping.
                 -- ============================================================
                 if _G.AcceptQuestB and QuestUI and not QuestUI.Visible then
-                    -- [v1.7] Chỉ nhận quest mới khi đã kill đủ số mob của quest cũ.
-                    -- __DIO_BoneQ.total == 0 -> chưa có quest lần nào -> cho phép nhận.
-                    local __bqDone = (__DIO_BoneQ.total == 0)
-                        or (__DIO_BoneQ.kills >= __DIO_BoneQ.total)
-                    if __bqDone then
-                        local npcD = (__DIO_BoneNpcCF.Position - hrp.Position).Magnitude
-                        if npcD <= 10 then
-                            -- đang đứng cạnh NPC -> thử xin quest nếu hết cooldown
-                            if tick() - __DIO_BoneQuestT > 6 then
-                                __DIO_BoneQuestT = tick()
-                                local quests = {
-                                    { "StartQuest", "HauntedQuest1", 1 },
-                                    { "StartQuest", "HauntedQuest1", 2 },
-                                    { "StartQuest", "HauntedQuest2", 1 },
-                                    { "StartQuest", "HauntedQuest2", 2 }
-                                }
-                                __SVC_RS.Remotes.CommF_:InvokeServer(unpack(quests[math.random(1, #quests)]))
-                                __DIO_wait(0.6)
-                                -- Quét UI sau StartQuest để lấy tổng mob mới
-                                local ok4, qn4, qp4 = pcall(GetQuestData)
-                                if ok4 and qp4 then
-                                    local c4, t4 = ParseQuestProgress(qp4)
-                                    if t4 then
-                                        __DIO_BoneQ.kills = c4 or 0
-                                        __DIO_BoneQ.total = t4
-                                    end
-                                end
-                                __DIO_wait(0.4)
-                            end
-                            -- quay lên bãi chờ cao NGAY (không ngu dưới NPC)
-                            if (__DIO_BoneSpawn.Position - hrp.Position).Magnitude > 10 then
-                                _tp(__DIO_BoneSpawn)
-                            end
-                            return
-                        elseif tick() - __DIO_BoneQuestT > 6 then
-                            _tp(__DIO_BoneNpcCF)   -- xuống NPC xin quest (chỉ khi hết cooldown)
-                            return
+                    local npcD = (__DIO_BoneNpcCF.Position - hrp.Position).Magnitude
+                    if npcD <= 10 then
+                        -- đang đứng cạnh NPC -> thử xin quest nếu hết cooldown
+                        if tick() - __DIO_BoneQuestT > 6 then
+                            __DIO_BoneQuestT = tick()
+                            local quests = {
+                                { "StartQuest", "HauntedQuest1", 1 },
+                                { "StartQuest", "HauntedQuest1", 2 },
+                                { "StartQuest", "HauntedQuest2", 1 },
+                                { "StartQuest", "HauntedQuest2", 2 }
+                            }
+                            __SVC_RS.Remotes.CommF_:InvokeServer(unpack(quests[math.random(1, #quests)]))
+                            __DIO_wait(1)
                         end
-                        -- cooldown chưa hết -> đứng nguyên bãi, không flapping
+                        -- quay lên bãi chờ cao NGAY (không ngu dưới NPC)
+                        if (__DIO_BoneSpawn.Position - hrp.Position).Magnitude > 10 then
+                            _tp(__DIO_BoneSpawn)
+                        end
+                        return
+                    elseif tick() - __DIO_BoneQuestT > 6 then
+                        _tp(__DIO_BoneNpcCF)   -- xuống NPC xin quest (chỉ khi hết cooldown)
+                        return
                     end
-                    -- quest chưa xong -> không xuống NPC, tiếp tục chờ mob respawn
+                    -- cooldown chưa hết -> đứng nguyên bãi, không flapping
                 end
 
                 -- Không còn mob sống -> về bãi chờ mob respawn
@@ -5339,20 +5188,6 @@ Callback = function(Value)
             StopTween(false)
             __DIO_CurTarget = nil
             if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
-            __DIO_BoneQ = { kills = 0, total = 0 }   -- [v1.7] reset quest tracker
-        else
-            -- [v1.7] BẬT: quét UI 1 lần đề phòng player đã có quest sẵn
-            task.spawn(function()
-                task.wait(0.5)
-                local ok, qn, qp = pcall(GetQuestData)
-                if ok and qp then
-                    local cur, tot = ParseQuestProgress(qp)
-                    if cur and tot then
-                        __DIO_BoneQ.kills = cur
-                        __DIO_BoneQ.total = tot
-                    end
-                end
-            end)
         end
     end
 })
