@@ -1,48 +1,32 @@
+-- DEBUG VERSION - NO KEY SYSTEM, ALWAYS LOAD HUB
+-- Use this to test if hub itself loads
+getgenv().Team = getgenv().Team or "Pirates"
+getgenv().SaveSettings = (getgenv().SaveSettings == nil) and true or getgenv().SaveSettings
+getgenv().Key = "DIOHUB-129361064575-GETKEY" -- bypass
 
--- ============================================================================
--- DIO HUB PREMIUM - FIXED & OPTIMIZED 2026-09-13
--- Features:
---  * getgenv().Team auto select (Pirates/Marines) with 7s wait for character load
---  * getgenv().SaveSettings true/false controls file save
---  * getgenv().Key + 10h file cache key system integrated Fluent UI
---  * Fast attack can hit players (Enemies + Players + Characters)
---  * Fixed toggles: AutoKillMob, Auto Farm Dough King, +Hop, Buy Melee, Auto Start Raid
---  * Optimized spawn/task.wait like Banana/OMG Hub
--- ============================================================================
+pcall(function()
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "DIO Debug",
+        Text = "Starting team select...",
+        Duration = 3
+    })
+end)
 
--- [CONFIG] User can set before load
-getgenv().Team = getgenv().Team or "Pirates" -- Pirates/Marines
-getgenv().SaveSettings = (getgenv().SaveSettings == nil) and true or getgenv().SaveSettings -- true/false
-getgenv().Key = getgenv().Key or "" -- DIOHUB-129361064575-GETKEY
-
--- [CONSTANTS]
-local CORRECT_KEY = "DIOHUB-129361064575-GETKEY"
-local SAVE_FOLDER = "DIOHub_V3"
-local KEY_FILE = SAVE_FOLDER .. "/KeyCache.json"
-local SETTINGS_FILE = SAVE_FOLDER .. "/Settings.json"
-
-local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 
--- [TEAM AUTO SELECT]
 local function AutoSelectTeam()
-    local ok, err = pcall(function()
+    pcall(function()
         local comm = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
         local team = tostring(getgenv().Team or "Pirates")
         if team ~= "Pirates" and team ~= "Marines" then team = "Pirates" end
-        -- Only invoke if team not already selected or team mismatch
         if plr.Team == nil or tostring(plr.Team) ~= team then
             comm:InvokeServer("SetTeam2", team)
         end
     end)
-    if not ok then
-        warn("[DIO] Auto Team failed: "..tostring(err))
-    end
 end
 
--- Wait for game load like original
 repeat task.wait() until game:IsLoaded()
 pcall(function()
     local mainGui = plr:FindFirstChild("PlayerGui") and plr.PlayerGui:FindFirstChild("Main")
@@ -52,63 +36,20 @@ pcall(function()
     end
 end)
 
--- Auto select team then wait 7s for character to fully load
 AutoSelectTeam()
 task.wait(7)
 
--- [KEY SYSTEM - 10h cache]
-local function ensureFolder()
-    pcall(function()
-        if makefolder and (not isfolder or not isfolder(SAVE_FOLDER)) then
-            makefolder(SAVE_FOLDER)
-        end
-    end)
-end
+pcall(function()
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "DIO Debug",
+        Text = "Team selected, loading hub...",
+        Duration = 3
+    })
+end)
 
-local function saveKeyCache()
-    ensureFolder()
-    pcall(function()
-        if writefile then
-            local data = {
-                key = CORRECT_KEY,
-                time = os.time(),
-                hwid = (gethwid and gethwid() or game:GetService("RbxAnalyticsService"):GetClientId() or "unknown")
-            }
-            writefile(KEY_FILE, HttpService:JSONEncode(data))
-        end
-    end)
-end
+-- Load hub directly from premium final (embedded below)
 
-local function isKeyCacheValid()
-    if not (isfile and readfile) then return false end
-    if not isfile(KEY_FILE) then return false end
-    local ok, data = pcall(function()
-        return HttpService:JSONDecode(readfile(KEY_FILE))
-    end)
-    if not ok or type(data) ~= "table" then return false end
-    if data.key ~= CORRECT_KEY then return false end
-    if not data.time then return false end
-    -- 10 hours = 36000 seconds
-    if os.time() - tonumber(data.time) > 36000 then
-        -- expired, delete
-        pcall(function() if delfile then delfile(KEY_FILE) end end)
-        return false
-    end
-    return true
-end
 
-local function isKeyValid()
-    if tostring(getgenv().Key) == CORRECT_KEY then
-        saveKeyCache()
-        return true
-    end
-    if isKeyCacheValid() then
-        return true
-    end
-    return false
-end
-
--- If key already valid via getgenv or cache, skip UI
 local function StartDioHub()
 
 
@@ -14986,140 +14927,6 @@ Window:Notify({
 
 end -- end StartDioHub
 
--- [MAIN ENTRY]
-if isKeyValid() then
-    -- Key correct or cached <10h, load directly
-    pcall(function()
-        game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = "DIO Hub",
-            Text = "Key valid! Loading hub...",
-            Duration = 3
-        })
-    end)
+pcall(function()
     StartDioHub()
-else
-    -- Show Fluent UI Get Key integrated (not external loadstring)
-    local Fluent
-    local okFluent, errFluent = pcall(function()
-        Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-    end)
-    if not okFluent or not Fluent then
-        warn("[DIO] Failed to load Fluent UI, loading hub anyway for debug")
-        StartDioHub()
-        return
-    end
-
-    local Window = Fluent:CreateWindow({
-        Title = "DIO Hub Get Key",
-        SubTitle = "By Dio - Premium Fixed",
-        TabWidth = 155,
-        Size = UDim2.fromOffset(470, 380),
-        Acrylic = false,
-        Theme = "Dark",
-        MinimizeKey = Enum.KeyCode.RightControl
-    })
-
-    local Tabs = {
-        Info = Window:AddTab({ Title = "Discord", Icon = "message-circle" }),
-        GetKey = Window:AddTab({ Title = "Get Key", Icon = "key" }),
-    }
-
-    Tabs.Info:AddParagraph({
-        Title = "Join the Community",
-        Content = "Join our Discord server for updates, support, and new scripts! Key is valid for 10 hours per device."
-    })
-
-    Tabs.Info:AddButton({
-        Title = "Copy Discord Link",
-        Description = "Copies the invite link to your clipboard.",
-        Callback = function()
-            setclipboard("https://discord.gg/NZm9MXzmzn")
-            Fluent:Notify({
-                Title = "Copied!",
-                Content = "Discord link has been copied to your clipboard.",
-                Duration = 5
-            })
-        end
-    })
-
-    Tabs.GetKey:AddParagraph({
-        Title = "Key System",
-        Content = "Click the button below to get your key, then paste it into the text box.\nKey: DIOHUB-129361064575-GETKEY\nCache lasts 10 hours."
-    })
-
-    Tabs.GetKey:AddButton({
-        Title = "Get Key Link",
-        Description = "Copies the link to get your key.",
-        Callback = function()
-            setclipboard("https://link4m.net/4eIVIN")
-            Fluent:Notify({
-                Title = "Copied!",
-                Content = "Key link copied to clipboard. Paste it in your browser.",
-                Duration = 5
-            })
-        end
-    })
-
-    local KeyInput = Tabs.GetKey:AddInput("KeyInput", {
-        Title = "Enter Key",
-        Default = "",
-        Placeholder = "Paste your key here...",
-        Numeric = false,
-        Finished = false,
-        Callback = function(Value) end
-    })
-
-    Tabs.GetKey:AddButton({
-        Title = "Check Key",
-        Description = "Verifies your key.",
-        Callback = function()
-            local enteredKey = KeyInput.Value
-            if enteredKey == CORRECT_KEY then
-                Fluent:Notify({
-                    Title = "Success",
-                    Content = "Valid Key! Loading Hub... (saved 10h)",
-                    Duration = 3
-                })
-                saveKeyCache()
-                -- Also set getgenv().Key for this session
-                getgenv().Key = CORRECT_KEY
-                task.wait(0.5)
-                Window:Destroy()
-                task.wait(0.2)
-                StartDioHub()
-            else
-                Fluent:Notify({
-                    Title = "Error",
-                    Content = "Invalid Key! Please get key from link.",
-                    Duration = 3
-                })
-            end
-        end
-    })
-
-    -- Also allow getgenv().Key pre-filled check via button
-    Tabs.GetKey:AddButton({
-        Title = "Use getgenv().Key",
-        Description = "Check key from getgenv().Key config",
-        Callback = function()
-            if tostring(getgenv().Key) == CORRECT_KEY then
-                Fluent:Notify({Title="Success", Content="getgenv().Key valid! Loading...", Duration=3})
-                saveKeyCache()
-                task.wait(0.5)
-                Window:Destroy()
-                task.wait(0.2)
-                StartDioHub()
-            else
-                Fluent:Notify({Title="Error", Content="getgenv().Key invalid or empty. Enter key manually.", Duration=3})
-            end
-        end
-    })
-
-    Window:SelectTab(2)
-
-    Fluent:Notify({
-        Title = "DIO Hub",
-        Content = "Key System Loaded - Please enter key",
-        Duration = 5
-    })
-end
+end)
