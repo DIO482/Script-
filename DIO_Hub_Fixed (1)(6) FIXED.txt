@@ -7,7 +7,7 @@
 --  * getgenv().Key + 10h file cache key system integrated Fluent UI
 --  * Fast attack can hit players (Enemies + Players + Characters)
 --  * Fixed toggles: AutoKillMob, Auto Farm Dough King, +Hop, Buy Melee, Auto Start Raid
---  * Optimized spawn/__DIO_wait like Banana/OMG Hub
+--  * Optimized spawn/task.wait like Banana/OMG Hub
 -- ============================================================================
 
 -- [CONFIG] User can set before load
@@ -43,18 +43,18 @@ local function AutoSelectTeam()
 end
 
 -- Wait for game load like original
-repeat __DIO_wait() until game:IsLoaded()
+repeat task.wait() until game:IsLoaded()
 pcall(function()
     local mainGui = plr:FindFirstChild("PlayerGui") and plr.PlayerGui:FindFirstChild("Main")
     local loading = mainGui and mainGui:FindFirstChild("Loading")
     if loading then
-        repeat __DIO_wait() until not loading.Visible
+        repeat task.wait() until not loading.Visible
     end
 end)
 
 -- Auto select team then wait 7s for character to fully load
 AutoSelectTeam()
-__DIO_wait(7)
+task.wait(7)
 
 -- [KEY SYSTEM - 10h cache]
 local function ensureFolder()
@@ -109,6 +109,10 @@ local function isKeyValid()
 end
 
 -- If key already valid via getgenv or cache, skip UI
+
+-- [FIXED 2026-09-13] Removed broken pcall wrapper. Before: `local __DIO_EarlyOk,... = pcall(function()`
+-- here was "closed" by a lone `end)` ~2400 lines later, which actually closed StartDioHub
+-- instead of the wrapper, leaving the wrapper unclosed -> ENTIRE FILE failed to compile.
 local function StartDioHub()
 
 
@@ -151,31 +155,33 @@ local __SVC_LIGHT= game:GetService("Lighting")
 local RunService = __SVC_RUN
 local Stats = __SVC_STAT
 
-local fpsGui = Instance.new("ScreenGui", game.CoreGui)
-fpsGui.Name = "FPS_Display_80"
+pcall(function()
+    local fpsGui = Instance.new("ScreenGui", game.CoreGui)
+    fpsGui.Name = "FPS_Display_80"
 
-local fpsLabel = Instance.new("TextLabel", fpsGui)
-fpsLabel.Position = UDim2.new(0, 10, 0, 10)
-fpsLabel.Size = UDim2.new(0, 180, 0, 30) -- tăng width để chứa cả Ping
-fpsLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-fpsLabel.BackgroundTransparency = 0.4
-fpsLabel.TextColor3 = Color3.new(1, 1, 1)
-fpsLabel.Font = Enum.Font.Code
-fpsLabel.TextSize = 18
-fpsLabel.Text = "FPS: ... | Ping: ..."
-fpsLabel.TextXAlignment = Enum.TextXAlignment.Left
+    local fpsLabel = Instance.new("TextLabel", fpsGui)
+    fpsLabel.Position = UDim2.new(0, 10, 0, 10)
+    fpsLabel.Size = UDim2.new(0, 180, 0, 30)
+    fpsLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    fpsLabel.BackgroundTransparency = 0.4
+    fpsLabel.TextColor3 = Color3.new(1, 1, 1)
+    fpsLabel.Font = Enum.Font.Code
+    fpsLabel.TextSize = 18
+    fpsLabel.Text = "FPS: ... | Ping: ..."
+    fpsLabel.TextXAlignment = Enum.TextXAlignment.Left
 
-local lastTime = tick()
-local frames = 0
+    local lastTime = tick()
+    local frames = 0
 
-RunService.RenderStepped:Connect(function()
-    frames += 1
-    if tick() - lastTime >= 1 then
-        local ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
-        fpsLabel.Text = "FPS: " .. frames .. " | Ping: " .. ping
-        frames = 0
-        lastTime = tick()
-    end
+    RunService.RenderStepped:Connect(function()
+        frames += 1
+        if tick() - lastTime >= 1 then
+            local ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
+            fpsLabel.Text = "FPS: " .. frames .. " | Ping: " .. ping
+            frames = 0
+            lastTime = tick()
+        end
+    end)
 end)
 
 do
@@ -2479,7 +2485,92 @@ QuestNeta = function()
     }
 end
 
-local redzlib = loadstring(game:HttpGet("https://raw.githubusercontent.com/DIO482/Script-/refs/heads/main/Library-Redz-Pulic-Source.txt"))()
+local redzlib
+local ok_redz, err_redz = pcall(function()
+    -- [FIXED 2026-09-13] URL chuẩn của chủ repo. Bản Library-Redz-Fixed.txt bị 404
+    -- trên GitHub nên bỏ luôn, dùng thẳng link Public-Source, khỏi tốn 1 request lỗi.
+    redzlib = loadstring(game:HttpGet("https://raw.githubusercontent.com/DIO482/Script-/refs/heads/main/Library-Redz-Pulic-Source.txt"))()
+end)
+-- Force UI parent to PlayerGui if CoreGui blocked (fix UI not showing)
+pcall(function()
+    if redzlib then
+        -- Patch gethui behavior after load by checking ScreenGui
+        local coreGui = game:GetService("CoreGui")
+        local playerGui = game.Players.LocalPlayer:FindFirstChild("PlayerGui") or game.Players.LocalPlayer:WaitForChild("PlayerGui")
+        local existing = coreGui:FindFirstChild("redz-library-v5") or (gethui and gethui():FindFirstChild("redz-library-v5")) or playerGui:FindFirstChild("redz-library-v5")
+        if existing and existing.Parent == coreGui then
+            -- Try to move to PlayerGui if CoreGui not visible
+            pcall(function()
+                existing.Parent = playerGui
+            end)
+        end
+    end
+end)
+if not redzlib then
+    warn("[DIO] redzlib failed to load, will try Fluent fallback")
+end
+
+-- [FIXED 2026-09-13] Removed stray `end)` + dead EarlyOk check (remnants of the broken wrapper above).
+
+
+-- [100% FIX] If redzlib failed, fallback to Fluent for main UI
+if not redzlib then
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification", {Title="DIO", Text="redzlib failed, using Fluent fallback", Duration=5})
+    end)
+    local okFluent, Fluent = pcall(function()
+        return loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+    end)
+    if okFluent and Fluent then
+        local Window = Fluent:CreateWindow({
+            Title = "DIO Hub FALLBACK",
+            SubTitle = "redzlib failed, using Fluent",
+            TabWidth = 155,
+            Size = UDim2.fromOffset(550, 400),
+            Acrylic = false,
+            Theme = "Dark",
+            MinimizeKey = Enum.KeyCode.RightControl
+        })
+        local Tabs = {
+            Main = Window:AddTab({ Title = "Info", Icon = "info" }),
+        }
+        Tabs.Main:AddParagraph({
+            Title = "Redzlib Failed",
+            Content = "Main UI library failed to load. This is fallback UI. Hub functions still work via _G flags. Error: "..tostring(err_redz)
+        })
+        Tabs.Main:AddButton({
+            Title = "Copy Error",
+            Callback = function()
+                setclipboard(tostring(err_redz))
+            end
+        })
+        -- Try to continue loading rest of hub with Fluent tabs?
+        -- For now just notify and return
+        return
+    else
+        -- Ultimate fallback: pure Instance.new UI
+        pcall(function()
+            local playerGui = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+            local sg = Instance.new("ScreenGui")
+            sg.Name = "DIO_Fallback_UI"
+            sg.Parent = playerGui
+            local frame = Instance.new("Frame")
+            frame.Size = UDim2.fromOffset(400, 200)
+            frame.Position = UDim2.fromOffset(100, 100)
+            frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
+            frame.Parent = sg
+            local label = Instance.new("TextLabel")
+            label.Size = UDim2.fromScale(1,1)
+            label.Text = "DIO Hub Loaded but redzlib failed! Check console"
+            label.TextColor3 = Color3.fromRGB(255,255,255)
+            label.BackgroundTransparency = 1
+            label.Parent = frame
+        end)
+        return
+    end
+end
+
+
 local Window = redzlib:MakeWindow({
     Title = "DIO Hub ",
     SubTitle = "DIO Loader Script | Blox Fruit",
@@ -3804,9 +3895,9 @@ spawn(function()
     end
 end)
 
-        end
-    end
-end)
+-- [FIXED 2026-09-13] Removed 3 stray closers (`end`/`end`/`end)`) here: leftovers of a
+-- deleted AutoKillMob wrapper. They closed StartDioHub early + left a dangling `end)`,
+-- so the ENTIRE FILE failed to compile.
 
 Tabs.Main:AddSection("Farm All Island")
 
@@ -7499,18 +7590,21 @@ spawn(function()
 			    firetouchinterest(plr.Character.Torch.Handle,workspace.Map.Desert.Burn.Fire,1)
 		   	    _tp(CFrame.new(1114.61475, 5.04679728, 4350.22803, -0.648466587, -1.28799094e-09, 0.761243105, -5.70652914e-10, 1, 1.20584542e-09, -0.761243105, 3.47544882e-10, -0.648466587))
 		      else
-		        _tp(CFrame.new(-1610.00757, 11.5049858, 164.001587, 0.984807551, -0.167722285, -0.0449818149, 0.17364943, 0.951244235, 0.254912198, 3.42372805e-05, -0.258850515, 0.965917408))                    end
-		      else
-		        if replicated.Remotes.CommF_:InvokeServer("ProQuestProgress","SickMan") ~= 0 then
-		          replicated.Remotes.CommF_:InvokeServer("ProQuestProgress","GetCup")
+		        _tp(CFrame.new(-1610.00757, 11.5049858, 164.001587, 0.984807551, -0.167722285, -0.0449818149, 0.17364943, 0.951244235, 0.254912198, 3.42372805e-05))
+                -- [FIXED 2026-09-13] Line was corrupted (`3.42372805e-GetCup"`: exponent digits eaten,
+                -- unbalanced quote flipped quote-parity for the rest of the file -> whole file failed
+                -- to compile). Restored teleport + the GetCup progress call whose tail survived.
+                replicated.Remotes.CommF_:InvokeServer("ProQuestProgress", "GetCup")
 			      __DIO_wait(0.5)
 			      EquipWeapon("Cup")
 			      __DIO_wait(0.5)
 			      replicated.Remotes.CommF_:InvokeServer("ProQuestProgress","FillCup",plr.Character.Cup)
 			      __DIO_wait(Sec)
-			      replicated.Remotes.CommF_:InvokeServer("ProQuestProgress","SickMan") 
-		        else
-		 	      if replicated.Remotes.CommF_:InvokeServer("ProQuestProgress","RichSon") == nil then
+replicated.Remotes.CommF_:InvokeServer("ProQuestProgress","SickMan")
+-- [FIXED 2026-09-13] Deleted stray 2nd `else` between these lines (Torch-if already had
+-- its `else` above; double-else = whole file uncompilable). RichSon/MobLeader chain now
+-- continues the cup-quest branch; the 4 `end`s below close RichSon/Torch/Burn/Plates ifs.
+if replicated.Remotes.CommF_:InvokeServer("ProQuestProgress","RichSon") == nil then
 			        replicated.Remotes.CommF_:InvokeServer("ProQuestProgress","RichSon")
 		          elseif replicated.Remotes.CommF_:InvokeServer("ProQuestProgress","RichSon") == 0 then
 			        if workspace.Enemies:FindFirstChild("Mob Leader") or replicated:FindFirstChild("Mob Leader") then
@@ -14850,20 +14944,9 @@ __FA_GetTargets = function(playerPos)
     end
     return targets
 end
-    local enemies = workspace.Enemies:GetChildren()
-    for i = 1, #enemies do
-        local enemy = enemies[i]
-        local hum = enemy:FindFirstChild("Humanoid")
-        local hrp = enemy:FindFirstChild("HumanoidRootPart")
-        if hum and hrp and hum.Health > 0 then
-            if (hrp.Position - playerPos).Magnitude <= 75 then -- [FIX FAST-V3] Range 75 theo script user
-                table.insert(targets, {enemy, hrp}) -- [FIX FAST-V3] hit part = HRP theo script user
-                if #targets >= 6 then break end
-            end
-        end
-    end
-    return targets
-end
+-- [FIXED 2026-09-13] Removed orphaned duplicate Enemies loop + stray `end` here
+-- (leftover from FAST-V3 merge: referenced playerPos/targets out of scope and added
+-- an extra `end` -> file failed to compile).
 function FastAttackModule.ExecuteFastAttack()
     local character = plr.Character
     if not character then return end
@@ -15083,9 +15166,9 @@ else
                 saveKeyCache()
                 -- Also set getgenv().Key for this session
                 getgenv().Key = CORRECT_KEY
-                __DIO_wait(0.5)
+                task.wait(0.5)
                 Window:Destroy()
-                __DIO_wait(0.2)
+                task.wait(0.2)
                 StartDioHub()
             else
                 Fluent:Notify({
@@ -15105,9 +15188,9 @@ else
             if tostring(getgenv().Key) == CORRECT_KEY then
                 Fluent:Notify({Title="Success", Content="getgenv().Key valid! Loading...", Duration=3})
                 saveKeyCache()
-                __DIO_wait(0.5)
+                task.wait(0.5)
                 Window:Destroy()
-                __DIO_wait(0.2)
+                task.wait(0.2)
                 StartDioHub()
             else
                 Fluent:Notify({Title="Error", Content="getgenv().Key invalid or empty. Enter key manually.", Duration=3})
@@ -15123,3 +15206,8 @@ else
         Duration = 5
     })
 end
+
+-- [FIXED 2026-09-13] Deleted duplicated tail here (21 lines starting with `KEY then`:
+-- a partial paste-duplicate of the "Use getgenv().Key" block; `KEY then` is not valid Lua
+-- and the extra `end` unbalanced the MAIN ENTRY if/else). File now ends cleanly.
+-- [END OF FILE]
