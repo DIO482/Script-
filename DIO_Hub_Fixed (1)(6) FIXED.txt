@@ -227,6 +227,31 @@ spawn = function(f)
     return task.spawn(f)
 end
 
+-- =====================================================================
+-- V5 SAFE LOOP: bo restart chung cho MOI vong farm trong hub.
+-- Truoc day 214/218 vong farm la "loop truan" (spawn + while, khong pcall
+-- restart) => chi 1 error giua chung (nil Character, part bi xoa, remote loi,
+-- prompt nil...) la loop CHET VINH VIEN => bat toggle chi thay highlight mau
+-- xanh (stomper van giu shouldTween) nhung khong bao gio farm again.
+-- __DIO_SafeLoop boc pcall quanh toan bo loop + tu khoi dong sau 0.5s khi error.
+-- =====================================================================
+__DIO_SafeLoopN = 0
+__DIO_SafeLoop = function(fn, tag)
+    __DIO_SafeLoopN = (__DIO_SafeLoopN or 0) + 1
+    local __idSL = __DIO_SafeLoopN
+    return spawn(function()
+        while true do
+            local __okSL, __errSL = pcall(fn)
+            if not __okSL then
+                pcall(function()
+                    warn(("[DIO] SafeLoop #%d(%s) error -> auto restart: %s"):format(__idSL, tostring(tag or "?"), tostring(__errSL)))
+                end)
+            end
+            __DIO_wait(0.5)
+        end
+    end)
+end
+
 local SaveFolderName = "DIOHub_V3"
 local SaveFileName = SaveFolderName .. "/Settings.json"
 
@@ -1344,7 +1369,7 @@ function __DIO_DoDodge(height)
     __DIO_Dodging = false
 end
 
-task.spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(0.1) do
 
         if not _G.DodgeSeaBeast or __DIO_Dodging
@@ -1375,7 +1400,7 @@ task.spawn(function()
             end
         end
     end
-end)
+end, "L1347")
 UpdStFruit = function()
   for z,x in next, plr.Backpack:GetChildren() do
   StoreFruit = x:FindFirstChild("EatRemote", true)
@@ -2233,7 +2258,11 @@ spawn(function()
           pcall(function() __DIO_Block.Parent = workspace end)
       end
 
-      if __DIO_FarmFlagsOn() then
+      -- V5 FIX ALL SHOULDTWEEN: neu dang co target tween "tuoi" (moi duoc _tp trong 30s)
+      -- thi GIU shouldTween = true + highlight cho bat ky tinh nang nao da goi _tp, cho du
+      -- co _G cua no co nam trong danh sach __DIO_FarmFlagsOn hay khong. Het target/het tuoi
+      -- va khong con flag nao => ve false nhu cu (tat het toggle = dung bay, highlight tu huy).
+      if __DIO_FarmFlagsOn() or (__DIO_TweenTarget ~= nil and __DIO_LastTpT ~= nil and (tick() - __DIO_LastTpT) < 30) then
        shouldTween = true
 
         local __stompHum = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
@@ -2886,6 +2915,11 @@ Tabs.Hop:AddSection("Fps Booster")
 -- =====================================================================
 __DIO_PerfMode = nil
 __DIO_PerfSaved = nil
+-- V5.1: nho lai trang thai GOC cua texture/particle/material ma cac mode nang da sua
+-- => "OFF" phai HOAN TAC DU DUOC (truoc day OFF khong tra lai decal/particle => map xau vin vien)
+__DIO_PerfTexSaved = {}
+__DIO_PerfPartSaved = {}
+__DIO_PerfMatSaved = {}
 
 __DIO_PerfSave = function()
     if __DIO_PerfSaved then return end
@@ -2921,6 +2955,12 @@ __DIO_PerfSave = function()
     __DIO_PerfSaved = s
 end
 
+-- V5.1 FIX MAN HINH DO: chup anh Lighting NGUYEN BAN NGAY LUC LOAD HUB (t=0), TRUOC KHI
+-- RTX Mode / Full Bright / preset "FIX LAG" tu settings luu cu (restore luc +3s) kip sua
+-- mau Lighting. Truoc day snapshot chi duoc chup lan dau tien khi ban chon 1 mode => neu
+-- luc do RTX (filter cam-do) dang bat thi "OFF" se "khoi phuc" tro lai state DO DO.
+pcall(__DIO_PerfSave)
+
 __DIO_PerfSetQuality = function(lvl)
     pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel[lvl] or Enum.QualityLevel.Level10 end)
 end
@@ -2934,7 +2974,24 @@ __DIO_PerfEffects = function(off)
                 else
                     pcall(function()
                         local sv = __DIO_PerfSaved and __DIO_PerfSaved.Effects
-                        e.Enabled = (sv and sv[e] ~= nil) and sv[e] or true
+                        if sv == nil then
+                            e.Enabled = true
+                        elseif sv[e] ~= nil then
+                            e.Enabled = sv[e] and true or false
+                            -- V5.1 FIX MAN HINH DO: game co nhung ColorCorrection chay DO man
+                            -- hinh (hit/death/zone). Mode nang tat no GIUA LUC no dang mau do =>
+                            -- ket lai TintColor do. Re-enable len (OFF) khong trung hoa thi man
+                            -- do lieu. Chi cure khi tint thuc su do (R cao, G/B thap).
+                            if e:IsA("ColorCorrectionEffect") then
+                                local __tc = e.TintColor
+                                if __tc and __tc.R >= 0.5 and __tc.G <= 0.35 and __tc.B <= 0.35 then
+                                    e.TintColor = Color3.new(1, 1, 1)
+                                end
+                            end
+                        end
+                        -- sv[e] == nil (effect moi xuat hien SAU khi snapshot) => KHONG dong tay
+                        -- enable vi `or true` cu: day chinh la cho bat nhieu CC do cua game len
+                        -- bat chuan => man do. De game tu quan ly nhung effect moi nay.
                     end)
                 end
             end
@@ -2947,8 +3004,14 @@ __DIO_PerfParticles = function()
         local scope = workspace.Map or workspace
         for _, d in ipairs(scope:GetDescendants()) do
             if d:IsA("ParticleEmitter") or d:IsA("Trail") then
+                if __DIO_PerfPartSaved[d] == nil then
+                    __DIO_PerfPartSaved[d] = {e = d.Enabled, lt = d.Lifetime}
+                end
                 pcall(function() d.Enabled = false end)
             elseif d:IsA("Sparkles") or d:IsA("Smoke") or d:IsA("Fire") then
+                if __DIO_PerfPartSaved[d] == nil then
+                    __DIO_PerfPartSaved[d] = {e = d.Enabled}
+                end
                 pcall(function() d.Enabled = false end)
             end
         end
@@ -2959,6 +3022,9 @@ __DIO_PerfMaterials = function()
     pcall(function()
         for _, zx in next, workspace:GetDescendants() do
             if table.find(Past, zx.ClassName) then
+                if __DIO_PerfMatSaved[zx] == nil then
+                    __DIO_PerfMatSaved[zx] = {m = zx.Material, r = zx.Reflectance}
+                end
                 pcall(function() zx.Material = "Plastic" zx.Reflectance = 0 end)
             end
         end
@@ -2969,10 +3035,42 @@ __DIO_PerfTextures = function()
     pcall(function()
         for _, d in ipairs(workspace:GetDescendants()) do
             if d:IsA("Decal") or d:IsA("Texture") then
+                if __DIO_PerfTexSaved[d] == nil then
+                    __DIO_PerfTexSaved[d] = d.Transparency
+                end
                 pcall(function() d.Transparency = 1 end)
             end
         end
     end)
+end
+
+-- V5.1: HOAN TAC toan bo texture/particle/material da sua => "OFF" ve dung giao dien goc
+__DIO_PerfUndoAssets = function()
+    pcall(function()
+        for d, v in pairs(__DIO_PerfTexSaved or {}) do
+            if typeof(d) == "Instance" and d.Parent then pcall(function() d.Transparency = v end) end
+        end
+    end)
+    pcall(function()
+        for d, v in pairs(__DIO_PerfPartSaved or {}) do
+            if typeof(d) == "Instance" and d.Parent then
+                pcall(function()
+                    d.Enabled = v.e
+                    if v.lt then pcall(function() d.Lifetime = v.lt end) end
+                end)
+            end
+        end
+    end)
+    pcall(function()
+        for d, v in pairs(__DIO_PerfMatSaved or {}) do
+            if typeof(d) == "Instance" and d.Parent then
+                pcall(function() d.Material = v.m d.Reflectance = v.r end)
+            end
+        end
+    end)
+    __DIO_PerfTexSaved = {}
+    __DIO_PerfPartSaved = {}
+    __DIO_PerfMatSaved = {}
 end
 
 __DIO_ApplyPerf = function(mode)
@@ -2980,27 +3078,43 @@ __DIO_ApplyPerf = function(mode)
     __DIO_PerfMode = mode
     if mode == "OFF" or mode == nil then
         local s = __DIO_PerfSaved
+        -- V5.1 FIX MAN HINH DO (phan 2): rac cua RTX khi toggle RTX da TAT ma ColorCorrection
+        -- "__DIO_RTX_CC" (filter cam-do) con sot lai (callback error giua chung chua kip revert)
+        -- => OFF don rac nay di. RTX dang BAT thi KHONG dong vao (de toggle RTX tu quan ly).
         pcall(function()
-            -- Full Bright dang bat (bright==true) thi giu ambient trang, khong de preset ghi de
-            if bright ~= true then
-                Lighting.Ambient = s.Ambient
-                Lighting.ColorShift_Top = s.ColorShift_Top
-                Lighting.ColorShift_Bottom = s.ColorShift_Bottom
+            if _G.RTXMode ~= true then
+                for _, __cc in ipairs(Lighting:GetChildren()) do
+                    if __cc.Name == "__DIO_RTX_CC" then __cc:Destroy() end
+                end
+                local __rc = plr.Character
+                local __rp = __rc and __rc:FindFirstChild("HumanoidRootPart")
+                local __pl = __rp and __rp:FindFirstChild("PointLight")
+                if __pl and __pl.Color == Color3.fromRGB(217, 145, 57) then __pl:Destroy() end
             end
-            Lighting.Brightness = s.Brightness
-            Lighting.FogEnd = s.FogEnd
-            Lighting.FogStart = s.FogStart
-            Lighting.GlobalShadows = s.GlobalShadows
-            Lighting.Technology = s.Technology
         end)
+        -- V5.1: khoi phuc TUNG THUOC TINH rieng le (pcall rieng) => 1 thuoc tinh loi
+        -- khong con lam huy sach phan khoi phuc con lai nhu code cu (1 pcall chung)
+        pcall(function() if bright ~= true and s and s.Ambient then Lighting.Ambient = s.Ambient end end)
+        pcall(function() if bright ~= true and s and s.ColorShift_Top then Lighting.ColorShift_Top = s.ColorShift_Top end end)
+        pcall(function() if bright ~= true and s and s.ColorShift_Bottom then Lighting.ColorShift_Bottom = s.ColorShift_Bottom end end)
+        pcall(function() if s and s.Brightness then Lighting.Brightness = s.Brightness end end)
+        pcall(function() if s and s.FogEnd then Lighting.FogEnd = s.FogEnd end end)
+        pcall(function() if s and s.FogStart then Lighting.FogStart = s.FogStart end end)
+        pcall(function() if s and s.GlobalShadows ~= nil then Lighting.GlobalShadows = s.GlobalShadows end end)
+        pcall(function() if s and s.ClockTime then Lighting.ClockTime = s.ClockTime end end)
+        pcall(function() if s and s.Technology then Lighting.Technology = s.Technology end end)
         pcall(function()
             local t = workspace.Terrain
-            t.WaterWaveSize = s.WaterWaveSize
-            t.WaterWaveSpeed = s.WaterWaveSpeed
-            t.WaterReflectance = s.WaterReflectance
+            if s then
+                if s.WaterWaveSize then t.WaterWaveSize = s.WaterWaveSize end
+                if s.WaterWaveSpeed then t.WaterWaveSpeed = s.WaterWaveSpeed end
+                if s.WaterReflectance then t.WaterReflectance = s.WaterReflectance end
+            end
         end)
-        pcall(function() settings().Rendering.QualityLevel = s.QualityLevel end)
+        pcall(function() if s and s.QualityLevel then settings().Rendering.QualityLevel = s.QualityLevel end end)
         __DIO_PerfEffects(false)
+        -- V5.1: tra lai decal/texture/particle/material ma cac mode nang da tat
+        __DIO_PerfUndoAssets()
         pcall(function() if setfpscap then setfpscap(60) end end)
         return
     end
@@ -3132,7 +3246,7 @@ end)
 local KitsuneCheck = Tabs.Status:AddParagraph("Kitsune Island", "Status: ")
 
 local previousKitsuneStatus = ""
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(3) do
         local currentStatus = __SVC_WS.Map:FindFirstChild("KitsuneIsland") and '✅' or '❌'
         if currentStatus ~= previousKitsuneStatus then
@@ -3140,12 +3254,12 @@ spawn(function()
             previousKitsuneStatus = currentStatus
         end
     end
-end)
+end, "L3135")
 
 local PrehistoricCheck = Tabs.Status:AddParagraph("Prehistoric Island", "Status: ")
 
 local previousPrehistoricStatus = ""
-task.spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(3) do
         local currentStatus = game.Workspace._WorldOrigin.Locations:FindFirstChild("Prehistoric Island") and '✅' or '❌'
         if currentStatus ~= previousPrehistoricStatus then
@@ -3153,12 +3267,12 @@ task.spawn(function()
             previousPrehistoricStatus = currentStatus
         end
     end
-end)
+end, "L3148")
 
 local FrozenCheck = Tabs.Status:AddParagraph("Frozen Dimension", "Status: ")
 
 local previousFrozenStatus = ""
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(3) do
         local currentStatus = game.Workspace._WorldOrigin.Locations:FindFirstChild('Frozen Dimension') and '✅' or '❌'
         if currentStatus ~= previousFrozenStatus then
@@ -3166,12 +3280,12 @@ spawn(function()
             previousFrozenStatus = currentStatus
         end
     end
-end)
+end, "L3161")
 Tabs.Status:AddSection("Status Boss")
 
 local CakePrinceStatus = Tabs.Status:AddParagraph("Cake Prince", "")
 
-spawn(function()
+__DIO_SafeLoop(function()
     local __prevCP = nil
     while __DIO_wait(3) do
         local cakePrince = __SVC_RS.Remotes.CommF_:InvokeServer("CakePrinceSpawner")
@@ -3182,12 +3296,12 @@ spawn(function()
         end
         if killStatus ~= __prevCP then __prevCP = killStatus CakePrinceStatus:SetDesc(killStatus) end
     end
-end)
+end, "L3174")
 
 local RipIndraCheck = Tabs.Status:AddParagraph("Rip Indra", "Status: ")
 
 local previousRipStatus = ""
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(3) do
         local currentStatus = (__SVC_RS:FindFirstChild("rip_indra True Form") or
                                __SVC_WS.Enemies:FindFirstChild("rip_indra")) and '✅' or '❌'
@@ -3196,12 +3310,12 @@ spawn(function()
             previousRipStatus = currentStatus
         end
     end
-end)
+end, "L3190")
 
 local DoughKingCheck = Tabs.Status:AddParagraph("Dough King", "Status: ")
 
 local previousDoughStatus = ""
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(3) do
         local currentStatus = (__SVC_RS:FindFirstChild("Dough King") or
                                __SVC_WS.Enemies:FindFirstChild("Dough King")) and '✅' or '❌'
@@ -3210,7 +3324,7 @@ spawn(function()
             previousDoughStatus = currentStatus
         end
     end
-end)
+end, "L3204")
 
 local TyrantStatus = Tabs.Status:AddParagraph("Tyrant Of The Skies", "")
 local __prevTyrant = nil
@@ -3228,7 +3342,7 @@ local EyeStatus = Tabs.Status:AddParagraph("Check Status Eyes", "")
 local FullMoonCheck = Tabs.Status:AddParagraph("Full Moon", "")
 local __prevMoon = nil
 
-task.spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         local moonTextureId = __SVC_LIGHT.Sky.MoonTextureId
         local moonStatus = "Moon: 0/5"
@@ -3247,11 +3361,11 @@ task.spawn(function()
 
         if moonStatus ~= __prevMoon then __prevMoon = moonStatus FullMoonCheck:SetDesc(moonStatus) end
     end
-end)
+end, "L3231")
 
 local LegendarySwordCheck = Tabs.Status:AddParagraph("Legendary Sword", "Status: ")
 
-spawn(function()
+__DIO_SafeLoop(function()
     local __prevSword = nil
     while __DIO_wait(5) do
         local swordStatus = "Not Found"
@@ -3271,7 +3385,7 @@ spawn(function()
         end
         if swordStatus ~= __prevSword then __prevSword = swordStatus LegendarySwordCheck:SetDesc(swordStatus) end
     end
-end)
+end, "L3254")
 
 WeaponDropdown = Tabs.Main:AddDropdown({
     Name = "Select Weapon",
@@ -3281,7 +3395,7 @@ WeaponDropdown = Tabs.Main:AddDropdown({
     _G.ChooseWP = Value
 end})
 
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         pcall(function()
             if _G.ChooseWP == "Melee" then
@@ -3311,7 +3425,7 @@ spawn(function()
             end
         end)
     end
-end)
+end, "L3284")
 Tabs.Main:AddDropdown({
     Name = "UI Scale",
     Options = {"Small", "Normal", "Big"},
@@ -3582,7 +3696,7 @@ local function __DIO_NearestMob(enemyName, rootPos)
     return best
 end
 
-task.spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(Sec) do
         if _G.Level then
             pcall(function()
@@ -3768,9 +3882,9 @@ task.spawn(function()
             alreadyTeleported = false
         end
     end
-end)
+end, "L3585")
 
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     pcall(function()
       if _G.AutoFarmNear then
@@ -3784,7 +3898,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L3773")
 FactoryRaids = Tabs.Main:AddToggle({
 Name = "Auto Factory Raid",
 Description = "",
@@ -3792,7 +3906,7 @@ Default = false,
 Callback = function(Value)
   _G.AutoFactory = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     pcall(function()
       if _G.AutoFactory then
@@ -3808,7 +3922,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L3795")
 RanBone = Tabs.Main:AddToggle({
 Name = "Auto Random Bones",
 Description = "",
@@ -3823,7 +3937,7 @@ Default = false,
 Callback = function(Value)
   _G.AutoRaidCastle = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.AutoRaidCastle then
       pcall(function()
@@ -3851,7 +3965,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L3826")
 
 Ecto = Tabs.Main:AddToggle({
 Name = "Auto Farm Ectoplasm",
@@ -3860,7 +3974,7 @@ Default = false,
 Callback = function(Value)
   _G.AutoEctoplasm = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     pcall(function()
       if _G.AutoEctoplasm then
@@ -3874,7 +3988,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L3863")
 
 Tabs.Main:AddSection("Chest")
 
@@ -3885,7 +3999,7 @@ Default = false,
 Callback = function(Value)
   _G.AutoFarmChest = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.AutoFarmChest then
       pcall(function()
@@ -3911,7 +4025,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L3888")
 
 local __DIO_ChestBPBusy = false
 local __DIO_ChestBPConn = nil
@@ -3999,7 +4113,7 @@ Callback = function(Value)
     _G.StopWhenChalice = Value
 end})
 
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         if _G.StopWhenChalice and (_G.AutoFarmChest or _G.AutoChestBP) then
             pcall(function()
@@ -4010,82 +4124,117 @@ spawn(function()
             end)
         end
     end
-end)
+end, "L4002")
 
 -- =====================================================================
--- V4 FARM BERRY (dung chung cho Auto Farm Berry + Auto Farm Berry + Hop)
--- BUG CU:
---   1) _tp(Bush.Parent:GetPivot()) => Bush.Parent = Workspace => pivot (0,0,0)
---      => nguoi bi keo ve toa do goc (roi xuong void), khong phai bui berry.
---   2) BerryChild.WorldPivot => WorldPivot chi co o Model; child la Part => nil
---      => _tp(nil) error => LOOP CHET => toggle bat chi con highlight xanh, khong farm.
---   3) fireproximityprompt(BerryChild.ProximityPrompt) => prompt nil => error => chet loop.
---   4) Khong pcall => 1 error duy nhat giet ca loop vinh vien.
--- BAN MOI: chon bui berry GAN NHAT con prompt -> _tp 1 muc tieu duy nhat (muot,
--- khong spam _tp moi 0.25s), fire prompt an toan, pcall toan bo.
+-- V5 FARM BERRY (port logic tu file cu DIO_Hub_Fixed (1).txt + fix cho
+-- tween moi shouldTween) - dung chung cho Auto Farm Berry + Auto Farm Berry + Hop
+-- LOGIC CU giu lai:
+--   - Buoi qua: CollectionService:GetTagged("BerryBush")
+--   - Bush:GetAttributes() => (AttrName, BerryName): BerryName la TEN qua berry
+--   - Bush:GetChildren()   => child la qua berry, co ProximityPrompt ben trong
+--   - Bay den qua + fireproximityprompt(prompt, math.huge)
+--   - "+ Hop": server khong con qua thu duoc => hop server khac
+-- BUG DA FIX cho tween moi (nguyen nhan "bat toggle chi thay highlight, khong farm"):
+--   1) _tp(Bush.Parent:GetPivot()) cu => Bush.Parent = workspace => pivot (0,0,0)
+--      => keo nhan vat ve toa do goc / roi void. => da bo.
+--   2) BerryChild.WorldPivot chi ton tai tren Model; child la Part => nil
+--      => _tp(nil) error => LOOP CHET => chi con highlight. => __DIO_GetInstCF an toan.
+--   3) fireproximityprompt(BerryChild.ProximityPrompt) prompt nil => error => loop chet.
+--      => FindFirstChildOfClass + pcall.
+--   4) Tween moi: _tp chi DAT MUC TIEU roi bay tu tu => fire prompt khi con xa thi
+--      vo nghia. => Chi fire prompt khi da bay gan qua (<= 15 studs); moi luot chon
+--      lai qua GAN NHAT con prompt => bam sat dich, khong spam _phieu cu.
+--   5) Loop deu chay qua __DIO_SafeLoop => error chi tu khoi dong lai, khong chet vinh vien.
 -- =====================================================================
 __DIO_GetInstCF = function(inst)
     if not inst then return nil end
-    if inst:IsA("Model") then
-        local ok, pv = pcall(function() return inst:GetPivot() end)
-        if ok then return pv end
-    end
-    if inst:IsA("BasePart") then
-        local ok, cf = pcall(function() return inst.CFrame end)
-        if ok then return cf end
-    end
+    local __okCF, __cf = pcall(function()
+        if inst:IsA("Model") then
+            return inst:GetPivot()
+        elseif inst:IsA("BasePart") then
+            return inst.CFrame
+        end
+        return nil
+    end)
+    if __okCF then return __cf end
     return nil
 end
 
+-- Bush du dieu kien thu? (logic cu: BerryName la gia tri attribute hoac ten child)
 __DIO_BerryBushPass = function(Bush)
     if not BerryArray then return true end
-    for _, BerryName in pairs(Bush:GetAttributes()) do
-        if table.find(BerryArray, BerryName) then return true end
-    end
-    for _, ch in ipairs(Bush:GetChildren()) do
-        if table.find(BerryArray, ch.Name) then return true end
-    end
+    local __okBP, __pass = pcall(function()
+        for _, BerryName in pairs(Bush:GetAttributes()) do
+            if table.find(BerryArray, BerryName) then return true end
+        end
+        for _, ch in ipairs(Bush:GetChildren()) do
+            if table.find(BerryArray, ch.Name) then return true end
+        end
+        return false
+    end)
+    if __okBP then return __pass end
     return false
 end
 
--- tra ve so bui berry thay duoc (0 => khong co bui nao => co the hop)
+__DIO_BerryBushes = function()
+    local __okBB, __list = pcall(function() return __SVC_CS:GetTagged("BerryBush") end)
+    if __okBB and type(__list) == "table" then return __list end
+    return {}
+end
+
+-- 1 buoc thu berry: chon qua GAN NHAT con prompt, bay den; gan thi fire prompt.
+-- tra ve (tong so bui berry trong server, co qua thu duoc khong)
 __DIO_FarmBerryStep = function()
-    local BerryBush = __SVC_CS:GetTagged("BerryBush")
-    local hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
-    local myPos = hrp and hrp.Position
+    local BerryBush = __DIO_BerryBushes()
+    local __char = plr.Character
+    local __hrp = __char and __char:FindFirstChild("HumanoidRootPart")
+    local myPos = __hrp and __hrp.Position
     local bestCF, bestPrompt, bestDist = nil, nil, math.huge
     for i = 1, #BerryBush do
         local Bush = BerryBush[i]
-        if __DIO_BerryBushPass(Bush) then
+        if Bush and __DIO_BerryBushPass(Bush) then
             for _, BerryChild in ipairs(Bush:GetChildren()) do
-                local pp = BerryChild:FindFirstChildOfClass("ProximityPrompt")
-                if pp then
-                    local cf = __DIO_GetInstCF(BerryChild)
-                    if cf then
-                        local d = myPos and (cf.Position - myPos).Magnitude or 0
-                        if d < bestDist then
-                            bestDist = d bestCF = cf bestPrompt = pp
+                pcall(function()
+                    local pp = BerryChild:FindFirstChildOfClass("ProximityPrompt")
+                    if pp and pp.Enabled ~= false then
+                        local cf = __DIO_GetInstCF(BerryChild)
+                        if cf then
+                            local d = myPos and (cf.Position - myPos).Magnitude or 0
+                            if d < bestDist then
+                                bestDist = d bestCF = cf bestPrompt = pp
+                            end
                         end
                     end
-                end
+                end)
             end
         end
     end
     if bestCF and bestPrompt then
         _tp(bestCF)
-        pcall(fireproximityprompt, bestPrompt, math.huge)
+        -- logic cu: fireproximityprompt(prompt, math.huge) => an hold ngay lap tuc
+        if bestDist <= 15 then
+            pcall(fireproximityprompt, bestPrompt, math.huge)
+        end
+        return #BerryBush, true
     end
-    return #BerryBush
+    return #BerryBush, false
 end
 
+-- ================= AUTO FARM BERRY + HOP (logic cu: het qua => hop) =================
 __DIO_BerryHopT = 0
-spawn(function()
-    while __DIO_wait(Sec) do
+__DIO_SafeLoop(function()
+    while __DIO_wait(1) do
         if _G.AutoBerryH then
-            local __ok, __n = pcall(__DIO_FarmBerryStep)
-            if __ok and __n == 0 and tick() - __DIO_BerryHopT > 6 then
-                -- khong co bui berry nao trong server => hop (cooldown 6s chong spam hop)
+            local __okH, __nH, __hasH = pcall(__DIO_FarmBerryStep)
+            if __okH and not __hasH and tick() - __DIO_BerryHopT > 6 then
+                -- khong con qua berry nao thu duoc trong server => hop (cooldown 6s chong spam)
                 __DIO_BerryHopT = tick()
+                pcall(function()
+                    if Window and Window.Notify then
+                        Window:Notify({Title = "Auto Farm Berry + Hop", Content = "Het berry trong server -> Hop server khac...", Duration = 4})
+                    end
+                end)
                 pcall(function()
                     local ServerList = {}
                     local Success = pcall(function()
@@ -4103,7 +4252,7 @@ spawn(function()
             end
         end
     end
-end)
+end, "BerryHop")
 
 Tabs.Main:AddSection("Farm Mob")
 if World1 then
@@ -4174,7 +4323,7 @@ Tabs.Main:AddToggle({
         end
     end
 })
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         if _G.AutoKillMob then
             pcall(function()
@@ -4197,7 +4346,7 @@ spawn(function()
             end)
         end
     end
-end)
+end, "L4212")
 
 Tabs.Main:AddSection("Farm All Island")
 
@@ -4488,7 +4637,7 @@ Tabs.Main:AddToggle({
     end
 })
 
-task.spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         if not _G.AutoFarmIsland then continue end
         if not _G.SelectIsland then continue end
@@ -4530,7 +4679,7 @@ task.spawn(function()
             _tp(islandPos)
         end
     end
-end)
+end, "L4526")
 
 local function HopServer()
 	local Http = __SVC_HTTP
@@ -4563,7 +4712,7 @@ local function HopServer()
 	until foundServer or attempts >= 8 or not Cursor
 end
 
-spawn(function()
+__DIO_SafeLoop(function()
 	while __DIO_wait(1) do
 		pcall(function()
 			if _G.FarmEliteH then
@@ -4626,7 +4775,7 @@ spawn(function()
 			end
 		end)
 	end
-end)
+end, "L4601")
 
 Tabs.Main:AddSection("Farming Cake")
 
@@ -4651,7 +4800,7 @@ local __DIO_CAKE_MOBS = {
 __DIO_CakeBoss = nil
 __DIO_CakeQuestT = 0
 
-task.spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         if _G.Auto_Cake_Prince then
             pcall(function()
@@ -4785,9 +4934,9 @@ task.spawn(function()
             end)
         end
     end
-end)
+end, "L4689")
 
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(2) do
         if _G.AutoSpawnCP then
             pcall(function()
@@ -4802,7 +4951,7 @@ spawn(function()
             end)
         end
     end
-end)
+end, "L4825")
 
 Tabs.Main:AddToggle({
     Name = "Auto Dough King [Fully]",
@@ -4817,7 +4966,7 @@ Tabs.Main:AddToggle({
     end
 })
 
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         if _G.AutoDoughKing then
             pcall(function()
@@ -4876,7 +5025,7 @@ spawn(function()
             end)
         end
     end
-end)
+end, "L4855")
 
 Tabs.Main:AddToggle({
     Name = "Auto Farm Dough King + Hop",
@@ -4909,7 +5058,7 @@ local function HopServer()
     end)
 end
 
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         if _G.AutoHop_Dough then
             pcall(function()
@@ -4937,7 +5086,7 @@ spawn(function()
             end)
         end
     end
-end)
+end, "L4947")
 
 task.spawn(function()
     while true do
@@ -4986,7 +5135,7 @@ local __DIO_BoneNpcCF = CFrame.new(-9516.99, 172.01, 6078.46)
 local __DIO_BoneSpawn = CFrame.new(-9495.68, 453.58, 5977.34)
 __DIO_BoneQuestT = 0
 
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         if _G.AutoFarm_Bone then
             pcall(function()
@@ -5092,7 +5241,7 @@ spawn(function()
             end)
         end
     end
-end)
+end, "L5024")
 
 function Check_Eye()
 
@@ -5120,7 +5269,7 @@ function Check_Eye()
 end
 
 local __prevEye = nil
-task.spawn(function()
+__DIO_SafeLoop(function()
     local alerted = false
     while __DIO_wait(1) do
         local ok, current, full = pcall(Check_Eye)
@@ -5134,9 +5283,9 @@ task.spawn(function()
             alerted = false
         end
     end
-end)
+end, "L5158")
 
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(Sec) do
         if _G.FarmTyrant then
             pcall(function()
@@ -5185,7 +5334,7 @@ spawn(function()
             end)
         end
     end
-end)
+end, "L5174")
 
 local function sendSkillKey(skillKey)
     local virtualInputManager = __SVC_VIM
@@ -5276,7 +5425,7 @@ Default = false,
 Callback = function(Value)
     getgenv().AutoMaterial = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   local function processEnemy(v, EnemyName)
     if v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") and v.Humanoid.Health > 0 then
       if v.Name == EnemyName then repeat __DIO_wait(0.25) Attack.Kill(v,getgenv().AutoMaterial) until not getgenv().AutoMaterial or not v.Parent or v.Humanoid.Health <= 0 end
@@ -5305,7 +5454,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L5314")
 
 Tabs.Main:AddSection("Farm Boss")
 
@@ -5327,7 +5476,7 @@ FarmBoss = Tabs.Main:AddToggle({
         _G.FarmBoss = value
         if value and not __DIO_FarmBossThr then
             __DIO_FarmBossThr = true
-        spawn(function()
+        __DIO_SafeLoop(function()
             while __DIO_wait(Sec) do
                 if _G.FarmBoss then
                     pcall(function()
@@ -5387,7 +5536,7 @@ FarmBoss = Tabs.Main:AddToggle({
                     end)
                 end
             end
-        end)
+        end, "L5365")
     end
     end
 })
@@ -5413,7 +5562,7 @@ Callback = function(Value)
     _G.AutoFarmAllBoss = Value
 end})
 
-task.spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         if _G.AutoFarmAllBoss then
             pcall(function()
@@ -5458,7 +5607,7 @@ task.spawn(function()
             end)
         end
     end
-end)
+end, "L5451")
 
 __DIO_BOOT("Load Services")
 Tabs.Main:AddSection("Farming Mastery")
@@ -5485,7 +5634,7 @@ spawn(function()
 local __NextNotifScan = 0
 RunService.RenderStepped:Connect(function() pcall(function()if _G.FarmMastery_Dev or _G.FarmMastery_G or _G.FarmMastery_S then if tick() < __NextNotifScan then return end __NextNotifScan = tick() + 0.2 for a,b in pairs(plr.PlayerGui.Notifications:GetChildren())do if b.Name=="NotificationTemplate"then if string.find(b.Text,"Skill locked!")then b:Destroy()end end end end end)end)
 end)
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.FarmMastery_Dev then
       pcall(function()
@@ -5516,7 +5665,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L5523")
 local MasteryGun = Tabs.Main:AddToggle({
 Name = "Auto Mastery Gun",
 Description = "",
@@ -5524,7 +5673,7 @@ Default = false,
 Callback = function(Value)
   _G.FarmMastery_G = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.FarmMastery_G then
       pcall(function()
@@ -5609,7 +5758,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L5562")
 local MasterySword = Tabs.Main:AddToggle({
 Name = "Auto Mastery All Sword",
 Description = "",
@@ -5617,7 +5766,7 @@ Default = false,
 Callback = function(Value)
   _G.FarmMastery_S = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.FarmMastery_S then
@@ -5674,7 +5823,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L5655")
 
 Tabs.Settings:AddSection("Settings Farm")
 Initialize = Tabs.Settings:AddToggle({
@@ -5791,7 +5940,7 @@ __DIO_FireMeleeSwordNow = function(mob)
     end)
 end
 
-task.spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1.5) do
         if not _G.AutoSkillGhost then continue end
         pcall(function()
@@ -5802,7 +5951,7 @@ task.spawn(function()
             if mob then __DIO_FireMeleeSwordNow(mob) end
         end)
     end
-end)
+end, "L5829")
 
 Neartween = Tabs.Settings:AddToggle({
 Name = "Tween speed 600 if near",
@@ -5937,7 +6086,7 @@ Tabs.Settings:AddSlider({
 _G.TweenSpeed = math.clamp(math.floor((tonumber(GetSetting("UI/Settings/Speed Tween", 190)) or 190) + 0.5), 1, 500)
 Tabs.Settings:AddSection("Settings / Configure")
 
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         if _G.AutoHopServer then
             pcall(function()
@@ -5960,7 +6109,7 @@ spawn(function()
             end)
         end
     end
-end)
+end, "L5975")
 Tabs.Settings:AddSlider({
     Name = "Hop Delay (Minutes)",
     Min = 5,
@@ -5998,7 +6147,7 @@ Default = true,
 Callback = function(Value)
   Boud = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if Boud then
@@ -6007,7 +6156,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L6036")
 Tabs.Settings:AddToggle({
     Name = "Auto Haki Observation",
     Default = false,
@@ -6015,7 +6164,7 @@ Tabs.Settings:AddToggle({
         getgenv().Observation = Value
     end
 })
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         if getgenv().Observation then
             pcall(function()
@@ -6023,7 +6172,7 @@ spawn(function()
             end)
         end
     end
-end)
+end, "L6053")
 RaceV3Aura = Tabs.Settings:AddToggle({
 Name = "Auto Turn on Race V3",
 Description = "",
@@ -6032,7 +6181,7 @@ Flag = "AutoTurnonRaceV3",
 Callback = function(Value)
   _G.RaceClickAutov3 = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     pcall(function()
       if _G.RaceClickAutov3 then
@@ -6043,7 +6192,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L6070")
 RaceV4Aura = Tabs.Settings:AddToggle({
 Name = "Auto Turn on Race V4",
 Description = "",
@@ -6051,7 +6200,7 @@ Default = false,
 Callback = function(Value)
   _G.RaceClickAutov4 = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     pcall(function()
       if _G.RaceClickAutov4 then
@@ -6061,7 +6210,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L6089")
 
 RandomAround = Tabs.Settings:AddToggle({
 Name = "Auto Turn on Spin (x,y,z) ",
@@ -6077,7 +6226,7 @@ Default = false,
 Callback = function(Value)
   _G.Safemode = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
 	  if _G.Safemode then
@@ -6086,7 +6235,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L6115")
 
 __DIO_AFKConn = nil
 Tabs.Settings:AddToggle({
@@ -6118,7 +6267,7 @@ Tabs.Settings:AddToggle({
         getgenv().HopServerAdmin = Value
     end
 })
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         pcall(function()
             if getgenv().HopServerAdmin then
@@ -6136,7 +6285,7 @@ spawn(function()
             end
         end)
     end
-end)
+end, "L6156")
 
 Tabs.Settings:AddToggle({
     Name = "No Clip",
@@ -6186,13 +6335,13 @@ Default = false,
 Callback = function(Value)
   _G.Auto_Melee = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
     if _G.Auto_Melee then statsSetings("Melee",pSats) end
     end)
   end
-end)
+end, "L6224")
 
 StatsUpg = Tabs.Esp:AddToggle({
 Name = "Auto Swords",
@@ -6201,13 +6350,13 @@ Default = false,
 Callback = function(Value)
   _G.Auto_Sword = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
     if _G.Auto_Sword then statsSetings("Sword",pSats) end
     end)
   end
-end)
+end, "L6239")
 StatsUpg = Tabs.Esp:AddToggle({
 Name = "Auto Gun",
 Description = "",
@@ -6215,13 +6364,13 @@ Default = false,
 Callback = function(Value)
   _G.Auto_Gun = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
     if _G.Auto_Gun then statsSetings("Gun",pSats) end
     end)
   end
-end)
+end, "L6253")
 StatsUpg = Tabs.Esp:AddToggle({
 Name = "Auto Blox Fruit",
 Description = "",
@@ -6229,13 +6378,13 @@ Default = false,
 Callback = function(Value)
   _G.Auto_DevilFruit = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
     if _G.Auto_DevilFruit then statsSetings("Devil",pSats) end
     end)
   end
-end)
+end, "L6267")
 StatsUpg = Tabs.Esp:AddToggle({
 Name = "Auto Defense",
 Description = "",
@@ -6243,13 +6392,13 @@ Default = false,
 Callback = function(Value)
   _G.Auto_Defense = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
     if _G.Auto_Defense then statsSetings("Defense",pSats) end
     end)
   end
-end)
+end, "L6281")
 
 __DIO_BOOT("Load Tabs")
 Tabs.Fish:AddSection("Fishing")
@@ -6298,7 +6447,7 @@ BuyBaitToggle = Tabs.Fish:AddToggle({
     end
 })
 
-task.spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(2) do
         if _G.AutoBuyBait and _G.SelectedBait then
             pcall(function()
@@ -6306,7 +6455,7 @@ task.spawn(function()
             end)
         end
     end
-end)
+end, "L6336")
 
 FishingToggle = Tabs.Fish:AddToggle({
     Name = "Auto Fishing",
@@ -6344,7 +6493,7 @@ pcall(function()
 end)
 local MaxDistance = (__FishCfg and __FishCfg.Rod and __FishCfg.Rod.MaxLaunchDistance) or 100
 
-task.spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         if _G.AutoFishing then
             pcall(function()
@@ -6385,7 +6534,7 @@ task.spawn(function()
             end)
         end
     end
-end)
+end, "L6382")
 
 FishingQ = Tabs.Fish:AddToggle({
 Name = "Auto Quest Fishing",
@@ -6411,7 +6560,7 @@ local function HasQuest3()
     return false
 end
 
-task.spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         if _G.AutoFishingQuest then
             pcall(function()
@@ -6421,7 +6570,7 @@ task.spawn(function()
             end)
         end
     end
-end)
+end, "L6449")
 
 QuestToggle = Tabs.Fish:AddToggle({
     Name = "Auto Complete Quest",
@@ -6438,7 +6587,7 @@ QuestToggle = Tabs.Fish:AddToggle({
     end
 })
 
-task.spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(5) do
         if _G.AutoQuestComplete then
             pcall(function()
@@ -6446,7 +6595,7 @@ task.spawn(function()
             end)
         end
     end
-end)
+end, "L6476")
 
 SellFishToggle = Tabs.Fish:AddToggle({
     Name = "Auto Sell Fish",
@@ -6463,7 +6612,7 @@ SellFishToggle = Tabs.Fish:AddToggle({
     end
 })
 
-task.spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(5) do
         if _G.AutoSellFish then
             pcall(function()
@@ -6471,7 +6620,7 @@ task.spawn(function()
             end)
         end
     end
-end)
+end, "L6501")
 
 SpamSkillZ = Tabs.Fish:AddToggle({
 Name = "Auto Spam Skill Z",
@@ -6487,7 +6636,7 @@ local __Net4 = ReplicatedStorage4:FindFirstChild("Modules")
 __Net4 = __Net4 and __Net4:FindFirstChild("Net")
 local RFJobToolAbilities4 = __Net4 and __Net4:FindFirstChild("RF/JobToolAbilities")
 
-task.spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         if _G.AutoSkillZ then
             pcall(function()
@@ -6495,7 +6644,7 @@ task.spawn(function()
             end)
         end
     end
-end)
+end, "L6525")
 
 TravelDress = Tabs.Quests:AddToggle({
 Name = "Auto Quest Sea 2",
@@ -6504,7 +6653,7 @@ Default = false,
 Callback = function(Value)
   _G.TravelDres = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.TravelDres then
@@ -6531,7 +6680,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L6542")
 Zou = Tabs.Quests:AddToggle({
 Name = "Auto Quest Sea 3",
 Description = "",
@@ -6539,7 +6688,7 @@ Default = false,
 Callback = function(Value)
   _G.AutoZou = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.AutoZou then
@@ -6644,7 +6793,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L6577")
 Tabs.Quests:AddSection("Farm Rip Indra")
 
 Tabs.Quests:AddToggle({
@@ -6654,7 +6803,7 @@ Default = false,
 Callback = function(Value)
   _G.AutoRipIngay = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.AutoRipIngay then
@@ -6671,7 +6820,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L6692")
 
 Tabs.Quests:AddToggle({
 Name = "Auto Unlocked Haki",
@@ -6691,7 +6840,7 @@ HakiCalculate = function(Part)
   local ID = {["Really red"] = "Pure Red";["Oyster"] = "Snow White";["Hot pink"] = "Winter Sky";};
   if Part and Part.BrickColor then return (ID[tostring(Part.BrickColor)])end;
 end;
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.AutoUnHaki then
       pcall(function()
@@ -6710,7 +6859,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L6729")
 Tabs.Quests:AddSection("Bone")
 Tabs.Quests:AddToggle({
 Name = "Auto Soul Reaper",
@@ -6719,7 +6868,7 @@ Default = false,
 Callback = function(Value)
   _G.AutoHytHallow = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.AutoHytHallow then
       pcall(function()
@@ -6737,9 +6886,9 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L6757")
 
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.Auto_Random_Bone then
@@ -6747,7 +6896,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L6777")
 Lucky = Tabs.Quests:AddToggle({
 Name = "Auto Try Luck Gravestone",
 Description = "",
@@ -6755,7 +6904,7 @@ Default = false,
 Callback = function(Value)
   _G.TryLucky = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.TryLucky then
 
@@ -6771,7 +6920,7 @@ spawn(function()
     end)
     end
   end
-end)
+end, "L6793")
 Pray = Tabs.Quests:AddToggle({
 Name = "Auto Pray Gravestone",
 Description = "",
@@ -6779,7 +6928,7 @@ Default = false,
 Callback = function(Value)
   _G.Praying = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.Praying then
 
@@ -6795,12 +6944,12 @@ spawn(function()
     end)
     end
   end
-end)
+end, "L6817")
 Tabs.Quests:AddSection("Farm Elite Hunter")
 
 local Process = Tabs.Quests:AddParagraph("Elites Process", "")
 __EliteProg = ""
-spawn(function()
+__DIO_SafeLoop(function()
     local __prevElite = nil
     while __DIO_wait(2) do
         pcall(function()
@@ -6810,10 +6959,10 @@ spawn(function()
             if __v ~= __prevElite then __prevElite = __v Process:SetDesc(__v) end
         end)
     end
-end)
+end, "L6838")
 
 local EliteHunter = Tabs.Quests:AddParagraph("Elite Spawn", "Status: ")
-spawn(function()
+__DIO_SafeLoop(function()
     local previousStatus = ""
     while __DIO_wait(2) do
         local currentStatus = (__SVC_RS:FindFirstChild("Diablo") or
@@ -6827,7 +6976,7 @@ spawn(function()
             previousStatus = currentStatus
         end
     end
-end)
+end, "L6851")
 
 EliteQ = Tabs.Quests:AddToggle({
     Name = "Auto Farm Elite",
@@ -6837,7 +6986,7 @@ EliteQ = Tabs.Quests:AddToggle({
     _G.FarmEliteHunt = Value
 end})
 
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         pcall(function()
             if _G.FarmEliteHunt then
@@ -6898,7 +7047,7 @@ spawn(function()
             end
         end)
     end
-end)
+end, "L6875")
 
 EliteH = Tabs.Quests:AddToggle({
 	Name = "Auto Farm Elite + Hop",
@@ -6943,7 +7092,7 @@ Default = false,
 Callback = function(Value)
   _G.Auto_Tushita = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.Auto_Tushita then
@@ -6974,7 +7123,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L6981")
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Yama Sword",
 Description = "",
@@ -6982,7 +7131,7 @@ Default = false,
 Callback = function(Value)
   _G.Auto_Yama = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.Auto_Yama then
@@ -7002,7 +7151,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L7020")
 
 Tabs.Quests:AddSection("Skull Guitars / Misc")
 Tabs.Quests:AddToggle({
@@ -7012,7 +7161,7 @@ Default = false,
 Callback = function(Value)
   _G.Auto_Soul_Guitar = Value
 end})
-task.spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.Auto_Soul_Guitar then
       pcall(function()
@@ -7029,7 +7178,7 @@ task.spawn(function()
       end)
     end
   end
-end)
+end, "L7050")
 function getT(num)
     local rotation
     if num == 1 then
@@ -7073,7 +7222,7 @@ GetFirePlacard = function(Number,Side)
   end
 end
 
-spawn(function()
+__DIO_SafeLoop(function()
   repeat __DIO_wait(0.25) until _G.Auto_Soul_Guitar
   while __DIO_wait(Sec) do
     pcall(function()
@@ -7182,7 +7331,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L7111")
 Tabs.Quests:AddToggle({
 Name = "Auto Farm Material Skull Guitar",
 Description = "",
@@ -7190,7 +7339,7 @@ Default = false,
 Callback = function(Value)
   _G.AutoMatSoul = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.AutoMatSoul and GetWP("Skull Guitar") == false then
@@ -7230,7 +7379,7 @@ spawn(function()
 	   end
     end)
   end
-end)
+end, "L7228")
 
 Tabs.Quests:AddSection("Cursed Dual Katana")
 Q = Tabs.Quests:AddToggle({
@@ -7240,7 +7389,7 @@ Default = false,
 Callback = function(Value)
   _G.CDK = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.CDK then
@@ -7261,7 +7410,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L7278")
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Yama CDK",
 Description = "",
@@ -7269,7 +7418,7 @@ Default = false,
 Callback = function(Value)
   _G.CDK_YM = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     pcall(function()
       if _G.CDK_YM then
@@ -7362,8 +7511,8 @@ spawn(function()
       end
     end)
   end
-end)
-spawn(function()
+end, "L7307")
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     pcall(function()
       if _G.CDK_YM then
@@ -7398,7 +7547,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L7401")
 
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Tushita CDK",
@@ -7407,7 +7556,7 @@ Default = false,
 Callback = function(Value)
   _G.CDK_TS = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     pcall(function()
       if _G.CDK_TS then
@@ -7518,7 +7667,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L7445")
 Tabs.Quests:AddSection("True Triple Katana Sword")
 Tabs.Quests:AddButton({
 Name = "Buy Legendary Sword",
@@ -7541,7 +7690,7 @@ Default = false,
 Callback = function(Value)
   _G.Tp_LgS = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.Tp_LgS then
 	  pcall(function()
@@ -7551,7 +7700,7 @@ spawn(function()
 	  end)
     end
   end
-end)
+end, "L7579")
 
 Tabs.Quests:AddSection("Pole / God Enal's")
 Q = Tabs.Quests:AddToggle({
@@ -7561,7 +7710,7 @@ Default = false,
 Callback = function(Value)
   _G.AutoPole = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.AutoPole then
       pcall(function()
@@ -7574,7 +7723,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L7599")
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Pole V2 [Beta]",
 Description = "",
@@ -7582,7 +7731,7 @@ Default = false,
 Callback = function(Value)
   _G.AutoPoleV2 = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.AutoPoleV2 then
@@ -7608,7 +7757,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L7620")
 Tabs.Quests:AddToggle({
 Name = "Auto Saw Sword",
 Description = "",
@@ -7616,7 +7765,7 @@ Default = false,
 Callback = function(Value)
   _G.AutoSaw = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     pcall(function()
       if _G.AutoSaw then
@@ -7627,7 +7776,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L7654")
 
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Saber Sword",
@@ -7636,7 +7785,7 @@ Default = false,
 Callback = function(Value)
   _G.AutoSaber = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     pcall(function()
       if _G.AutoSaber and plr.Data.Level.Value >= 200 and not plr.Backpack:FindFirstChild("Saber") and not plr.Character:FindFirstChild("Saber") then
@@ -7710,7 +7859,7 @@ if replicated.Remotes.CommF_:InvokeServer("ProQuestProgress","RichSon") == nil t
       end
     end)
   end
-end)
+end, "L7674")
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Cybrog",
 Description = "",
@@ -7718,7 +7867,7 @@ Default = false,
 Callback = function(Value)
   _G.AutoColShad = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.AutoColShad then
       pcall(function()
@@ -7729,7 +7878,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L7756")
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Usoap's Hat",
 Description = "",
@@ -7737,7 +7886,7 @@ Default = false,
 Callback = function(Value)
   _G.AutoGetUsoap = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.AutoGetUsoap then
@@ -7751,7 +7900,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L7775")
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Bisento V2",
 Description = "",
@@ -7759,7 +7908,7 @@ Default = false,
 Callback = function(Value)
   _G.Greybeard = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.Greybeard then
       pcall(function()
@@ -7775,7 +7924,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L7797")
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Warden Sword",
 Description = "",
@@ -7783,7 +7932,7 @@ Default = false,
 Callback = function(Value)
   _G.WardenBoss = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.WardenBoss then
       pcall(function()
@@ -7794,7 +7943,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L7821")
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Marine Coat",
 Description = "",
@@ -7802,7 +7951,7 @@ Default = false,
 Callback = function(Value)
   _G.MarinesCoat = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.MarinesCoat then
       pcall(function()
@@ -7813,7 +7962,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L7840")
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Swan Coat",
 Description = "",
@@ -7821,7 +7970,7 @@ Default = false,
 Callback = function(Value)
   _G.SwanCoat = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.SwanCoat then
       pcall(function()
@@ -7832,7 +7981,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L7859")
 
 Tabs.Quests:AddSection("Rengoku Sword")
 Q = Tabs.Quests:AddToggle({
@@ -7842,7 +7991,7 @@ Default = false,
 Callback = function(Value)
   _G.IceBossRen = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     -- V4: pcall BEN TRONG while (code cu: error 1 lan => loop chet vinh vien => toggle chi con highlight)
     pcall(function()
@@ -7854,7 +8003,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L7880")
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Key Rengoku",
 Description = "",
@@ -7862,7 +8011,7 @@ Default = false,
 Callback = function(Value)
   _G.KeysRen = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     pcall(function()
       if _G.KeysRen then
@@ -7878,7 +8027,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L7900")
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Dragon Trident",
 Description = "",
@@ -7886,7 +8035,7 @@ Default = false,
 Callback = function(Value)
   _G.AutoTridentW2 = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     pcall(function()
       if _G.AutoTridentW2 then
@@ -7897,7 +8046,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L7924")
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Long Sword",
 Description = "",
@@ -7905,7 +8054,7 @@ Default = false,
 Callback = function(Value)
   _G.LongsWord = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     pcall(function()
       if _G.LongsWord then
@@ -7916,7 +8065,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L7943")
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Black Spikey",
 Description = "",
@@ -7924,7 +8073,7 @@ Default = false,
 Callback = function(Value)
   _G.BlackSpikey = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.BlackSpikey then
       pcall(function()
@@ -7935,7 +8084,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L7962")
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Dark Blade V3",
 Description = "",
@@ -7943,7 +8092,7 @@ Default = false,
 Callback = function(Value)
   _G.DarkBladev3 = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.DarkBladev3 and World2 then
@@ -7961,7 +8110,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L7981")
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Midnight Blade",
 Description = "",
@@ -7969,7 +8118,7 @@ Default = false,
 Callback = function(Value)
   _G.AutoEcBoss = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.AutoEcBoss then
@@ -7986,7 +8135,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L8007")
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Darkbeard",
 Description = "",
@@ -7994,7 +8143,7 @@ Default = false,
 Callback = function(Value)
   _G.Auto_Def_DarkCoat = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.Auto_Def_DarkCoat then
       pcall(function()
@@ -8009,7 +8158,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L8032")
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Unlocked DonSwan",
 Description = "",
@@ -8017,7 +8166,7 @@ Default = false,
 Callback = function(Value)
   _G.Auto_DonAcces = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.Auto_DonAcces then
       pcall(function()
@@ -8059,7 +8208,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L8055")
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Swan Glasses",
 Description = "",
@@ -8067,7 +8216,7 @@ Default = false,
 Callback = function(Value)
   _G.Auto_SwanGG = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.Auto_SwanGG then
       pcall(function()
@@ -8078,7 +8227,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L8105")
 
 Tabs.Quests:AddSection("Cavender + Twin Hooks + Bigmom")
 Q = Tabs.Quests:AddToggle({
@@ -8088,7 +8237,7 @@ Default = false,
 Callback = function(Value)
   _G.AutoBigmom = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.AutoBigmom then
       pcall(function()
@@ -8099,7 +8248,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L8126")
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Canvendish Sword",
 Description = "",
@@ -8107,7 +8256,7 @@ Default = false,
 Callback = function(Value)
   _G.Auto_Cavender = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.Auto_Cavender then
@@ -8118,7 +8267,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L8145")
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Twin Hooks",
 Description = "",
@@ -8126,7 +8275,7 @@ Default = false,
 Callback = function(Value)
   _G.TwinHook = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.TwinHook then
@@ -8139,7 +8288,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L8164")
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Serpent Bow",
 Description = "",
@@ -8147,7 +8296,7 @@ Default = false,
 Callback = function(Value)
   _G.AutoSerpentBow = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     -- V4: them pcall (loop tran: error 1 lan => chet vinh vien => toggle chi con highlight)
     pcall(function()
@@ -8159,7 +8308,7 @@ spawn(function()
     end
     end)
   end
-end)
+end, "L8185")
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Lei Accessory",
 Description = "",
@@ -8167,7 +8316,7 @@ Default = false,
 Callback = function(Value)
   _G.AutoKilo = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.AutoKilo then
       pcall(function()
@@ -8178,7 +8327,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L8205")
 Tabs.Quests:AddSection("Collect Berry")
 
 Berry = Tabs.Quests:AddToggle({
@@ -8189,13 +8338,13 @@ Callback = function(Value)
   _G.AutoBerry = Value
 end})
 -- V4: dung __DIO_FarmBerryStep (xem phan Auto Farm Berry + Hop) + pcall chong chet loop
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.AutoBerry then
       pcall(__DIO_FarmBerryStep)
     end
   end
-end)
+end, "L8227")
 
 BerryH = Tabs.Quests:AddToggle({
 Name = "Auto Farm Berry + Hop",
@@ -8212,7 +8361,7 @@ Default = false,
 Callback = function(Value)
   _G.Tp_MasterA = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.Tp_MasterA then
 	  pcall(function()
@@ -8222,7 +8371,7 @@ spawn(function()
 	 end)
     end
   end
-end)
+end, "L8250")
 Tabs.Quests:AddButton({
 Name = "Buy Buso Colors",
 Description = "",
@@ -8325,7 +8474,7 @@ Default = false,
 Callback = function(Value)
   _G.obsFarm = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     pcall(function()
       if _G.obsFarm then
@@ -8339,8 +8488,8 @@ spawn(function()
       end
     end)
   end
-end)
-spawn(function()
+end, "L8363")
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     pcall(function()
       if _G.obsFarm then
@@ -8394,7 +8543,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L8378")
 
 __DIO_GetCurrentQuest = function()
   local __ok, __res = pcall(function()
@@ -8427,7 +8576,7 @@ Default = false,
 Callback = function(Value)
   _G.AutoKenVTWO = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.AutoKenVTWO then
       pcall(function()
@@ -8501,7 +8650,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L8465")
 
 Bartilo = Tabs.Quests:AddToggle({
 Name = "Auto Done Bartilo Quest",
@@ -8510,7 +8659,7 @@ Default = false,
 Callback = function(Value)
   _G.Bartilo_Quest = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     pcall(function()
       if _G.Bartilo_Quest and plr.Data.Level.Value >= 850 then
@@ -8570,7 +8719,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L8548")
 CitizenQ = Tabs.Quests:AddToggle({
 Name = "Auto Done Citizen Quest",
 Description = "",
@@ -8578,7 +8727,7 @@ Default = false,
 Callback = function(Value)
   _G.CitizenQuest = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.CitizenQuest then
@@ -8619,7 +8768,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L8616")
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Training Dummy",
 Description = "",
@@ -8627,7 +8776,7 @@ Default = false,
 Callback = function(Value)
   _G.DummyMan = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.DummyMan then
       pcall(function()
@@ -8645,7 +8794,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L8665")
 
 __DIO_FlagBorrow = {}
 function __DIO_BorrowFlag(owner, name)
@@ -8749,7 +8898,7 @@ Callback = function(Value)
   _G.Auto_SuperHuman = Value
   if not Value then __DIO_ReleaseAll("Auto_SuperHuman") end
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.Auto_SuperHuman then
       pcall(function()
@@ -8783,7 +8932,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L8787")
 DeathStep = Tabs.Shop:AddToggle({
 Name = "Auto DeathStep",
 Description = "",
@@ -8792,7 +8941,7 @@ Callback = function(Value)
   _G.AutoDeathStep = Value
   if not Value then __DIO_ReleaseAll("AutoDeathStep") end
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.AutoDeathStep then
       pcall(function()
@@ -8825,7 +8974,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L8830")
 SharkManV2 = Tabs.Shop:AddToggle({
 Name = "Auto Sharkman Karate",
 Description = "",
@@ -8834,7 +8983,7 @@ Callback = function(Value)
   _G.Auto_SharkMan_Karate = Value
   if not Value then __DIO_ReleaseAll("Auto_SharkMan_Karate") end
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.Auto_SharkMan_Karate then
       pcall(function()
@@ -8866,7 +9015,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L8872")
 ElectricClaw = Tabs.Shop:AddToggle({
 Name = "Auto ElectricClaw",
 Description = "",
@@ -8875,7 +9024,7 @@ Callback = function(Value)
   _G.Auto_Electric_Claw = Value
   if not Value then __DIO_ReleaseAll("Auto_Electric_Claw") end
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.Auto_Electric_Claw then
       pcall(function()
@@ -8898,7 +9047,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L8913")
 DragonTalon = Tabs.Shop:AddToggle({
 Name = "Auto DragonTalon",
 Description = "",
@@ -8907,7 +9056,7 @@ Callback = function(Value)
   _G.AutoDragonTalon = Value
   if not Value then __DIO_ReleaseAll("AutoDragonTalon") end
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.AutoDragonTalon then
       pcall(function()
@@ -8928,7 +9077,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L8945")
 Godhuman = Tabs.Shop:AddToggle({
 Name = "Auto Godhuman",
 Description = "",
@@ -8937,7 +9086,7 @@ Callback = function(Value)
   _G.Auto_God_Human = Value
   if not Value then __DIO_ReleaseAll("Auto_God_Human") end
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     pcall(function()
       if _G.Auto_God_Human then
@@ -8982,7 +9131,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L8975")
 SanguineArt = Tabs.Shop:AddToggle({
 Name = "Auto SanguineArt",
 Description = "",
@@ -8991,7 +9140,7 @@ Callback = function(Value)
   _G.Snaguine = Value
   if not Value then __DIO_ReleaseAll("Snaguine") end
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.Snaguine then
       pcall(function()
@@ -9037,11 +9186,11 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L9029")
 
 Tabs.Race:AddSection("Mystic Island / Full Moon")
 local FullMOOn = Tabs.Race:AddParagraph("FullMoon Status", "")
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         pcall(function()
             local moon8 = "http://www.roblox.com/asset/?id=9709150401"
@@ -9073,7 +9222,7 @@ spawn(function()
             end
         end)
     end
-end)
+end, "L9079")
 Tabs.Race:AddToggle({
 Name = "Auto Find Mirage Island",
 Description = "",
@@ -9081,7 +9230,7 @@ Default = false,
 Callback = function(Value)
   _G.FindMirage = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.FindMirage then
       pcall(function()
@@ -9136,7 +9285,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L9119")
 Tabs.Race:AddToggle({
     Name = "Esp Mirage Island",
     Description = "",
@@ -9204,7 +9353,7 @@ Tabs.Race:AddToggle({
     end
 })
 
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         pcall(function()
             if _G.AutoMysticIsland then
@@ -9216,7 +9365,7 @@ spawn(function()
             end
         end)
     end
-end)
+end, "L9242")
 Tabs.Race:AddToggle({
 Name = "Auto Tween To Highest Point",
 Description = "",
@@ -9224,7 +9373,7 @@ Default = false,
 Callback = function(Value)
   _G.HighestMirage = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.HighestMirage then
       pcall(function()
@@ -9232,7 +9381,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L9262")
 Tabs.Race:AddToggle({
 Name = "Auto Collect Gear",
 Description = "",
@@ -9240,7 +9389,7 @@ Default = false,
 Callback = function(Value)
   _G.TPGEAR = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     -- V4: pcall BEN TRONG while + guard MysticIsland nil (khong co dao => error => loop chet)
     pcall(function()
@@ -9256,7 +9405,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L9278")
 Tabs.Race:AddToggle({
 Name = "Change Transparency can see",
 Description = "",
@@ -9264,7 +9413,7 @@ Default = false,
 Callback = function(Value)
   _G.can = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     -- V4: pcall BEN TRONG while + guard MysticIsland nil (loop cu chet vinh vien khi chua co dao)
     pcall(function()
@@ -9284,7 +9433,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L9302")
 Tabs.Race:AddToggle({
 Name = "Auto Tween Advanced Fruit Dealer",
 Description = "",
@@ -9292,7 +9441,7 @@ Default = false,
 Callback = function(Value)
   _G.Addealer = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.Addealer then
 	  pcall(function()
@@ -9302,7 +9451,7 @@ spawn(function()
 	 end)
     end
   end
-end)
+end, "L9330")
 Tabs.Race:AddToggle({
 Name = "Auto Collect Mirage Chest",
 Description = "",
@@ -9310,7 +9459,7 @@ Default = false,
 Callback = function(Value)
   _G.FarmChestM = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.FarmChestM then
       pcall(function()
@@ -9338,7 +9487,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L9348")
 
 Tabs.Race:AddButton({
 Name = "Talk With Stone",
@@ -9360,7 +9509,7 @@ function MoveCamtoMoon()
 workspace.CurrentCamera.CFrame = CFrame.new(workspace.CurrentCamera.CFrame.Position,Lighting:GetMoonDirection() + workspace.CurrentCamera.CFrame.Position)
 plr.Character.HumanoidRootPart.CFrame = CFrame.new(plr.Character.HumanoidRootPart.Position,Lighting:GetMoonDirection() + plr.Character.HumanoidRootPart.CFrame.Position)
 end
-task.spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if LookM then
       pcall(MoveCamtoMoon)
@@ -9368,7 +9517,7 @@ task.spawn(function()
       replicated.Remotes.CommE:FireServer("ActivateAbility")
     end
   end
-end)
+end, "L9398")
 
 Tabs.Race:AddToggle({
     Name = "Look Moon + Auto V3",
@@ -9385,7 +9534,7 @@ function MoveCamtoMoon()
     plr.Character.HumanoidRootPart.CFrame = CFrame.new(plr.Character.HumanoidRootPart.Position, plr.Character.HumanoidRootPart.Position + moonDir)
 end
 
-task.spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         if LookMV3 then
             pcall(MoveCamtoMoon)
@@ -9395,7 +9544,7 @@ task.spawn(function()
             UIS:SendKeyEvent(false, "T", false, game)
         end
     end
-end)
+end, "L9423")
 
 Tabs.Race:AddSection("Upgrade Races V2 And V3")
 RaceMink = Tabs.Race:AddToggle({
@@ -9405,7 +9554,7 @@ Default = false,
 Callback = function(Value)
   _G.Auto_Mink = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     pcall(function()
       if _G.Auto_Mink then
@@ -9435,7 +9584,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L9443")
 RaceHuman = Tabs.Race:AddToggle({
 Name = "Auto Upgrade Human",
 Description = "",
@@ -9443,7 +9592,7 @@ Default = false,
 Callback = function(Value)
   _G.Auto_Human = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.Auto_Human then
@@ -9482,7 +9631,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L9481")
 RaceSky = Tabs.Race:AddToggle({
 Name = "Auto Upgrade Angel",
 Description = "",
@@ -9490,7 +9639,7 @@ Default = false,
 Callback = function(Value)
   _G.Auto_Skypiea = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.Auto_Skypiea then
@@ -9525,7 +9674,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L9528")
 RaceFish = Tabs.Race:AddToggle({
 Name = "Auto Upgrade FishMan",
 Description = "",
@@ -9533,7 +9682,7 @@ Default = false,
 Callback = function(Value)
   _G.Auto_Fish = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.Auto_Fish then
@@ -9564,7 +9713,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L9571")
 
 Tabs.Race:AddSection("Trials Quest V4")
 local CheckTier = Tabs.Race:AddParagraph("Tiers V4 Status", "")
@@ -9584,7 +9733,7 @@ Default = false,
 Callback = function(Value)
   _G.Lver = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.Lver then
       pcall(function()
@@ -9594,7 +9743,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L9622")
 Train = Tabs.Race:AddToggle({
 Name = "Auto Train V4",
 Description = "",
@@ -9602,7 +9751,7 @@ Default = false,
 Callback = function(Value)
   _G.AcientOne = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.AcientOne then
@@ -9622,7 +9771,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L9640")
 
 Tabs.Race:AddButton({
     Name = "Teleport to Temple of Time",
@@ -9702,7 +9851,7 @@ Default = false,
 Callback = function(Value)
   _G.TPDoor = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.TPDoor then
@@ -9722,7 +9871,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L9740")
 Trials = Tabs.Race:AddToggle({
 Name = "Auto Complete Trial Race",
 Description = "",
@@ -9741,7 +9890,7 @@ GetSeaBeastTrial = function()
     end
   end
 end
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.Complete_Trials then
@@ -9751,8 +9900,8 @@ spawn(function()
       end
     end)
   end
-end)
-spawn(function()
+end, "L9779")
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.Complete_Trials then
@@ -9780,8 +9929,8 @@ spawn(function()
       end
     end)
   end
-end)
-spawn(function()
+end, "L9790")
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.Complete_Trials then
@@ -9791,8 +9940,8 @@ spawn(function()
       end
     end)
   end
-end)
-spawn(function()
+end, "L9819")
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.Complete_Trials then
@@ -9802,8 +9951,8 @@ spawn(function()
       end
     end)
   end
-end)
-spawn(function()
+end, "L9830")
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     pcall(function()
       if _G.Complete_Trials then
@@ -9815,7 +9964,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L9841")
 AutoKill = Tabs.Race:AddToggle({
 Name = "Auto Kill Player After Trial",
 Description = "",
@@ -9823,7 +9972,7 @@ Default = false,
 Callback = function(Value)
   _G.Defeating = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.Defeating then
@@ -9837,7 +9986,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L9861")
 
 Tabs.Prehistoric:AddSection("Dojo Quest")
 Tabs.Prehistoric:AddButton({
@@ -9855,7 +10004,7 @@ Callback = function(Value)
   _G.Dojoo = Value
 end})
 function printBeltName(data) if type(data) == "table" and data.Quest["BeltName"] then return data.Quest["BeltName"] end end
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.Dojoo then
       pcall(function()
@@ -9935,7 +10084,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L9893")
 BlazeEM = Tabs.Prehistoric:AddToggle({
 Name = "Auto Dragon Hunter",
 Description = "",
@@ -9946,7 +10095,7 @@ end})
 checkQuesta=function()local a={[1]={["Context"]="Check"}}local b=nil;pcall(function()local c={[1]={["Context"]="RequestQuest"}}__SVC_RS:WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RF/DragonHunter"):InvokeServer(unpack(c))end)local d,e=pcall(function()b=__SVC_RS:WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RF/DragonHunter"):InvokeServer(unpack(a))end)local f=false;local g;local h;local i;if b then if b.Text then f=true;local j=b.Text;if string.find(tostring(j),"Defeat")then i=1;g=string.sub(tostring(j),8,9)g=tonumber(g)local k={"Hydra Enforcer","Venomous Assailant"}for l,m in pairs(k)do if string.find(j,m)then h=m;break end end elseif string.find(tostring(j),"Destroy")then g=10;i=2;h=nil end end end;return f,h,g,i end
 BackTODoJo=function()for a,b in pairs(__SVC_PLR.LocalPlayer.PlayerGui.Notifications:GetChildren())do if b.Name=="NotificationTemplate"then if string.find(b.Text,"Head back to the Dojo to complete more tasks")then return true end end end;return false end
 DragonMobClear=function(a,b,c)if workspace.Enemies:FindFirstChild(b)then for d,e in pairs(workspace.Enemies:GetChildren())do if e.Name==b and Attack.Alive(e)then if a then Attack.Kill(e,a)end end end else _tp(c)end end
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.FarmBlazeEM then
       pcall(function()
@@ -9988,8 +10137,8 @@ spawn(function()
       end)
     end
   end
-end)
-spawn(function()
+end, "L9984")
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.FarmBlazeEM then
       pcall(function()
@@ -10000,7 +10149,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L10027")
 
 Tabs.Prehistoric:AddSection("Draco Trial")
 GetQuestDracoLevel = function()
@@ -10014,7 +10163,7 @@ Default = false,
 Callback = function(Value)
   _G.UPGDrago = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.UPGDrago then
@@ -10032,7 +10181,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L10052")
 Toggle = Tabs.Prehistoric:AddToggle({
 Name = "Auto Draco (V1)",
 Description = "",
@@ -10040,7 +10189,7 @@ Default = false,
 Callback = function(Value)
   _G.DragoV1 = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.DragoV1 then
@@ -10057,7 +10206,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L10078")
 fireflower = Tabs.Prehistoric:AddToggle({
 Name = "Auto Draco (V2)",
 Description = "",
@@ -10065,7 +10214,7 @@ Default = false,
 Callback = function(Value)
   _G.AutoFireFlowers = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     -- V4: them pcall (loop tran: character respawn/HumanoidRootPart nil => error => loop chet)
     pcall(function()
@@ -10092,7 +10241,7 @@ spawn(function()
     end
     end)
   end
-end)
+end, "L10103")
 Toggle = Tabs.Prehistoric:AddToggle({
 Name = "Auto Draco (V3)",
 Description = "",
@@ -10100,7 +10249,7 @@ Default = false,
 Callback = function(Value)
   _G.DragoV3 = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.DragoV3 then
@@ -10115,7 +10264,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L10138")
 Toggle = Tabs.Prehistoric:AddToggle({
 Name = "Auto Relic Draco Trial [Beta]",
 Description = "",
@@ -10123,7 +10272,7 @@ Default = false,
 Callback = function(Value)
   _G.Relic123 = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.Relic123 then
       pcall(function()
@@ -10145,7 +10294,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L10161")
 Toggle = Tabs.Prehistoric:AddToggle({
 Name = "Auto Train Draco v4",
 Description = "",
@@ -10153,7 +10302,7 @@ Default = false,
 Callback = function(Value)
   _G.TrainDrago = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.TrainDrago then
@@ -10173,7 +10322,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L10191")
 dragoTpVolcano = Tabs.Prehistoric:AddToggle({
 Name = "Tween to Draco Trials",
 Description = "",
@@ -10181,7 +10330,7 @@ Default = false,
 Callback = function(Value)
   _G.TpDrago_Prehis = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     -- V4: them pcall (PrehistoricIsland chua ton tai => index nil => loop chet vinh vien)
     pcall(function()
@@ -10192,7 +10341,7 @@ spawn(function()
     end
     end)
   end
-end)
+end, "L10219")
 bdrago = Tabs.Prehistoric:AddToggle({
 Name = "Swap Draco Race",
 Description = "",
@@ -10200,7 +10349,7 @@ Default = false,
 Callback = function(Value)
   _G.BuyDrago = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.BuyDrago then
       pcall(function()
@@ -10214,7 +10363,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L10238")
 UpTalon = Tabs.Prehistoric:AddToggle({
 Name = "Upgrade Dragon Talon With Uzoth",
 Description = "",
@@ -10222,7 +10371,7 @@ Default = false,
 Callback = function(Value)
   _G.DT_Uzoth = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.DT_Uzoth then
 
@@ -10238,7 +10387,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L10260")
 
 Tabs.Prehistoric:AddSection("Volcanic Crafting")
 
@@ -10314,7 +10463,7 @@ Tabs.Prehistoric:AddToggle({
     end
 })
 
-task.spawn(function()
+__DIO_SafeLoop(function()
     local RF = __SVC_RS.Modules.Net["RF/Craft"]
 
     while __DIO_wait(1) do
@@ -10329,7 +10478,7 @@ task.spawn(function()
             getgenv().AutoCraftVolcanic = false
         end
     end
-end)
+end, "L10352")
 
 Tabs.Prehistoric:AddToggle({
     Name = "Auto Find Prehistoric Island",
@@ -10347,7 +10496,7 @@ Tabs.Prehistoric:AddToggle({
 
 local targetDestination = nil
 
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(Sec) do
         pcall(function()
             if _G.Prehis_Find then
@@ -10440,7 +10589,7 @@ spawn(function()
             end
         end)
     end
-end)
+end, "L10385")
 
 Tabs.Prehistoric:AddToggle({
     Name = "Auto Start Prehistoric Event",
@@ -10454,7 +10603,7 @@ Tabs.Prehistoric:AddToggle({
         end
     end
 })
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         if _G.AutoStartPrehistoric then
             pcall(function()
@@ -10476,7 +10625,7 @@ spawn(function()
             end)
         end
     end
-end)
+end, "L10492")
 
 Tabs.Prehistoric:AddToggle({
     Name = "Auto Patch Prehistoric Event",
@@ -10492,7 +10641,7 @@ Tabs.Prehistoric:AddToggle({
     end
 })
 
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         if _G.Prehis_Skills then
             pcall(function()
@@ -10522,7 +10671,7 @@ spawn(function()
             end)
         end
     end
-end)
+end, "L10530")
 
 __DIO_PrehisGolemT = 0
 __DIO_PrehisGolemR = false
@@ -10535,7 +10684,7 @@ function __DIO_PrehisHasGolem()
     return __DIO_PrehisGolemR
 end
 
-spawn(function()
+__DIO_SafeLoop(function()
 
     while __DIO_wait(Sec) do
         if _G.Prehis_Skills then
@@ -10556,9 +10705,9 @@ spawn(function()
             end)
         end
     end
-end)
+end, "L10573")
 
-spawn(function()
+__DIO_SafeLoop(function()
 
     while __DIO_wait(Sec) do
         if _G.Prehis_Skills then
@@ -10606,7 +10755,7 @@ spawn(function()
             end)
         end
     end
-end)
+end, "L10596")
 
 Kaura = Tabs.Prehistoric:AddToggle({
     Name = "Kill Aura",
@@ -10619,7 +10768,7 @@ end})
 local Range = 500
 local Delay = 2
 
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(Delay) do
         if _G.KillAuraFull then
             pcall(function()
@@ -10643,7 +10792,7 @@ spawn(function()
             end)
         end
     end
-end)
+end, "L10657")
 Vocan = Tabs.Prehistoric:AddToggle({
 Name = "Auto Collect Dino Bones",
 Description = "",
@@ -10651,7 +10800,7 @@ Default = false,
 Callback = function(Value)
   _G.Prehis_DB = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.Prehis_DB then
@@ -10663,7 +10812,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L10689")
 Vocan = Tabs.Prehistoric:AddToggle({
 Name = "Auto Collect Dragon Eggs",
 Description = "",
@@ -10671,7 +10820,7 @@ Default = false,
 Callback = function(Value)
   _G.Prehis_DE = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.Prehis_DE then
@@ -10679,7 +10828,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L10709")
 Toggle = Tabs.Prehistoric:AddToggle({
 Name = "Auto Reset When Complete Volcano",
 Description = "",
@@ -10687,7 +10836,7 @@ Default = false,
 Callback = function(Value)
   _G.ResetPH = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.ResetPH then
@@ -10704,7 +10853,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L10725")
 
 Tabs.SeaEvent:AddSection("Sea Event / Setting Sail")
 local ListSeaBoat={"Guardian","PirateGrandBrigade","MarineGrandBrigade","PirateBrigade","MarineBrigade","PirateSloop","MarineSloop","Beast Hunter"}
@@ -10759,7 +10908,7 @@ Tabs.SeaEvent:AddToggle({
         getgenv().AutoPressW = Value
     end
 })
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         pcall(function()
             if getgenv().AutoPressW then
@@ -10771,7 +10920,7 @@ spawn(function()
             end
         end)
     end
-end)
+end, "L10797")
 if getgenv().NoClipShip == nil then getgenv().NoClipShip = true end
 Tabs.SeaEvent:AddToggle({
     Name = "No Clip Ship",
@@ -10780,7 +10929,7 @@ Tabs.SeaEvent:AddToggle({
         getgenv().NoClipShip = Value
     end
 })
-spawn(function()
+__DIO_SafeLoop(function()
     -- [BOAT NOCLIP FIX] ban cu ap CanCollide MOI 1s cho MOI thuyen. Ban moi chi chay
     -- 1 lan khi toggle doi (__any == __ccPrev return) => thuyen spawn sau / game reset
     -- collide => "No Clip Ship" cam. Tra ve loop lien tuc nhu ban cu.
@@ -10802,7 +10951,7 @@ spawn(function()
             end
         end)
     end
-end)
+end, "L10818")
 Tabs.SeaEvent:AddSlider({
     Name = "Boat Speed Tween",
     Min = 1,
@@ -10857,7 +11006,7 @@ Default = false,
 Callback = function(Value)
   _G.SailBoats = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.SailBoats then
       pcall(function()
@@ -10914,8 +11063,8 @@ spawn(function()
       end)
     end
   end
-end)
-spawn(function()
+end, "L10895")
+__DIO_SafeLoop(function()
     local __ccPrev = false
     while __DIO_wait(0.5) do
         pcall(function()
@@ -10933,7 +11082,7 @@ spawn(function()
             end
         end)
     end
-end)
+end, "L10953")
 
 Tabs.SeaEvent:AddSection("Entity Sea Event")
 
@@ -11020,7 +11169,7 @@ Callback = function(Value)
   _G.SeaBeast1 = Value
 end})
 
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     pcall(function()
       if _G.Shark then local a={"Shark"}if CheckShark()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) Attack.Kill(c,_G.Shark)until _G.Shark==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
@@ -11080,7 +11229,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L11058")
 
 Tabs.SeaEvent:AddSection("Kitsune Island / Event")
 
@@ -11091,7 +11240,7 @@ Default = false,
 Callback = function(Value)
   _G.AutofindKitIs = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.AutofindKitIs then
       pcall(function()
@@ -11146,7 +11295,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L11129")
 
 Tabs.SeaEvent:AddToggle({
 Name = "Auto Teleport to Shrine Actived",
@@ -11155,7 +11304,7 @@ Default = false,
 Callback = function(Value)
   _G.tweenShrine = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.tweenShrine then
       pcall(function()
@@ -11174,7 +11323,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L11193")
 
 Tabs.SeaEvent:AddToggle({
 Name = "Auto Collect Azure Ember",
@@ -11183,7 +11332,7 @@ Default = false,
 Callback = function(Value)
   _G.Collect_Ember = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.Collect_Ember then
       pcall(function()
@@ -11196,7 +11345,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L11221")
 
 Tabs.SeaEvent:AddToggle({
 Name = "Auto Trade Azure Ember",
@@ -11205,7 +11354,7 @@ Default = false,
 Callback = function(Value)
   _G.Trade_Ember = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.Trade_Ember then
       pcall(function()
@@ -11215,7 +11364,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L11243")
 
 Tabs.SeaEvent:AddButton({
 Name = "Trade Items Azure",
@@ -11234,7 +11383,7 @@ end})
 Tabs.SeaEvent:AddSection("Frozen Dimension Event")
 
 local SPYING = Tabs.SeaEvent:AddParagraph("Spy Status", "")
-spawn(function()
+__DIO_SafeLoop(function()
     local __prevSpy = nil
     while __DIO_wait(3) do
 
@@ -11251,7 +11400,7 @@ spawn(function()
             end
         end)
     end
-end)
+end, "L11272")
 
 Tabs.SeaEvent:AddButton({
     Name = "Buy Spy",
@@ -11274,7 +11423,7 @@ Tabs.SeaEvent:AddToggle({
     end
 })
 
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.FrozenDimension then
       pcall(function()
@@ -11329,7 +11478,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L11312")
 Tabs.SeaEvent:AddToggle({
 Name = "Auto Teleport Frozen Dimension",
 Description = "",
@@ -11337,7 +11486,7 @@ Default = false,
 Callback = function(Value)
   _G.FrozenTP = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.FrozenTP then
       pcall(function()
@@ -11345,7 +11494,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L11375")
 Tabs.SeaEvent:AddToggle({
  Name = "Shot Leviathan Heart [Beta]",
  Description = "",
@@ -11355,7 +11504,7 @@ Callback = function(Value)
 end})
 
 local isRunning = false
-task.spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         if _G.ShotHL and not isRunning then
             isRunning = true
@@ -11417,7 +11566,7 @@ task.spawn(function()
             isRunning = false
         end
     end
-end)
+end, "L11393")
 Tabs.SeaEvent:AddToggle({
 Name = "Auto Drive To Hydra Island",
 Description = "",
@@ -11425,7 +11574,7 @@ Default = false,
 Callback = function(Value)
   _G.SailBoat_Hydra = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.SailBoat_Hydra then
       pcall(function()
@@ -11473,7 +11622,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L11463")
 
 Tabs.SeaEvent:AddToggle({
 Name = "Auto Attack Leviathan",
@@ -12076,13 +12225,13 @@ end
 
 local stockParagraph = Tabs.Raids:AddParagraph("Stock Fruit", "Loading...")
 
-task.spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(60) do
         pcall(function()
             stockParagraph:SetDesc(getFruitStock())
         end)
     end
-end)
+end, "L12114")
 
 pcall(function()
     stockParagraph:SetDesc(getFruitStock())
@@ -12271,13 +12420,13 @@ __DIO_GachaRollOnce = function()
     return true
 end
 
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(3) do
     pcall(function()
       if _G.Random_Auto then __DIO_GachaRollOnce() end
     end)
   end
-end)
+end, "L12309")
 DropF = Tabs.Raids:AddToggle({
 Name = "Auto Drop Fruit",
 Description = "",
@@ -12285,13 +12434,13 @@ Default = false,
 Callback = function(Value)
   _G.DropFruit = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.DropFruit then
       pcall(function() DropFruits() end)
     end
   end
-end)
+end, "L12323")
 StoredF = Tabs.Raids:AddToggle({
 Name = "Auto Store Fruit",
 Description = "",
@@ -12299,13 +12448,13 @@ Default = false,
 Callback = function(Value)
   _G.StoreF = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.StoreF then
       pcall(function() UpdStFruit() end)
     end
   end
-end)
+end, "L12337")
 TwF = Tabs.Raids:AddToggle({
 Name = "Auto Tween to Fruit",
 Description = "",
@@ -12313,7 +12462,7 @@ Default = false,
 Callback = function(Value)
   _G.TwFruits = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.TwFruits then
       pcall(function()
@@ -12323,7 +12472,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L12351")
 BringF = Tabs.Raids:AddToggle({
 Name = "Auto Collect Fruit",
 Description = "",
@@ -12331,13 +12480,13 @@ Default = false,
 Callback = function(Value)
   _G.InstanceF = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.InstanceF then
       pcall(function() collectFruits(_G.InstanceF) end)
     end
   end
-end)
+end, "L12369")
 
 Tabs.Raids:AddDropdown({
     Name = "Select Fruit Shop",
@@ -12441,7 +12590,7 @@ Tabs.Raids:AddToggle({
         getgenv().AutoGetFruit = Value
     end
 })
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         pcall(function()
             if getgenv().AutoGetFruit then
@@ -12461,7 +12610,7 @@ spawn(function()
             end
         end)
     end
-end)
+end, "L12479")
 AutoChipBeli = Tabs.Raids:AddToggle({
     Name = "Auto Buy Chip [Beli]",
     Description = "",
@@ -12476,7 +12625,7 @@ AutoChipBeli = Tabs.Raids:AddToggle({
     end
 })
 
-task.spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         if _G.AutoChipBeli then
             pcall(function()
@@ -12486,7 +12635,7 @@ task.spawn(function()
             end)
         end
     end
-end)
+end, "L12514")
 
 AutoChipFruit = Tabs.Raids:AddToggle({
     Name = "Auto Buy Chip [Devil Fruit]",
@@ -12502,7 +12651,7 @@ AutoChipFruit = Tabs.Raids:AddToggle({
     end
 })
 
-task.spawn(function()
+__DIO_SafeLoop(function()
     local lastCand = nil
     local lastTry = 0
     while __DIO_wait(1) do
@@ -12521,7 +12670,7 @@ task.spawn(function()
             end
         end)
     end
-end)
+end, "L12540")
 
 StartR = Tabs.Raids:AddToggle({
     Name = "Auto Start Raid",
@@ -12540,7 +12689,7 @@ StartR = Tabs.Raids:AddToggle({
     end
 })
 
-task.spawn(function()
+__DIO_SafeLoop(function()
 
     local __raidWarnedSea1 = false
     local __raidFireCD = 0
@@ -12616,7 +12765,7 @@ task.spawn(function()
             end
         end)
     end
-end)
+end, "L12578")
 
 Raiding = Tabs.Raids:AddToggle({
     Name = "Auto Raid + Next Island",
@@ -12630,7 +12779,7 @@ Raiding = Tabs.Raids:AddToggle({
     end
 })
 
-spawn(function()
+__DIO_SafeLoop(function()
     local locations = workspace["_WorldOrigin"].Locations
     local islands = {"Island 1","Island 2","Island 3","Island 4","Island 5"}
     local currentIsland = nil
@@ -12713,7 +12862,7 @@ spawn(function()
             end
         end
     end
-end)
+end, "L12668")
 
 Tabs.Raids:AddToggle({
 Name = "Auto Awakening",
@@ -12722,7 +12871,7 @@ Default = false,
 Callback = function(Value)
   _G.Auto_Awakener = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     pcall(function()
       if _G.Auto_Awakener then
@@ -12731,7 +12880,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L12760")
 
 Tabs.Raids:AddToggle({
     Name = "Auto Teleport To Lab",
@@ -12739,7 +12888,7 @@ Tabs.Raids:AddToggle({
     Callback = function(Value)
         _G.TpLab = Value
         StopTween(_G.TpLab)
-        task.spawn(function()
+        __DIO_SafeLoop(function()
         while _G.TpLab do
             __DIO_wait(0.5)
             if _G.TpLab then
@@ -12750,7 +12899,7 @@ Tabs.Raids:AddToggle({
                 end
             end
         end
-        end)
+        end, "L12777")
     end
 })
 
@@ -12778,7 +12927,7 @@ Tabs.Raids:AddToggle({
     end
 })
 
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         if getgenv().AutoBuyMicrochipLaw then
             pcall(function()
@@ -12786,7 +12935,7 @@ spawn(function()
             end)
         end
     end
-end)
+end, "L12816")
 
 Tabs.Raids:AddToggle({
     Name = "Auto Start Law Raids",
@@ -12797,7 +12946,7 @@ Tabs.Raids:AddToggle({
     end
 })
 
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         if getgenv().AutoStartLawRaids then
             pcall(function()
@@ -12805,7 +12954,7 @@ spawn(function()
             end)
         end
     end
-end)
+end, "L12835")
 
 Tabs.Raids:AddToggle({
 Name = "Auto Kill Law",
@@ -12814,7 +12963,7 @@ Default = false,
 Callback = function(Value)
   _G.AutoLawKak = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.AutoLawKak then
       pcall(function()
@@ -12825,7 +12974,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L12852")
 
 Tabs.Raids:AddSection("Raids Dungeons")
 
@@ -12852,7 +13001,7 @@ Tabs.Raids:AddToggle({
 
 local FARM_RANGE = 5000
 
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         if not _G.AutoFarmDungeon then continue end
 
@@ -12883,7 +13032,7 @@ spawn(function()
             end
         end)
     end
-end)
+end, "L12890")
 
 Tabs.Raids:AddToggle({
     Name = "TP Exit (1)",
@@ -12909,7 +13058,7 @@ local function GetCurrentFloor()
     end
 end
 
-task.spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         if not _G.TPFloor1 then
             tp1Done = false
@@ -12926,7 +13075,7 @@ task.spawn(function()
             end
         end
     end
-end)
+end, "L12947")
 
 Tabs.Raids:AddToggle({
     Name = "TP Exit (2)",
@@ -12938,7 +13087,7 @@ Tabs.Raids:AddToggle({
 
 local tp2Done = false
 
-task.spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         if not _G.TPFloor2 then
             tp2Done = false
@@ -12964,7 +13113,7 @@ task.spawn(function()
             end
         end
     end
-end)
+end, "L12976")
 
 Tabs.Raids:AddToggle({
     Name = "TP Exit (3)",
@@ -12987,7 +13136,7 @@ local function GetHighestFloor()
     return max
 end
 
-task.spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         if not _G.TPFloor3 then
             tp3Done = false
@@ -13006,7 +13155,7 @@ task.spawn(function()
             end
         end
     end
-end)
+end, "L13025")
 
 Tabs.Raids:AddToggle({
     Name = "TP Exit (4)",
@@ -13037,7 +13186,7 @@ local function GetNearestExit()
     return nearest
 end
 
-task.spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         if not _G.TPFloor4 then
             tp4Done = false
@@ -13053,7 +13202,7 @@ task.spawn(function()
             end
         end
     end
-end)
+end, "L13075")
 __DIO_BOOT("Load Comples")
 
 __DIO_BOOT("Now Booster")
@@ -13137,7 +13286,7 @@ Tabs.Combat:AddToggle({
     end
 })
 
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(0.1) do
         pcall(function()
             if _G.AimMethod and ABmethod == "Aim Player" then
@@ -13150,8 +13299,8 @@ spawn(function()
             end
         end)
     end
-end)
-spawn(function()
+end, "L13175")
+__DIO_SafeLoop(function()
     while __DIO_wait(0.1) do
         pcall(function()
             if _G.AimMethod and ABmethod == "Nearest Aim" then
@@ -13168,7 +13317,7 @@ spawn(function()
             end
         end)
     end
-end)
+end, "L13189")
 
 Tabs.Combat:AddToggle({
     Name = "Aimbot Camera Closet Players",
@@ -13184,7 +13333,7 @@ Tabs.Combat:AddToggle({
     end
 })
 
-task.spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(Sec) do
         pcall(function()
             if _G.AimCam then
@@ -13217,11 +13366,11 @@ task.spawn(function()
             end
         end)
     end
-end)
+end, "L13222")
 
 Tabs.Combat:AddSection(" PvP function")
 
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         if _G.AutoReceivePlayerQuest then
             pcall(function()
@@ -13229,9 +13378,9 @@ spawn(function()
             end)
         end
     end
-end)
+end, "L13259")
 
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         -- V4: them pcall (target.HumanoidRootPart nil khi target chet/respawn => error => loop chet)
         pcall(function()
@@ -13266,7 +13415,7 @@ spawn(function()
         end
         end)
     end
-end)
+end, "L13269")
 
 Tabs.Combat:AddToggle({
     Name = "Auto Enable PvP",
@@ -13282,7 +13431,7 @@ Tabs.Combat:AddToggle({
     end
 })
 
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         -- V4: them pcall (playerGui.Main index nil => error => loop chet vinh vien)
         pcall(function()
@@ -13298,7 +13447,7 @@ spawn(function()
         end
         end)
     end
-end)
+end, "L13320")
 
 Tabs.Combat:AddToggle({
     Name = "Auto Safe Mode",
@@ -13313,7 +13462,7 @@ Tabs.Combat:AddToggle({
     end
 })
 
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         -- V4: them pcall cho an toan (loop nay lien quan shouldTween/debounce)
         pcall(function()
@@ -13328,7 +13477,7 @@ spawn(function()
         end
         end)
     end
-end)
+end, "L13351")
 
 Tabs.Combat:AddSection("LocalPlayer Settings")
 
@@ -13545,7 +13694,7 @@ Tabs.Combat:AddToggle({
     end
 })
 
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         pcall(function()
             local __agilChar = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
@@ -13560,7 +13709,7 @@ spawn(function()
             end
         end)
     end
-end)
+end, "L13583")
 
 Tabs.Combat:AddToggle({
     Name = "Instance Energy [ INF ]",
@@ -13626,7 +13775,7 @@ Tabs.Combat:AddToggle({
     end
 })
 
-spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         if _G.AcceptAlly then
             pcall(function()
@@ -13638,7 +13787,7 @@ spawn(function()
             end)
         end
     end
-end)
+end, "L13664")
 
 Tabs.Travel:AddSection("Travel - Worlds")
 
@@ -13765,7 +13914,7 @@ Default = false,
 Callback = function(Value)
   _G.TPNpc = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.TPNpc then
 	 pcall(function()
@@ -13775,7 +13924,7 @@ spawn(function()
 	 end)
     end
   end
-end)
+end, "L13803")
 
 Tabs.Shop:AddSection("Shop Options")
 Tabs.Shop:AddButton({
@@ -13993,7 +14142,7 @@ BuyMelee = function(npcNames, cancelFn, ...)
     end)
 end
 
-task.spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(5) do
         if __DIO_BuyBusy and __DIO_BuyBusyT and (tick() - __DIO_BuyBusyT) > 320 then
             __DIO_BuyBusy = false
@@ -14002,7 +14151,7 @@ task.spawn(function()
             pcall(function() Window:Notify({Title = "Buy Melee", Content = "Phat hien tween bi ket - da tu phu hoi. Bat lai toggle de tiep tuc.", Duration = 4}) end)
         end
     end
-end)
+end, "L14031")
 
 __DIO_BuyJobs = {
     { flag = "BuyMelee_BuyBlackLeg",      key = "BuyBlackLeg",      owned = "Black Leg",      npc = {"Dark Step Teacher"},    beli = 150000, args = {"BuyBlackLeg"} },
@@ -14072,7 +14221,7 @@ do
     end
 end
 
-task.spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(1) do
         pcall(function()
             if __DIO_BuyAnyOn() and not __DIO_BuyDriverRunning and __DIO_BuyDriverStart then
@@ -14080,7 +14229,7 @@ task.spawn(function()
             end
         end)
     end
-end)
+end, "L14110")
 
 Tabs.Shop:AddSection("Accessory")
 Tabs.Shop:AddButton({
@@ -14589,7 +14738,7 @@ CstlePos_Miti = CFrame.new(-5072.08984375, 314.5412902832, -3151.1098632812)
 Man3Pos_Miti = CFrame.new(-12471.169921875, 374.94024658203, -7551.677734375)
 HydraPos_Miti = CFrame.new(5748.7587890625, 610.44982910156, -267.81704711914)
 HydratoCastle = CFrame.new(-5036.0, 315.0, -3179.0)
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     pcall(function()
       if _G.PortalUnLock then
@@ -14605,7 +14754,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L14627")
 
 Tabs.Misc:AddSection("Graphics / Haki Stats")
 
@@ -14799,7 +14948,7 @@ DisableHitVFX = Tabs.Hop:AddToggle({
 
 local HitEffects = {"SlashHit", "CurvedRing", "SwordSlash", "SlashTail"}
 
-task.spawn(function()
+__DIO_SafeLoop(function()
     while __DIO_wait(Sec) do
         if _G.DestroyHit then
             pcall(function()
@@ -14811,7 +14960,7 @@ task.spawn(function()
             end)
         end
     end
-end)
+end, "L14837")
 RmvVFX = Tabs.Hop:AddToggle({
 Name = "Remove Death & Respawned VFX",
 Description = "",
@@ -14819,7 +14968,7 @@ Default = true,
 Callback = function(Value)
   RDeath = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if RDeath then
@@ -14828,7 +14977,7 @@ spawn(function()
 	  end
     end)
   end
-end)
+end, "L14857")
 DisblesNotify = Tabs.Hop:AddToggle({
 Name = "Disable Notify",
 Description = "",
@@ -14838,7 +14987,7 @@ Callback = function(Value)
 end})
 
 local __DIO_NotifyPrev = nil
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       local __dc = replicated.Assets and replicated.Assets.GUI and replicated.Assets.GUI.DamageCounter
@@ -14857,7 +15006,7 @@ spawn(function()
       end
     end)
   end
-end)
+end, "L14876")
 
 DayN = Tabs.Misc:AddDropdown({
 Name = "Select Time",
@@ -14874,7 +15023,7 @@ Default = false,
 Callback = function(Value)
   _G.daylightN = Value
 end})
-task.spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     -- V4: them pcall
     pcall(function()
@@ -14887,7 +15036,7 @@ task.spawn(function()
     end
     end)
   end
-end)
+end, "L14912")
 walkWater = Tabs.Misc:AddToggle({
 Name = "Turn on Walk on Water",
 Description = "",
@@ -14908,7 +15057,7 @@ Default = false,
 Callback = function(Value)
   _G.WalkWater = Value
 end})
-spawn(function()
+__DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.WalkWater then
       pcall(function()
@@ -14930,7 +15079,7 @@ spawn(function()
       end)
     end
   end
-end)
+end, "L14946")
 
 __DIO_VolleyGate = function(gap)
     local n = tick()
