@@ -1163,8 +1163,15 @@ CheckF = function()
   if GetBP("Dragon-Dragon") or GetBP("Gas-Gas") or GetBP("Yeti-Yeti") or GetBP("Kitsune-Kitsune") or GetBP("T-Rex-T-Rex") then return true end
 end
 CheckBoat = function()
-  for i, v in pairs(workspace.Boats:GetChildren()) do
-    if tostring(v.Owner.Value) == tostring(plr.Name) then
+  -- FIXED V5 (find/sail dung im tai cho): folder Boats chua ton tai (server chua ai mua thuyen)
+  -- => workspace.Boats:GetChildren() error => moi iteration chet truoc khi goi _tp => dung yen mai.
+  -- Coi nhu chua co thuyen de vong chay tiep (bay ra shop mua).
+  local __boatsV5 = workspace:FindFirstChild("Boats")
+  if not __boatsV5 then return false end
+  for i, v in pairs(__boatsV5:GetChildren()) do
+    -- FIXED V4: thuyen dang spawn chua co Owner => pcall tranh error loop ket vong find/sail
+    local __okB, __ownB = pcall(function() return v.Owner.Value end)
+    if __okB and tostring(__ownB) == tostring(plr.Name) then
       return v
 end;
   end;
@@ -8740,14 +8747,24 @@ spawn(function()
     if _G.FindMirage then
       pcall(function()
         if not workspace["_WorldOrigin"].Locations:FindFirstChild("Mirage Island", true) then
-          local myBoat = CheckBoat()
+          local myBoat = (function() local __oB5, __rB5 = pcall(CheckBoat) return (__oB5 and __rB5) or false end)() -- FIXED V5: CheckBoat loi => coi nhu chua co thuyen, loop khong bao gio chet o day
           if not myBoat then
             local buyBoatCFrame = CFrame.new(-16927.451, 9.086, 433.864)
             TeleportToTarget(buyBoatCFrame)
-            if (buyBoatCFrame.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 then replicated.Remotes.CommF_:InvokeServer("BuyBoat", _G.SelectedBoat) end
+            if (buyBoatCFrame.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 then replicated.Remotes.CommF_:InvokeServer("BuyBoat", (_G.SelectedBoat or "Guardian")) end
           else
             if plr.Character.Humanoid.Sit == false then
-              local boatSeatCFrame = myBoat.VehicleSeat.CFrame * CFrame.new(0, 1, 0)
+              local __seatV4 = myBoat:FindFirstChild("VehicleSeat")
+              if not __seatV4 then
+                  -- FIXED V4: thuyen hong/chua spawn xong ghe => mua lai (throttle 10s, tranh tru Beli lien tuc)
+                  -- thay vi index nil -> error loop -> ket cung mai mai.
+                  if tick() - (__DIO_LastRebuy or 0) > 10 then
+                      __DIO_LastRebuy = tick()
+                      replicated.Remotes.CommF_:InvokeServer("BuyBoat", (_G.SelectedBoat or "Guardian"))
+                  end
+                  return
+              end
+              local boatSeatCFrame = __seatV4.CFrame * CFrame.new(0, 1, 0)
               _tp(boatSeatCFrame)
             else
               repeat __DIO_wait(0.25)
@@ -9978,7 +9995,7 @@ spawn(function()
                 local prehistoricLoc = Locations:FindFirstChild("Prehistoric Island", true)
 
                 if not prehistoricLoc then
-                    local myBoat = CheckBoat()
+                    local myBoat = (function() local __oB5, __rB5 = pcall(CheckBoat) return (__oB5 and __rB5) or false end)() -- FIXED V5: CheckBoat loi => coi nhu chua co thuyen, loop khong bao gio chet o day
 
                     if not myBoat then
                         local buyBoatCFrame = CFrame.new(-16927.451, 9.086, 433.864)
@@ -9994,7 +10011,15 @@ spawn(function()
                     end
 
                     if hum.Sit == false then
-                        local seatCFrame = myBoat.VehicleSeat.CFrame * CFrame.new(0, 1, 0)
+                        local __seatV4 = myBoat:FindFirstChild("VehicleSeat")
+                    if not __seatV4 then
+                        if tick() - (__DIO_LastRebuy or 0) > 10 then
+                            __DIO_LastRebuy = tick()
+                            replicated.Remotes.CommF_:InvokeServer("BuyBoat", (_G.SelectedBoat or "Guardian"))
+                        end
+                        return
+                    end
+                    local seatCFrame = __seatV4.CFrame * CFrame.new(0, 1, 0)
                         _tp(seatCFrame)
                         return
                     end
@@ -10405,6 +10430,11 @@ Tabs.SeaEvent:AddSlider({
 })
 
 _G.BoatTweenSpeed = math.clamp(math.floor((tonumber(GetSetting("UI/SeaEvent/Boat Speed Tween", 165)) or 165) + 0.5), 1, 300)
+-- FIXED V4 (ket o shop thuyen): dropdown khong auto-fire callback => neu user chua bao gio cham
+-- vao Select Boats / Select Sea Level thi _G.SelectedBoat/_G.DangerSc = nil => BuyBoat(nil) bi server
+-- tu choi => dung ghim o shop mai mai. Dat default ngay tu luc load (user chon se ghi de).
+_G.SelectedBoat = _G.SelectedBoat or GetSetting("UI/SeaEvent/Select Boats", "Guardian") or "Guardian"
+_G.DangerSc = _G.DangerSc or GetSetting("UI/SeaEvent/Select Sea Level", "Lv 6") or "Lv 6"
 Tabs.SeaEvent:AddSection("Choose Sea Event")
 
 Q = Tabs.SeaEvent:AddDropdown({
@@ -10425,7 +10455,7 @@ Name = "Buy Boats",
 Description = "",
 Default = true,
 Callback = function()
-  replicated.Remotes.CommF_:InvokeServer("BuyBoat",_G.SelectedBoat)
+  replicated.Remotes.CommF_:InvokeServer("BuyBoat",(_G.SelectedBoat or "Guardian"))
 end})
 Q = Tabs.SeaEvent:AddDropdown({
 Name = "Select Sea Level",
@@ -10445,14 +10475,22 @@ spawn(function()
   while __DIO_wait(1) do
     if _G.SailBoats then
       pcall(function()
-        local myBoat = CheckBoat()
+        local myBoat = (function() local __oB5, __rB5 = pcall(CheckBoat) return (__oB5 and __rB5) or false end)() -- FIXED V5: CheckBoat loi => coi nhu chua co thuyen, loop khong bao gio chet o day
         if not myBoat and not((_G.Shark and CheckShark()) or (_G.TerrorShark and CheckTerrorShark()) or (_G.MobCrew and CheckFishCrew()) or (_G.Piranha and CheckPiranha()))and not((_G.FishBoat and CheckEnemiesBoat()))and not((_G.SeaBeast1 and CheckSeaBeast()))and not(_G.PGB and CheckPirateGrandBrigade())and not(_G.HCM and CheckHauntedCrew())and not(_G.Leviathan1 and CheckLeviathan())then
           local buyBoatCFrame = CFrame.new(-16927.451, 9.086, 433.864)
           TeleportToTarget(buyBoatCFrame)
-          if (buyBoatCFrame.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 then replicated.Remotes.CommF_:InvokeServer("BuyBoat", _G.SelectedBoat) end
+          if (buyBoatCFrame.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 then replicated.Remotes.CommF_:InvokeServer("BuyBoat", (_G.SelectedBoat or "Guardian")) end
         elseif myBoat and not((_G.Shark and CheckShark()) or (_G.TerrorShark and CheckTerrorShark()) or (_G.MobCrew and CheckFishCrew()) or (_G.Piranha and CheckPiranha()))and not((_G.FishBoat and CheckEnemiesBoat()))and not((_G.SeaBeast1 and CheckSeaBeast()))and not(_G.PGB and CheckPirateGrandBrigade())and not(_G.HCM and CheckHauntedCrew())and not(_G.Leviathan1 and CheckLeviathan())then
           if plr.Character.Humanoid.Sit == false then
-            local boatSeatCFrame = myBoat.VehicleSeat.CFrame * CFrame.new(0, 1, 0)
+            local __seatV4 = myBoat:FindFirstChild("VehicleSeat")
+            if not __seatV4 then
+                if tick() - (__DIO_LastRebuy or 0) > 10 then
+                    __DIO_LastRebuy = tick()
+                    replicated.Remotes.CommF_:InvokeServer("BuyBoat", (_G.SelectedBoat or "Guardian"))
+                end
+                return
+            end
+            local boatSeatCFrame = __seatV4.CFrame * CFrame.new(0, 1, 0)
             _tp(boatSeatCFrame)
           else
             if _G.DangerSc == "Lv 1" then CFrameSelectedZone = CFrame.new(-21998.375, 30.0006084, -682.309143)
@@ -10463,6 +10501,7 @@ spawn(function()
             elseif _G.DangerSc == "Lv 6" then CFrameSelectedZone = CFrame.new(-44541.7617, 30.0003204, -1244.8584)
             elseif _G.DangerSc == "Lv Infinite" then CFrameSelectedZone = CFrame.new(-10000000, 31, 37016.25)
             end
+            CFrameSelectedZone = CFrameSelectedZone or CFrame.new(-44541.7617, 30.0003204, -1244.8584) -- FIXED V4: fallback Lv 6
             repeat __DIO_wait(0.25)
               local __seaS = __DIO_SeaScan()
               if (not _G.FishBoat and __seaS.fish) or (not _G.PGB and __seaS.pgb) or (not _G.TerrorShark and __seaS.terror) then
@@ -10481,12 +10520,13 @@ spawn(function()
     local __ccPrev = false
     while __DIO_wait(0.5) do
         pcall(function()
-            if #workspace.Boats:GetChildren() == 0 then return end
+            local __boatsCCV5 = workspace:FindFirstChild("Boats")
+            if not __boatsCCV5 or #__boatsCCV5:GetChildren() == 0 then return end
             local __any = _G.SailBoats or _G.Prehis_Find or _G.FindMirage or _G.FrozenDimension or _G.SailBoat_Hydra or _G.AutofindKitIs
             if __any == __ccPrev then return end
             __ccPrev = __any
-            for a,b in pairs(workspace.Boats:GetChildren()) do
-                for c,d in pairs(workspace.Boats[b.Name]:GetDescendants()) do
+            for a,b in pairs(__boatsCCV5:GetChildren()) do
+                for c,d in pairs((__boatsCCV5:FindFirstChild(b.Name) or b):GetDescendants()) do
                     if d:IsA("BasePart") and (__any and d.CanCollide or (not __any and not d.CanCollide)) then
                         d.CanCollide = not __any
                     end
@@ -10657,14 +10697,24 @@ spawn(function()
     if _G.AutofindKitIs then
       pcall(function()
         if not workspace["_WorldOrigin"].Locations:FindFirstChild("Kitsune Island", true) then
-          local myBoat = CheckBoat()
+          local myBoat = (function() local __oB5, __rB5 = pcall(CheckBoat) return (__oB5 and __rB5) or false end)() -- FIXED V5: CheckBoat loi => coi nhu chua co thuyen, loop khong bao gio chet o day
           if not myBoat then
             local buyBoatCFrame = CFrame.new(-16927.451, 9.086, 433.864)
             TeleportToTarget(buyBoatCFrame)
-            if (buyBoatCFrame.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 then replicated.Remotes.CommF_:InvokeServer("BuyBoat", _G.SelectedBoat) end
+            if (buyBoatCFrame.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 then replicated.Remotes.CommF_:InvokeServer("BuyBoat", (_G.SelectedBoat or "Guardian")) end
           else
             if plr.Character.Humanoid.Sit == false then
-              local boatSeatCFrame = myBoat.VehicleSeat.CFrame * CFrame.new(0, 1, 0)
+              local __seatV4 = myBoat:FindFirstChild("VehicleSeat")
+              if not __seatV4 then
+                  -- FIXED V4: thuyen hong/chua spawn xong ghe => mua lai (throttle 10s, tranh tru Beli lien tuc)
+                  -- thay vi index nil -> error loop -> ket cung mai mai.
+                  if tick() - (__DIO_LastRebuy or 0) > 10 then
+                      __DIO_LastRebuy = tick()
+                      replicated.Remotes.CommF_:InvokeServer("BuyBoat", (_G.SelectedBoat or "Guardian"))
+                  end
+                  return
+              end
+              local boatSeatCFrame = __seatV4.CFrame * CFrame.new(0, 1, 0)
               _tp(boatSeatCFrame)
             else
               local targetDestination = CFrame.new(-10000000, 31, 37016.25)
@@ -10817,14 +10867,24 @@ spawn(function()
     if _G.FrozenDimension then
       pcall(function()
         if not workspace["_WorldOrigin"].Locations:FindFirstChild("Frozen Dimension", true) then
-          local myBoat = CheckBoat()
+          local myBoat = (function() local __oB5, __rB5 = pcall(CheckBoat) return (__oB5 and __rB5) or false end)() -- FIXED V5: CheckBoat loi => coi nhu chua co thuyen, loop khong bao gio chet o day
           if not myBoat then
             local buyBoatCFrame = CFrame.new(-16927.451, 9.086, 433.864)
             TeleportToTarget(buyBoatCFrame)
-            if (buyBoatCFrame.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 then replicated.Remotes.CommF_:InvokeServer("BuyBoat", _G.SelectedBoat) end
+            if (buyBoatCFrame.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 then replicated.Remotes.CommF_:InvokeServer("BuyBoat", (_G.SelectedBoat or "Guardian")) end
           else
             if plr.Character.Humanoid.Sit == false then
-              local boatSeatCFrame = myBoat.VehicleSeat.CFrame * CFrame.new(0, 1, 0)
+              local __seatV4 = myBoat:FindFirstChild("VehicleSeat")
+              if not __seatV4 then
+                  -- FIXED V4: thuyen hong/chua spawn xong ghe => mua lai (throttle 10s, tranh tru Beli lien tuc)
+                  -- thay vi index nil -> error loop -> ket cung mai mai.
+                  if tick() - (__DIO_LastRebuy or 0) > 10 then
+                      __DIO_LastRebuy = tick()
+                      replicated.Remotes.CommF_:InvokeServer("BuyBoat", (_G.SelectedBoat or "Guardian"))
+                  end
+                  return
+              end
+              local boatSeatCFrame = __seatV4.CFrame * CFrame.new(0, 1, 0)
               _tp(boatSeatCFrame)
             else
               repeat __DIO_wait(0.25)
@@ -10944,14 +11004,22 @@ spawn(function()
   while __DIO_wait(1) do
     if _G.SailBoat_Hydra then
       pcall(function()
-        local myBoat = CheckBoat()
+        local myBoat = (function() local __oB5, __rB5 = pcall(CheckBoat) return (__oB5 and __rB5) or false end)() -- FIXED V5: CheckBoat loi => coi nhu chua co thuyen, loop khong bao gio chet o day
         if not myBoat then
           local buyBoatCFrame = CFrame.new(-16927.451, 9.086, 433.864)
           TeleportToTarget(buyBoatCFrame)
-          if (buyBoatCFrame.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 then replicated.Remotes.CommF_:InvokeServer("BuyBoat", _G.SelectedBoat) end
+          if (buyBoatCFrame.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 then replicated.Remotes.CommF_:InvokeServer("BuyBoat", (_G.SelectedBoat or "Guardian")) end
         elseif myBoat then
           if plr.Character.Humanoid.Sit == false then
-            local boatSeatCFrame = myBoat.VehicleSeat.CFrame * CFrame.new(0, 1, 0)
+            local __seatV4 = myBoat:FindFirstChild("VehicleSeat")
+            if not __seatV4 then
+                if tick() - (__DIO_LastRebuy or 0) > 10 then
+                    __DIO_LastRebuy = tick()
+                    replicated.Remotes.CommF_:InvokeServer("BuyBoat", (_G.SelectedBoat or "Guardian"))
+                end
+                return
+            end
+            local boatSeatCFrame = __seatV4.CFrame * CFrame.new(0, 1, 0)
             _tp(boatSeatCFrame)
           else
             repeat __DIO_wait(0.25)
@@ -11919,6 +11987,7 @@ end
 
 Tabs.Raids:AddSection("Dungeon Event / Raiding")
 DungeonTables = {"Flame","Ice","Quake","Light","Dark","String","Rumble","Magma","Human: Buddha","Sand","Bird: Phoenix","Dough"}
+_G.SelectChip = _G.SelectChip or "Flame" -- FIXED V4: default chip (tranh RaidsNpc Select nil)
 Q = Tabs.Raids:AddDropdown({
 Name = "Select Chip",
 Description = "",
@@ -14205,7 +14274,9 @@ Tabs.Misc:AddButton({
 Name = "Turn on increase Boats",
 Description = "",
 Callback = function()
-  for _, v in pairs(workspace.Boats:GetDescendants()) do
+  local __boatsIBV5 = workspace:FindFirstChild("Boats")
+  if not __boatsIBV5 then return end
+  for _, v in pairs(__boatsIBV5:GetDescendants()) do
     if table.find(ListSeaBoat, v.Name) and tostring(v.Owner.Value) == tostring(plr.Name) then
       v.VehicleSeat.MaxSpeed = 350
       v.VehicleSeat.Torque = 0.2
