@@ -11383,46 +11383,80 @@ _G.DangerSc = _G.DangerSc or GetSetting("UI/SeaEvent/Select Sea Level", "Lv 6") 
 Tabs.SeaEvent:AddSection("Choose Sea Event")
 
 -- =====================================================================
--- V5.2: CHON WEAPON + SKILL DE SAN SEA EVENT (dat ngay tren Select Boats)
+-- V5.3: CHON WEAPON + SKILL DE SAN SEA EVENT (dat ngay tren Select Boats)
 -- CHI ap dung cho: Leviathan, Sea Beast, PirateGrandBrigade, Fish Boat.
 -- Cac entity khac (Shark, Piranha, Terror Shark, Crew...) van dung weapon
 -- mac dinh player chon o "Select Weapon" (Tabs.Main) nhu cu.
--- Rang buoc skill de khong bam phim loi:
---   Melee / Sword / Gun : Z, X
---   Blox Fruit          : Z, X, C, V, F
--- Doi weapon => danh sach skill tu dong rebuild; skill khong hop le => ve "Z".
+-- Skill: LUA BANG Z, X, C, V, F co dinh (khong han che theo weapon - ban V5.2
+-- han che + rebuild lam dropdown bug mat option). Skill chon o day la phim ma
+-- __DIO_SeaSkillAtk se spam (spam dung ham Lua, khong spam remote thua).
 -- =====================================================================
 _G.SeaEventWeapon = GetSetting("UI/SeaEvent/Select Weapon Sea Event", "Melee") or "Melee"
-_G.SeaEventSkill  = GetSetting("UI/SeaEvent/Select Skill", "Z") or "Z"
-__DIO_SeaSkillAllow = { ["Melee"] = {"Z","X"}, ["Sword"] = {"Z","X"}, ["Gun"] = {"Z","X"}, ["Blox Fruit"] = {"Z","X","C","V","F"} }
-__DIO_SeaSkillDrop = nil
+local __svSkill = GetSetting("UI/SeaEvent/Select Skill", "Z")
+if __svSkill ~= "Z" and __svSkill ~= "X" and __svSkill ~= "C" and __svSkill ~= "V" and __svSkill ~= "F" then __svSkill = "Z" end
+_G.SeaEventSkill = __svSkill
 Q = Tabs.SeaEvent:AddDropdown({
     Name = __DIO_T["Select Weapon Sea Event"],
     Options = {"Melee","Sword","Gun","Blox Fruit"},
     Default = _G.SeaEventWeapon,
     Callback = function(Value)
         _G.SeaEventWeapon = Value
-        local __allow = __DIO_SeaSkillAllow[Value] or {"Z","X"}
-        if __DIO_SeaSkillDrop then
-            pcall(function()
-                __DIO_SeaSkillDrop:CLEAR_DROPDOWN()
-                for _, __s in ipairs(__allow) do
-                    __DIO_SeaSkillDrop:ADD_DROPDOWN_OPTION(__s)
-                end
-            end)
-        end
-        if not table.find(__allow, _G.SeaEventSkill) then
-            _G.SeaEventSkill = "Z"
-        end
     end
 })
-__DIO_SeaSkillDrop = Tabs.SeaEvent:AddDropdown({
+Q = Tabs.SeaEvent:AddDropdown({
     Name = __DIO_T["Select Skill"],
-    Options = __DIO_SeaSkillAllow[_G.SeaEventWeapon] or {"Z","X"},
+    Options = {"Z","X","C","V","F"},
     Default = _G.SeaEventSkill,
     Callback = function(Value)
-        local __allow = __DIO_SeaSkillAllow[_G.SeaEventWeapon] or {"Z","X"}
-        _G.SeaEventSkill = table.find(__allow, Value) and Value or "Z"
+        _G.SeaEventSkill = Value
+    end
+})
+
+-- V5.1: dropdown CHON NHIEU sea event cung luc (MultiSelect cua Library-Redz).
+-- Callback nhan table map {["Terror Shark"]=true, ...} => lien ket sang cac flag _G
+-- ma cac loop farm bien dang dung (TerrorShark/Piranha/Shark/SeaBeast1/FishBoat/HCM/PGB).
+-- Cach thuong (single) chi chon duoc 1 roi phai chuyen lai -> gio chon nhieu bay song song.
+__DIO_SeaSelPrev = {}
+__DIO_SeaEntityMap = {
+    ["Terror Shark"]        = "TerrorShark",
+    ["Piranha"]             = "Piranha",
+    ["Shark"]               = "Shark",
+    ["Sea Beast"]           = "SeaBeast1",
+    ["Fish Boat"]           = "FishBoat",
+    ["Fish Crew Member"]    = "MobCrew",
+    ["Haunted Crew Member"] = "HCM",
+    ["PirateGrandBrigade"]  = "PGB",
+}
+Q = Tabs.SeaEvent:AddDropdown({
+    Name = __DIO_T["Select Sea Event"],
+    Options = {"Terror Shark","Piranha","Shark","Sea Beast","Fish Boat","Fish Crew Member","Haunted Crew Member","PirateGrandBrigade"},
+    Default = {}, -- luu y: MultiSelect phai de table ({}) chu khong phai false nhu ban cu
+    MultiSelect = true,
+    Callback = function(Value)
+        -- chuan hoa: chap nhan ca dang map {["Ten"]=true} lan dang mang {"Ten",...}
+        -- (khi restore tu file settings gia tri co the la 1 trong 2 dang nay)
+        local __sel = {}
+        if type(Value) == "table" then
+            for __k, __v in pairs(Value) do
+                if __v == true then
+                    if type(__k) == "string" and __DIO_SeaEntityMap[__k] then
+                        __sel[__k] = true
+                    elseif type(__k) == "number" and __DIO_SeaEntityMap[Value[__k]] then
+                        __sel[Value[__k]] = true
+                    end
+                end
+            end
+        end
+        for __name, __flag in pairs(__DIO_SeaEntityMap) do
+            if __sel[__name] then
+                _G[__flag] = true
+                __DIO_SeaSelPrev[__name] = true
+            elseif __DIO_SeaSelPrev[__name] then
+                -- truoc do la chon o dropdown nay, gio bo chon => tat flag tuong ung
+                _G[__flag] = false
+                __DIO_SeaSelPrev[__name] = nil
+            end
+        end
     end
 })
 
@@ -11559,54 +11593,7 @@ __DIO_SafeLoop(function()
 end, "L10953")
 
 Tabs.SeaEvent:AddSection("Entity Sea Event")
-
--- V5.1: dropdown CHON NHIEU sea event cung luc (MultiSelect cua Library-Redz).
--- Callback nhan table map {["Terror Shark"]=true, ...} => lien ket sang cac flag _G
--- ma cac loop farm bien dang dung (TerrorShark/Piranha/Shark/SeaBeast1/FishBoat/HCM/PGB).
--- Cach thuong (single) chi chon duoc 1 roi phai chuyen lai -> gio chon nhieu bay song song.
-__DIO_SeaSelPrev = {}
-__DIO_SeaEntityMap = {
-    ["Terror Shark"]        = "TerrorShark",
-    ["Piranha"]             = "Piranha",
-    ["Shark"]               = "Shark",
-    ["Sea Beast"]           = "SeaBeast1",
-    ["Fish Boat"]           = "FishBoat",
-    ["Fish Crew Member"]    = "MobCrew",
-    ["Haunted Crew Member"] = "HCM",
-    ["PirateGrandBrigade"]  = "PGB",
-}
-Q = Tabs.SeaEvent:AddDropdown({
-    Name = __DIO_T["Select Sea Event"],
-    Options = {"Terror Shark","Piranha","Shark","Sea Beast","Fish Boat","Fish Crew Member","Haunted Crew Member","PirateGrandBrigade"},
-    Default = {}, -- luu y: MultiSelect phai de table ({}) chu khong phai false nhu ban cu
-    MultiSelect = true,
-    Callback = function(Value)
-        -- chuan hoa: chap nhan ca dang map {["Ten"]=true} lan dang mang {"Ten",...}
-        -- (khi restore tu file settings gia tri co the la 1 trong 2 dang nay)
-        local __sel = {}
-        if type(Value) == "table" then
-            for __k, __v in pairs(Value) do
-                if __v == true then
-                    if type(__k) == "string" and __DIO_SeaEntityMap[__k] then
-                        __sel[__k] = true
-                    elseif type(__k) == "number" and __DIO_SeaEntityMap[Value[__k]] then
-                        __sel[Value[__k]] = true
-                    end
-                end
-            end
-        end
-        for __name, __flag in pairs(__DIO_SeaEntityMap) do
-            if __sel[__name] then
-                _G[__flag] = true
-                __DIO_SeaSelPrev[__name] = true
-            elseif __DIO_SeaSelPrev[__name] then
-                -- truoc do la chon o dropdown nay, gio bo chon => tat flag tuong ung
-                _G[__flag] = false
-                __DIO_SeaSelPrev[__name] = nil
-            end
-        end
-    end
-})
+-- V5.3: Select Sea Event da duoc chuyen len tren Select Boats (Choose Sea Event)
 
 
 
