@@ -3732,52 +3732,6 @@ spawn(function()
     end
 end)
 
-Tabs.Main:AddSection("Collect Berry")
-
-Berry = Tabs.Main:AddToggle({
-Name = "Auto Farm Berry", 
-Description = "", 
-Default = false,
-Callback = function(Value)
-  _G.AutoBerry = Value
-end})
-spawn(function()
-  while __DIO_wait(Sec) do
-    if _G.AutoBerry then
-      local CollectionService= __SVC_CS
-      local Players= __SVC_PLR
-      local Player = Players.LocalPlayer
-      local BerryBush = CollectionService:GetTagged("BerryBush")      
-      local Distance, Nearest = math.huge      
-      for i = 1, #BerryBush do
-        local Bush = BerryBush[i]        
-        for AttributeName, BerryName in pairs(Bush:GetAttributes()) do
-          if not BerryArray or table.find(BerryArray, BerryName) then           
-            _tp(Bush.Parent:GetPivot())
-            for i = 1, #BerryBush do
-            local Bush = BerryBush[i]        
-              for AttributeName, BerryName in pairs(Bush:GetChildren()) do
-                if not BerryArray or table.find(BerryArray, BerryName) then
-                  _tp(BerryName.WorldPivot)
-                  fireproximityprompt(BerryName.ProximityPrompt,math.huge)
-                end
-              end
-            end      
-          end
-        end
-      end      
-    end
-  end
-end)
-
-BerryH = Tabs.Main:AddToggle({
-Name = "Auto Farm Berry + Hop", 
-Description = "", 
-Default = false,
-Callback = function(Value)
-  _G.AutoBerryH = Value
-end})
-
 spawn(function()
     while __DIO_wait(Sec) do
         if _G.AutoBerryH then
@@ -4265,145 +4219,6 @@ task.spawn(function()
     end
 end)
 
-Tabs.Main:AddSection("Farm Elite Hunter")
-
-local Process = Tabs.Main:AddParagraph("Elites Process", "")
-__EliteProg = "" -- [FIX FPS-FINAL-4] cache progress: chi 1 loop goi remote EliteHunter, loop con lai doc cache
-spawn(function()
-    local __prevElite = nil -- [FIX PERF 31] SetDesc chi khi gia tri DOI (ui khong ve lai voi cung chuoi)
-    while __DIO_wait(2) do -- [FIX FPS 2] 0.1s -> 2s: cu goi remote EliteHunter 10 lan/s ca khi treo
-        pcall(function()    
-            local __r = replicated.Remotes.CommF_:InvokeServer("EliteHunter", "Progress")
-            if __r then __EliteProg = tostring(__r) end
-            local __v = "Elite Progress : " .. tostring(__EliteProg)
-            if __v ~= __prevElite then __prevElite = __v Process:SetDesc(__v) end
-        end)
-    end
-end)
-
-local EliteHunter = Tabs.Main:AddParagraph("Elite Spawn", "Status: ")
-spawn(function()
-    local previousStatus = ""
-    while __DIO_wait(2) do -- [FIX FPS-FINAL-4] 1s -> 2s + KHONG goi remote nua (doc __EliteProg)
-        local currentStatus = (__SVC_RS:FindFirstChild("Diablo") or 
-                               __SVC_RS:FindFirstChild("Deandre") or 
-                               __SVC_RS:FindFirstChild("Urban") or 
-                               __SVC_WS.Enemies:FindFirstChild("Diablo") or 
-                               __SVC_WS.Enemies:FindFirstChild("Deandre") or 
-                               __SVC_WS.Enemies:FindFirstChild("Urban")) and '✅' or '❌'
-        if currentStatus ~= previousStatus then
-            EliteHunter:SetDesc("Status: " .. currentStatus .. " | Killed: " .. tostring(__EliteProg))
-            previousStatus = currentStatus
-        end
-    end
-end)
-
-EliteQ = Tabs.Main:AddToggle({
-    Name = "Auto Farm Elite",
-    Description = "",
-    Default = false,
-    Callback = function(Value)
-    _G.FarmEliteHunt = Value
-end})
-
-spawn(function()
-    while __DIO_wait(1) do
-        pcall(function()
-            if _G.FarmEliteHunt then
-                local questGui = plr.PlayerGui.Main.Quest
-                local __qE1 = __DIO_GetCurrentQuest() -- [FIX QUEST-FN] doc quest qua ham dung chung (nil-safe)
-                local questTitle = __qE1.QuestText or ""
-
-                if not __qE1.IsActive then
-                    
-                    local result = replicated.Remotes.CommF_:InvokeServer("EliteHunter")
-                    if result == nil or string.find(result, "Cooldown") then
-                      
-                        __DIO_wait(10)
-                        return
-                    end
-                    __DIO_wait(1)
-                else
-                    
-                    local eliteName = nil
-                    for _, name in pairs({"Diablo", "Urban", "Deandre"}) do
-                        if string.find(questTitle, name) then
-                            eliteName = name
-                            break
-                        end
-                    end
-
-                    if eliteName then
-                        local boss = nil
-                        
-                        for _, v in pairs(replicated:GetChildren()) do
-                            if v.Name == eliteName and v:FindFirstChild("HumanoidRootPart") then
-                                boss = v
-                                break
-                            end
-                        end
-                        for _, v in pairs(Enemies:GetChildren()) do
-                            if v.Name == eliteName and Attack.Alive(v) then
-                                boss = v
-                                break
-                            end
-                        end
-
-                        if boss and boss:FindFirstChild("HumanoidRootPart") then
-                            _tp(boss.HumanoidRootPart.CFrame * CFrame.new(0, 30, 0))
-                            repeat
-                                __DIO_wait(0.25)
-                                Attack.Kill(boss, _G.FarmEliteHunt)
-                            until not _G.FarmEliteHunt or not boss.Parent or boss.Humanoid.Health <= 0 or not questGui.Visible
-                        else
-                           
-                            __DIO_wait(5)
-                        end
-                    else
-                       
-                        replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
-                    end
-                end
-            end
-        end)
-    end
-end)
-
-EliteH = Tabs.Main:AddToggle({
-	Name = "Auto Farm Elite + Hop",
-	Description = "",
-	Default = false,
-	Callback = function(Value)
-	_G.FarmEliteH = Value
-end})
-
-Tabs.Main:AddToggle({
-    Name = "Auto Get PlayerQuest",
-    Description = "",
-    Default = false,
-    Callback = function(Value)
-        _G.AutoReceivePlayerQuest = Value
-        if not Value then
-            StopTween(false)
-            __DIO_CurTarget = nil
-            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
-        end
-    end
-})
-
-Tabs.Main:AddToggle({
-    Name = "Auto Kill Player Quest", 
-    Default = false,
-    Callback = function(Value)
-        _G.AutoPlayerHunter = Value
-        if not Value then
-            StopTween(false)
-            __DIO_CurTarget = nil
-            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
-        end
-    end
-})
-
 local function HopServer()
 	local Http = __SVC_HTTP
 	local TPS = __SVC_TP
@@ -4504,79 +4319,6 @@ spawn(function()
 			end
 		end)
 	end
-end)
-
-Tabs.Main:AddSection("Farm Rip Indra")
-
-Tabs.Main:AddToggle({
-Name = "Auto Attack Rip Indra", 
-Description = "", 
-Default = false,
-Callback = function(Value)
-  _G.AutoRipIngay = Value
-end})
-spawn(function()
-  while __DIO_wait(Sec) do
-    pcall(function()
-      if _G.AutoRipIngay then
-        -- [FIX RIP INDRA] TIM CA 2 TEN: "rip_indra" (boss Second Sea - Indra Island) va
-        -- "rip_indra True Form" (raid boss Lv.5000 spawn tai cung dien Castle on the Sea,
-        -- summon bang God's Chalice, drop Dark Dagger 5% + Valkyrie Helm). Ban cu chi tim 1 ten
-        -- nen khi boss True Form spawn thi toggle nhin nhu CHET (bo lo quai that trong Enemies).
-        local v = GetConnectionEnemies("rip_indra") or GetConnectionEnemies("rip_indra True Form")
-        -- [FIX RIP INDRA] fix thu tu toan tu: ban cu "A or B and v" duoc Lua tinh la "A or (B and v)"
-        -- -> chua co Dark Dagger ma chua co boss la Attack.Kill(nil) rong roi suot, khong bao gio
-        -- ve Castle cho spawn -> toggle dung yen. Gio: CO boss + thieu 1 trong 2 do drop
-        -- (Dark Dagger hoac Valkyrie) -> danh; KHONG co boss (hoac du do) -> ve Castle cho spawn.
-        if v and (not GetWP("Dark Dagger") or not GetIn("Valkyrie")) then
-          repeat __DIO_wait(Sec) Attack.Kill(v,_G.AutoRipIngay)until not _G.AutoRipIngay or not v.Parent or v.Humanoid.Health <= 0
-        else
-          replicated.Remotes.CommF_:InvokeServer("requestEntrance",Vector3.new(-5097.93164, 316.447021, -3142.66602, -0.405007899, -4.31682743e-08, 0.914313197, -1.90943332e-08, 1, 3.8755779e-08, -0.914313197, -1.76180437e-09, -0.405007899))
-		  __DIO_wait(.1)
-		  _tp(CFrame.new(-5344.822265625, 423.98541259766, -2725.0930175781))
-	    end
-      end
-    end)
-  end
-end)
-
-Tabs.Main:AddToggle({
-Name = "Auto Unlocked Haki", 
-Description = "", 
-Default = false,
-Callback = function(Value)
-  _G.AutoUnHaki = Value
-end})
-AuraSkin = function(HakiID)
-  local args = {[1] = {["StorageName"] = HakiID,["Type"] = "AuraSkin",["Context"] = "Equip"}};
-  replicated:WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RF/FruitCustomizerRF"):InvokeServer(unpack(args));
-end;
-VaildColor = function(Part)
-  if Part and Part.BrickColor then return (tostring(Part.BrickColor) == "Lime green") end;
-end;
-HakiCalculate = function(Part)
-  local ID = {["Really red"] = "Pure Red";["Oyster"] = "Snow White";["Hot pink"] = "Winter Sky";};
-  if Part and Part.BrickColor then return (ID[tostring(Part.BrickColor)])end;
-end;
-spawn(function()
-  while __DIO_wait(Sec) do
-    if _G.AutoUnHaki then
-      pcall(function()
-        local Summoner = workspace.Map["Boat Castle"]:FindFirstChild("Summoner");
-        if Summoner and Summoner:FindFirstChild("Circle") then 
-          for i,v in pairs(Summoner:FindFirstChild("Circle"):GetChildren()) do 
-            if v.Name == "Part" then 
-            local TogglesPart = v:FindFirstChild("Part");
-              if VaildColor(TogglesPart) == false then 
-                AuraSkin(HakiCalculate(v));
-                repeat __DIO_wait(0.25) _tp(v.CFrame) until VaildColor(TogglesPart) == true or not _G.AutoUnHaki;
-              end
-            end            
-          end
-        end        
-      end)
-    end
-  end
 end)
 
 Tabs.Main:AddSection("Farming Cake")
@@ -6040,7 +5782,7 @@ end)
 
 Neartween = Tabs.Settings:AddToggle({
 Name = "Tween speed 600 if near", 
-Description = "BAT: khi gan (dich <=150 stud hoac co mob song trong 150 stud) tween chay 600. TAT: moi mode Farm (Normal/Obrit/Dodge) luon dung dung slider 'Speed Tween', khong bao gio tu len 600.", 
+Description = "", 
 Default = true, 
 Callback = function(Value)
   -- [FIX NEAR-FLAG 12-09-2026] ep CUNG KIEU boolean: gate trong __DIO_PickTweenSpeed la
@@ -6051,8 +5793,8 @@ Callback = function(Value)
     Window:Notify({
       Title = "Tween speed 600 if near",
       Content = _G.Neartween
-        and ("BAT: gan thi tween 600 (moi mode Farm).")
-        or  ("TAT: khong bao gio dung 600 - moi mode Farm dung slider Speed Tween (" .. tostring(math.floor(tonumber(_G.TweenSpeed) or 300)) .. ")."),
+        and ("Can rist bug tween of reset")
+        or  ("Ok(" .. tostring(math.floor(tonumber(_G.TweenSpeed) or 300)) .. ")."),
       Duration = 4,
     })
   end)
@@ -6892,6 +6634,216 @@ spawn(function()
     end)
   end
 end)
+Tabs.Main:AddSection("Farm Rip Indra")
+
+Tabs.Main:AddToggle({
+Name = "Auto Attack Rip Indra", 
+Description = "", 
+Default = false,
+Callback = function(Value)
+  _G.AutoRipIngay = Value
+end})
+spawn(function()
+  while __DIO_wait(Sec) do
+    pcall(function()
+      if _G.AutoRipIngay then
+        -- [FIX RIP INDRA] TIM CA 2 TEN: "rip_indra" (boss Second Sea - Indra Island) va
+        -- "rip_indra True Form" (raid boss Lv.5000 spawn tai cung dien Castle on the Sea,
+        -- summon bang God's Chalice, drop Dark Dagger 5% + Valkyrie Helm). Ban cu chi tim 1 ten
+        -- nen khi boss True Form spawn thi toggle nhin nhu CHET (bo lo quai that trong Enemies).
+        local v = GetConnectionEnemies("rip_indra") or GetConnectionEnemies("rip_indra True Form")
+        -- [FIX RIP INDRA] fix thu tu toan tu: ban cu "A or B and v" duoc Lua tinh la "A or (B and v)"
+        -- -> chua co Dark Dagger ma chua co boss la Attack.Kill(nil) rong roi suot, khong bao gio
+        -- ve Castle cho spawn -> toggle dung yen. Gio: CO boss + thieu 1 trong 2 do drop
+        -- (Dark Dagger hoac Valkyrie) -> danh; KHONG co boss (hoac du do) -> ve Castle cho spawn.
+        if v and (not GetWP("Dark Dagger") or not GetIn("Valkyrie")) then
+          repeat __DIO_wait(Sec) Attack.Kill(v,_G.AutoRipIngay)until not _G.AutoRipIngay or not v.Parent or v.Humanoid.Health <= 0
+        else
+          replicated.Remotes.CommF_:InvokeServer("requestEntrance",Vector3.new(-5097.93164, 316.447021, -3142.66602, -0.405007899, -4.31682743e-08, 0.914313197, -1.90943332e-08, 1, 3.8755779e-08, -0.914313197, -1.76180437e-09, -0.405007899))
+		  __DIO_wait(.1)
+		  _tp(CFrame.new(-5344.822265625, 423.98541259766, -2725.0930175781))
+	    end
+      end
+    end)
+  end
+end)
+
+Tabs.Main:AddToggle({
+Name = "Auto Unlocked Haki", 
+Description = "", 
+Default = false,
+Callback = function(Value)
+  _G.AutoUnHaki = Value
+end})
+AuraSkin = function(HakiID)
+  local args = {[1] = {["StorageName"] = HakiID,["Type"] = "AuraSkin",["Context"] = "Equip"}};
+  replicated:WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RF/FruitCustomizerRF"):InvokeServer(unpack(args));
+end;
+VaildColor = function(Part)
+  if Part and Part.BrickColor then return (tostring(Part.BrickColor) == "Lime green") end;
+end;
+HakiCalculate = function(Part)
+  local ID = {["Really red"] = "Pure Red";["Oyster"] = "Snow White";["Hot pink"] = "Winter Sky";};
+  if Part and Part.BrickColor then return (ID[tostring(Part.BrickColor)])end;
+end;
+spawn(function()
+  while __DIO_wait(Sec) do
+    if _G.AutoUnHaki then
+      pcall(function()
+        local Summoner = workspace.Map["Boat Castle"]:FindFirstChild("Summoner");
+        if Summoner and Summoner:FindFirstChild("Circle") then 
+          for i,v in pairs(Summoner:FindFirstChild("Circle"):GetChildren()) do 
+            if v.Name == "Part" then 
+            local TogglesPart = v:FindFirstChild("Part");
+              if VaildColor(TogglesPart) == false then 
+                AuraSkin(HakiCalculate(v));
+                repeat __DIO_wait(0.25) _tp(v.CFrame) until VaildColor(TogglesPart) == true or not _G.AutoUnHaki;
+              end
+            end            
+          end
+        end        
+      end)
+    end
+  end
+end)
+Tabs.Main:AddSection("Farm Elite Hunter")
+
+local Process = Tabs.Main:AddParagraph("Elites Process", "")
+__EliteProg = "" -- [FIX FPS-FINAL-4] cache progress: chi 1 loop goi remote EliteHunter, loop con lai doc cache
+spawn(function()
+    local __prevElite = nil -- [FIX PERF 31] SetDesc chi khi gia tri DOI (ui khong ve lai voi cung chuoi)
+    while __DIO_wait(2) do -- [FIX FPS 2] 0.1s -> 2s: cu goi remote EliteHunter 10 lan/s ca khi treo
+        pcall(function()    
+            local __r = replicated.Remotes.CommF_:InvokeServer("EliteHunter", "Progress")
+            if __r then __EliteProg = tostring(__r) end
+            local __v = "Elite Progress : " .. tostring(__EliteProg)
+            if __v ~= __prevElite then __prevElite = __v Process:SetDesc(__v) end
+        end)
+    end
+end)
+
+local EliteHunter = Tabs.Main:AddParagraph("Elite Spawn", "Status: ")
+spawn(function()
+    local previousStatus = ""
+    while __DIO_wait(2) do -- [FIX FPS-FINAL-4] 1s -> 2s + KHONG goi remote nua (doc __EliteProg)
+        local currentStatus = (__SVC_RS:FindFirstChild("Diablo") or 
+                               __SVC_RS:FindFirstChild("Deandre") or 
+                               __SVC_RS:FindFirstChild("Urban") or 
+                               __SVC_WS.Enemies:FindFirstChild("Diablo") or 
+                               __SVC_WS.Enemies:FindFirstChild("Deandre") or 
+                               __SVC_WS.Enemies:FindFirstChild("Urban")) and '✅' or '❌'
+        if currentStatus ~= previousStatus then
+            EliteHunter:SetDesc("Status: " .. currentStatus .. " | Killed: " .. tostring(__EliteProg))
+            previousStatus = currentStatus
+        end
+    end
+end)
+
+EliteQ = Tabs.Main:AddToggle({
+    Name = "Auto Farm Elite",
+    Description = "",
+    Default = false,
+    Callback = function(Value)
+    _G.FarmEliteHunt = Value
+end})
+
+spawn(function()
+    while __DIO_wait(1) do
+        pcall(function()
+            if _G.FarmEliteHunt then
+                local questGui = plr.PlayerGui.Main.Quest
+                local __qE1 = __DIO_GetCurrentQuest() -- [FIX QUEST-FN] doc quest qua ham dung chung (nil-safe)
+                local questTitle = __qE1.QuestText or ""
+
+                if not __qE1.IsActive then
+                    
+                    local result = replicated.Remotes.CommF_:InvokeServer("EliteHunter")
+                    if result == nil or string.find(result, "Cooldown") then
+                      
+                        __DIO_wait(10)
+                        return
+                    end
+                    __DIO_wait(1)
+                else
+                    
+                    local eliteName = nil
+                    for _, name in pairs({"Diablo", "Urban", "Deandre"}) do
+                        if string.find(questTitle, name) then
+                            eliteName = name
+                            break
+                        end
+                    end
+
+                    if eliteName then
+                        local boss = nil
+                        
+                        for _, v in pairs(replicated:GetChildren()) do
+                            if v.Name == eliteName and v:FindFirstChild("HumanoidRootPart") then
+                                boss = v
+                                break
+                            end
+                        end
+                        for _, v in pairs(Enemies:GetChildren()) do
+                            if v.Name == eliteName and Attack.Alive(v) then
+                                boss = v
+                                break
+                            end
+                        end
+
+                        if boss and boss:FindFirstChild("HumanoidRootPart") then
+                            _tp(boss.HumanoidRootPart.CFrame * CFrame.new(0, 30, 0))
+                            repeat
+                                __DIO_wait(0.25)
+                                Attack.Kill(boss, _G.FarmEliteHunt)
+                            until not _G.FarmEliteHunt or not boss.Parent or boss.Humanoid.Health <= 0 or not questGui.Visible
+                        else
+                           
+                            __DIO_wait(5)
+                        end
+                    else
+                       
+                        replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
+                    end
+                end
+            end
+        end)
+    end
+end)
+
+EliteH = Tabs.Main:AddToggle({
+	Name = "Auto Farm Elite + Hop",
+	Description = "",
+	Default = false,
+	Callback = function(Value)
+	_G.FarmEliteH = Value
+end})
+
+Tabs.Main:AddToggle({
+    Name = "Auto Get PlayerQuest",
+    Description = "",
+    Default = false,
+    Callback = function(Value)
+        _G.AutoReceivePlayerQuest = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
+    end
+})
+
+Tabs.Main:AddToggle({
+    Name = "Auto Kill Player Quest", 
+    Default = false,
+    Callback = function(Value)
+        _G.AutoPlayerHunter = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
+    end
+})
 Tabs.Quests:AddSection("Tushita + Yama")
 
 Q = Tabs.Quests:AddToggle({
@@ -8137,7 +8089,51 @@ spawn(function()
     end
   end
 end)
+Tabs.Main:AddSection("Collect Berry")
 
+Berry = Tabs.Main:AddToggle({
+Name = "Auto Farm Berry", 
+Description = "", 
+Default = false,
+Callback = function(Value)
+  _G.AutoBerry = Value
+end})
+spawn(function()
+  while __DIO_wait(Sec) do
+    if _G.AutoBerry then
+      local CollectionService= __SVC_CS
+      local Players= __SVC_PLR
+      local Player = Players.LocalPlayer
+      local BerryBush = CollectionService:GetTagged("BerryBush")      
+      local Distance, Nearest = math.huge      
+      for i = 1, #BerryBush do
+        local Bush = BerryBush[i]        
+        for AttributeName, BerryName in pairs(Bush:GetAttributes()) do
+          if not BerryArray or table.find(BerryArray, BerryName) then           
+            _tp(Bush.Parent:GetPivot())
+            for i = 1, #BerryBush do
+            local Bush = BerryBush[i]        
+              for AttributeName, BerryName in pairs(Bush:GetChildren()) do
+                if not BerryArray or table.find(BerryArray, BerryName) then
+                  _tp(BerryName.WorldPivot)
+                  fireproximityprompt(BerryName.ProximityPrompt,math.huge)
+                end
+              end
+            end      
+          end
+        end
+      end      
+    end
+  end
+end)
+
+BerryH = Tabs.Main:AddToggle({
+Name = "Auto Farm Berry + Hop", 
+Description = "", 
+Default = false,
+Callback = function(Value)
+  _G.AutoBerryH = Value
+end})
 Tabs.Quests:AddSection("Buso/Aura Colours")
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Teleport Barista Cousin", 
