@@ -2716,6 +2716,358 @@ local Tabs = {
     Combat = Window:MakeTab({ Title = "PvP", Icon = "" }),
     Misc = Window:MakeTab({ Title = "Misc", Icon = "" })
 }
+
+-- =====================================================================
+-- V5.2 TEXT MAP (bang text dung chung cho toan bo UI)
+-- Moi Name cua toggle/dropdown/button/slider trong source deu lookup qua
+-- bang nay:  Name = __DIO_T["Select Boats"]
+-- * Mac dinh value = key (UI hien thi giong heu het truoc).
+-- * Muon doi/dich text (vd tieng Viet): chi sua VALUE trong bang nay,
+-- 1 cho duy nhat, khong phai sua tung dong UI.
+-- * Neu key chua co trong bang => tu hien dung chinh key (khong bao loi).
+-- Luu y: Default cua dropdown KHONG di qua map (no la gia tri phai trung
+-- khop voi Options, khong phai label) nen dung nguyen nhu cu.
+-- =====================================================================
+__DIO_T = setmetatable({
+    ["FIX LAG "] = "FIX LAG ",
+    ["Select Weapon"] = "Select Weapon",
+    ["UI Scale"] = "UI Scale",
+    ["Farm"] = "Farm",
+    ["Start Farm"] = "Start Farm",
+    ["Accept Quest Level/Cake/Bone"] = "Accept Quest Level/Cake/Bone",
+    ["Auto Factory Raid"] = "Auto Factory Raid",
+    ["Auto Random Bones"] = "Auto Random Bones",
+    ["Auto Pirate Raid"] = "Auto Pirate Raid",
+    ["Auto Farm Ectoplasm"] = "Auto Farm Ectoplasm",
+    ["Auto Farm Chest"] = "Auto Farm Chest",
+    ["Auto Chest Bypass"] = "Auto Chest Bypass",
+    ["Stop Items"] = "Stop Items",
+    ["Select Mob"] = "Select Mob",
+    ["Auto Kill Mob"] = "Auto Kill Mob",
+    ["Select Island"] = "Select Island",
+    ["Auto Farm All Island"] = "Auto Farm All Island",
+    ["Auto Dough King [Fully]"] = "Auto Dough King [Fully]",
+    ["Auto Farm Dough King + Hop"] = "Auto Farm Dough King + Hop",
+    ["Choose Material"] = "Choose Material",
+    ["Auto Farm Materials"] = "Auto Farm Materials",
+    ["Select Boss"] = "Select Boss",
+    ["Auto Farm Boss"] = "Auto Farm Boss",
+    ["Accept Quests"] = "Accept Quests",
+    ["Auto Farm All Boss"] = "Auto Farm All Boss",
+    ["Health Farm Mastery"] = "Health Farm Mastery",
+    ["Auto Mastery Fruits"] = "Auto Mastery Fruits",
+    ["Auto Mastery Gun"] = "Auto Mastery Gun",
+    ["Auto Mastery All Sword"] = "Auto Mastery All Sword",
+    ["Fast Attack"] = "Fast Attack",
+    ["Auto Use Skill Melee/Sword If lag Mob or Ghost Mob"] = "Auto Use Skill Melee/Sword If lag Mob or Ghost Mob",
+    ["Tween speed 600 if near"] = "Tween speed 600 if near",
+    ["Bring Mobs"] = "Bring Mobs",
+    ["Up Y When Low Health"] = "Up Y When Low Health",
+    ["Fast Attack Delay"] = "Fast Attack Delay",
+    ["Mode Farm"] = "Mode Farm",
+    ["Orbit Speed"] = "Orbit Speed",
+    ["Orbit Height"] = "Orbit Height",
+    ["mobs Bring"] = "mobs Bring",
+    ["Bring Distance"] = "Bring Distance",
+    ["Farm Distance"] = "Farm Distance",
+    ["Speed Tween"] = "Speed Tween",
+    ["Hop Delay (Minutes)"] = "Hop Delay (Minutes)",
+    ["Auto Summon Cake Prince"] = "Auto Summon Cake Prince",
+    ["Auto Set Spawn Point"] = "Auto Set Spawn Point",
+    ["Auto Turn on Buso"] = "Auto Turn on Buso",
+    ["Auto Haki Observation"] = "Auto Haki Observation",
+    ["Auto Turn on Race V3"] = "Auto Turn on Race V3",
+    ["Auto Turn on Race V4"] = "Auto Turn on Race V4",
+    ["Auto Turn on Spin (x,y,z) "] = "Auto Turn on Spin (x,y,z) ",
+    ["Safe Mode"] = "Safe Mode",
+    ["Anti AFK"] = "Anti AFK",
+    ["Auto Anti - Admin Join Server"] = "Auto Anti - Admin Join Server",
+    ["No Clip"] = "No Clip",
+    ["Stats Value"] = "Stats Value",
+    ["Auto Melee"] = "Auto Melee",
+    ["Auto Swords"] = "Auto Swords",
+    ["Auto Gun"] = "Auto Gun",
+    ["Auto Blox Fruit"] = "Auto Blox Fruit",
+    ["Auto Defense"] = "Auto Defense",
+    ["Select Fishing Rod"] = "Select Fishing Rod",
+    ["Select Bait"] = "Select Bait",
+    ["Auto Slap Fishing"] = "Auto Slap Fishing",
+    ["Auto Buy Bait"] = "Auto Buy Bait",
+    ["Auto Fishing"] = "Auto Fishing",
+    ["Auto Quest Fishing"] = "Auto Quest Fishing",
+    ["Auto Complete Quest"] = "Auto Complete Quest",
+    ["Auto Sell Fish"] = "Auto Sell Fish",
+    ["Auto Spam Skill Z"] = "Auto Spam Skill Z",
+    ["Auto Quest Sea 2"] = "Auto Quest Sea 2",
+    ["Auto Quest Sea 3"] = "Auto Quest Sea 3",
+    ["Auto Attack Rip Indra"] = "Auto Attack Rip Indra",
+    ["Auto Unlocked Haki"] = "Auto Unlocked Haki",
+    ["Auto Soul Reaper"] = "Auto Soul Reaper",
+    ["Auto Try Luck Gravestone"] = "Auto Try Luck Gravestone",
+    ["Auto Pray Gravestone"] = "Auto Pray Gravestone",
+    ["Auto Farm Elite"] = "Auto Farm Elite",
+    ["Auto Farm Elite + Hop"] = "Auto Farm Elite + Hop",
+    ["Auto Get PlayerQuest"] = "Auto Get PlayerQuest",
+    ["Auto Kill Player Quest"] = "Auto Kill Player Quest",
+    ["Auto Tushita Sword"] = "Auto Tushita Sword",
+    ["Auto Yama Sword"] = "Auto Yama Sword",
+    ["Auto Skull Guitar"] = "Auto Skull Guitar",
+    ["Auto Farm Material Skull Guitar"] = "Auto Farm Material Skull Guitar",
+    ["Auto Get CDK [ Last Quest ]"] = "Auto Get CDK [ Last Quest ]",
+    ["Auto Yama CDK"] = "Auto Yama CDK",
+    ["Auto Tushita CDK"] = "Auto Tushita CDK",
+    ["Buy Legendary Sword"] = "Buy Legendary Sword",
+    ["Buy True Triple Katana Sword"] = "Buy True Triple Katana Sword",
+    ["Tween to Legendary Sword Dealer"] = "Tween to Legendary Sword Dealer",
+    ["Auto Pole V1"] = "Auto Pole V1",
+    ["Auto Pole V2 [Beta]"] = "Auto Pole V2 [Beta]",
+    ["Auto Saw Sword"] = "Auto Saw Sword",
+    ["Auto Saber Sword"] = "Auto Saber Sword",
+    ["Auto Cybrog"] = "Auto Cybrog",
+    ["Auto Usoap's Hat"] = "Auto Usoap's Hat",
+    ["Auto Bisento V2"] = "Auto Bisento V2",
+    ["Auto Warden Sword"] = "Auto Warden Sword",
+    ["Auto Marine Coat"] = "Auto Marine Coat",
+    ["Auto Swan Coat"] = "Auto Swan Coat",
+    ["Auto Rengoku Sword"] = "Auto Rengoku Sword",
+    ["Auto Key Rengoku"] = "Auto Key Rengoku",
+    ["Auto Dragon Trident"] = "Auto Dragon Trident",
+    ["Auto Long Sword"] = "Auto Long Sword",
+    ["Auto Black Spikey"] = "Auto Black Spikey",
+    ["Auto Dark Blade V3"] = "Auto Dark Blade V3",
+    ["Auto Midnight Blade"] = "Auto Midnight Blade",
+    ["Auto Darkbeard"] = "Auto Darkbeard",
+    ["Auto Unlocked DonSwan"] = "Auto Unlocked DonSwan",
+    ["Auto Swan Glasses"] = "Auto Swan Glasses",
+    ["Auto Bigmom"] = "Auto Bigmom",
+    ["Auto Canvendish Sword"] = "Auto Canvendish Sword",
+    ["Auto Twin Hooks"] = "Auto Twin Hooks",
+    ["Auto Serpent Bow"] = "Auto Serpent Bow",
+    ["Auto Lei Accessory"] = "Auto Lei Accessory",
+    ["Auto Farm Berry"] = "Auto Farm Berry",
+    ["Auto Farm Berry + Hop"] = "Auto Farm Berry + Hop",
+    ["Auto Teleport Barista Cousin"] = "Auto Teleport Barista Cousin",
+    ["Buy Buso Colors"] = "Buy Buso Colors",
+    ["Auto Rainbow Colors"] = "Auto Rainbow Colors",
+    ["Accept Rainbow Quest Faster"] = "Accept Rainbow Quest Faster",
+    ["Auto Farm Observation"] = "Auto Farm Observation",
+    ["Auto Observation V2"] = "Auto Observation V2",
+    ["Auto Done Bartilo Quest"] = "Auto Done Bartilo Quest",
+    ["Auto Done Citizen Quest"] = "Auto Done Citizen Quest",
+    ["Auto Training Dummy"] = "Auto Training Dummy",
+    ["Buy  BlackLeg"] = "Buy  BlackLeg",
+    ["Buy  Electro"] = "Buy  Electro",
+    ["Buy  FishmanKarate"] = "Buy  FishmanKarate",
+    ["Buy  DragonClaw"] = "Buy  DragonClaw",
+    ["Auto Superhuman"] = "Auto Superhuman",
+    ["Auto DeathStep"] = "Auto DeathStep",
+    ["Auto Sharkman Karate"] = "Auto Sharkman Karate",
+    ["Auto ElectricClaw"] = "Auto ElectricClaw",
+    ["Auto DragonTalon"] = "Auto DragonTalon",
+    ["Auto Godhuman"] = "Auto Godhuman",
+    ["Auto SanguineArt"] = "Auto SanguineArt",
+    ["Auto Find Mirage Island"] = "Auto Find Mirage Island",
+    ["Esp Mirage Island"] = "Esp Mirage Island",
+    ["Auto Tween To Mirage Island"] = "Auto Tween To Mirage Island",
+    ["Auto Tween To Highest Point"] = "Auto Tween To Highest Point",
+    ["Auto Collect Gear"] = "Auto Collect Gear",
+    ["Change Transparency can see"] = "Change Transparency can see",
+    ["Auto Tween Advanced Fruit Dealer"] = "Auto Tween Advanced Fruit Dealer",
+    ["Auto Collect Mirage Chest"] = "Auto Collect Mirage Chest",
+    ["Talk With Stone"] = "Talk With Stone",
+    ["Auto Look At Moon"] = "Auto Look At Moon",
+    ["Look Moon + Auto V3"] = "Look Moon + Auto V3",
+    ["Auto Upgrade Mink"] = "Auto Upgrade Mink",
+    ["Auto Upgrade Human"] = "Auto Upgrade Human",
+    ["Auto Upgrade Angel"] = "Auto Upgrade Angel",
+    ["Auto Upgrade FishMan"] = "Auto Upgrade FishMan",
+    ["Auto Pull Lever"] = "Auto Pull Lever",
+    ["Auto Train V4"] = "Auto Train V4",
+    ["Teleport to Temple of Time"] = "Teleport to Temple of Time",
+    ["Teleport to Ancient One"] = "Teleport to Ancient One",
+    ["Teleport to Ancient Clock"] = "Teleport to Ancient Clock",
+    ["Auto Teleport to Race Doors"] = "Auto Teleport to Race Doors",
+    ["Auto Complete Trial Race"] = "Auto Complete Trial Race",
+    ["Auto Kill Player After Trial"] = "Auto Kill Player After Trial",
+    ["Auto Dojo Trainer"] = "Auto Dojo Trainer",
+    ["Auto Dragon Hunter"] = "Auto Dragon Hunter",
+    ["Tween To Upgrade Draco Trial"] = "Tween To Upgrade Draco Trial",
+    ["Auto Draco (V1)"] = "Auto Draco (V1)",
+    ["Auto Draco (V2)"] = "Auto Draco (V2)",
+    ["Auto Draco (V3)"] = "Auto Draco (V3)",
+    ["Auto Relic Draco Trial [Beta]"] = "Auto Relic Draco Trial [Beta]",
+    ["Auto Train Draco v4"] = "Auto Train Draco v4",
+    ["Tween to Draco Trials"] = "Tween to Draco Trials",
+    ["Swap Draco Race"] = "Swap Draco Race",
+    ["Upgrade Dragon Talon With Uzoth"] = "Upgrade Dragon Talon With Uzoth",
+    ["Craft Dragonheart"] = "Craft Dragonheart",
+    ["Craft Dragonstorm"] = "Craft Dragonstorm",
+    ["Craft Dino Hood"] = "Craft Dino Hood",
+    ["Craft T-Rex Skull"] = "Craft T-Rex Skull",
+    ["Craft Volcanic Magnet"] = "Craft Volcanic Magnet",
+    ["Auto Find Prehistoric Island"] = "Auto Find Prehistoric Island",
+    ["Auto Start Prehistoric Event"] = "Auto Start Prehistoric Event",
+    ["Auto Patch Prehistoric Event"] = "Auto Patch Prehistoric Event",
+    ["Kill Aura"] = "Kill Aura",
+    ["Auto Collect Dino Bones"] = "Auto Collect Dino Bones",
+    ["Auto Collect Dragon Eggs"] = "Auto Collect Dragon Eggs",
+    ["Auto Reset When Complete Volcano"] = "Auto Reset When Complete Volcano",
+    ["Remove Lighting Effect"] = "Remove Lighting Effect",
+    ["Ship Speed Modifier"] = "Ship Speed Modifier",
+    ["Ship Speed"] = "Ship Speed",
+    ["Auto Press W"] = "Auto Press W",
+    ["No Clip Ship"] = "No Clip Ship",
+    ["Boat Speed Tween"] = "Boat Speed Tween",
+    ["Select Weapon Sea Event"] = "Select Weapon Sea Event",
+    ["Select Skill"] = "Select Skill",
+    ["Select Boats"] = "Select Boats",
+    ["Buy Boats"] = "Buy Boats",
+    ["Select Sea Level"] = "Select Sea Level",
+    ["Dodge Sea Beast / Terror Shark"] = "Dodge Sea Beast / Terror Shark",
+    ["Dodge Height (Y)"] = "Dodge Height (Y)",
+    ["Auto Sail Boat"] = "Auto Sail Boat",
+    ["Select Sea Event"] = "Select Sea Event",
+    ["Auto Find Kitsune Island"] = "Auto Find Kitsune Island",
+    ["Auto Teleport to Shrine Actived"] = "Auto Teleport to Shrine Actived",
+    ["Auto Collect Azure Ember"] = "Auto Collect Azure Ember",
+    ["Auto Trade Azure Ember"] = "Auto Trade Azure Ember",
+    ["Trade Items Azure"] = "Trade Items Azure",
+    ["Talk with kitsune statue"] = "Talk with kitsune statue",
+    ["Buy Spy"] = "Buy Spy",
+    ["Auto Find Frozen Dimension"] = "Auto Find Frozen Dimension",
+    ["Auto Teleport Frozen Dimension"] = "Auto Teleport Frozen Dimension",
+    ["Shot Leviathan Heart [Beta]"] = "Shot Leviathan Heart [Beta]",
+    ["Auto Drive To Hydra Island"] = "Auto Drive To Hydra Island",
+    ["Auto Attack Leviathan"] = "Auto Attack Leviathan",
+    ["Esp Player"] = "Esp Player",
+    ["Esp Chest"] = "Esp Chest",
+    ["Esp Fruit"] = "Esp Fruit",
+    ["Esp Island"] = "Esp Island",
+    ["Esp Legendary Sword"] = "Esp Legendary Sword",
+    ["Esp Haki Color"] = "Esp Haki Color",
+    ["Esp SeaEvent Island"] = "Esp SeaEvent Island",
+    ["Esp Advanced Dealer"] = "Esp Advanced Dealer",
+    ["Auto Random Fruit"] = "Auto Random Fruit",
+    ["Auto Drop Fruit"] = "Auto Drop Fruit",
+    ["Auto Store Fruit"] = "Auto Store Fruit",
+    ["Auto Tween to Fruit"] = "Auto Tween to Fruit",
+    ["Auto Collect Fruit"] = "Auto Collect Fruit",
+    ["Select Fruit Shop"] = "Select Fruit Shop",
+    ["Auto Buy Fruit Shop"] = "Auto Buy Fruit Shop",
+    ["Select Chip"] = "Select Chip",
+    ["Get Fruit In Inventory Below 1M"] = "Get Fruit In Inventory Below 1M",
+    ["Auto Buy Chip [Beli]"] = "Auto Buy Chip [Beli]",
+    ["Auto Buy Chip [Devil Fruit]"] = "Auto Buy Chip [Devil Fruit]",
+    ["Auto Start Raid"] = "Auto Start Raid",
+    ["Auto Raid + Next Island"] = "Auto Raid + Next Island",
+    ["Auto Awakening"] = "Auto Awakening",
+    ["Auto Teleport To Lab"] = "Auto Teleport To Lab",
+    ["Buy Microchip Law"] = "Buy Microchip Law",
+    ["Start Law Raids"] = "Start Law Raids",
+    ["Auto Buy Microchip Law"] = "Auto Buy Microchip Law",
+    ["Auto Start Law Raids"] = "Auto Start Law Raids",
+    ["Auto Kill Law"] = "Auto Kill Law",
+    ["Auto Farm Dungeon"] = "Auto Farm Dungeon",
+    ["TP Exit (1)"] = "TP Exit (1)",
+    ["TP Exit (2)"] = "TP Exit (2)",
+    ["TP Exit (3)"] = "TP Exit (3)",
+    ["TP Exit (4)"] = "TP Exit (4)",
+    ["Select Players"] = "Select Players",
+    ["Teleport To Select Players"] = "Teleport To Select Players",
+    ["Spectate Select Players"] = "Spectate Select Players",
+    ["Select Aim Method"] = "Select Aim Method",
+    ["Aimbot Method Skills"] = "Aimbot Method Skills",
+    ["Aimbot Camera Closet Players"] = "Aimbot Camera Closet Players",
+    ["Auto Enable PvP"] = "Auto Enable PvP",
+    ["Auto Safe Mode"] = "Auto Safe Mode",
+    ["Enable Fly"] = "Enable Fly",
+    ["Speed Fly Mode"] = "Speed Fly Mode",
+    ["Dash No Cooldown"] = "Dash No Cooldown",
+    ["Instance Mink V3 [ INF ]"] = "Instance Mink V3 [ INF ]",
+    ["Instance Energy [ INF ]"] = "Instance Energy [ INF ]",
+    ["Instance Soru [ INF ]"] = "Instance Soru [ INF ]",
+    ["Instance Observation Range [ INF ]"] = "Instance Observation Range [ INF ]",
+    ["Ignore Same Teams"] = "Ignore Same Teams",
+    ["Accept Allies"] = "Accept Allies",
+    ["Travel East Blue (World 1)"] = "Travel East Blue (World 1)",
+    ["Travel Dressrosa (World 2)"] = "Travel Dressrosa (World 2)",
+    ["Travel Zou (World 3)"] = "Travel Zou (World 3)",
+    ["Select Travelling"] = "Select Travelling",
+    ["Auto Travel"] = "Auto Travel",
+    ["Select Portal"] = "Select Portal",
+    ["requestEntrance"] = "requestEntrance",
+    ["Select NPCs"] = "Select NPCs",
+    ["Auto Tween to NPC"] = "Auto Tween to NPC",
+    ["Buy Buso"] = "Buy Buso",
+    ["Buy Geppo"] = "Buy Geppo",
+    ["Buy Soru"] = "Buy Soru",
+    ["Buy Ken"] = "Buy Ken",
+    ["Buy Tomoe Ring"] = "Buy Tomoe Ring",
+    ["Buy Black Cape"] = "Buy Black Cape",
+    ["Buy Swordsman Hat"] = "Buy Swordsman Hat",
+    ["Buy Bizarre Rifle"] = "Buy Bizarre Rifle",
+    ["Buy Ghoul Mask"] = "Buy Ghoul Mask",
+    ["Buy Cutlass"] = "Buy Cutlass",
+    ["Buy Katana"] = "Buy Katana",
+    ["Buy Iron Mace"] = "Buy Iron Mace",
+    ["Buy Duel Katana"] = "Buy Duel Katana",
+    ["Buy Triple Katana"] = "Buy Triple Katana",
+    ["Buy Pipe"] = "Buy Pipe",
+    ["Buy Dual-Headed Blade"] = "Buy Dual-Headed Blade",
+    ["Buy Bisento"] = "Buy Bisento",
+    ["Buy Soul Cane"] = "Buy Soul Cane",
+    ["Buy Slingshot"] = "Buy Slingshot",
+    ["Buy Musket"] = "Buy Musket",
+    ["Buy Dual Flintlock"] = "Buy Dual Flintlock",
+    ["Buy Flintlock"] = "Buy Flintlock",
+    ["Buy Refined Flintlock"] = "Buy Refined Flintlock",
+    ["Buy Cannon"] = "Buy Cannon",
+    ["Buy Kabucha"] = "Buy Kabucha",
+    ["Buy Refund Stats"] = "Buy Refund Stats",
+    ["Buy Reroll Race"] = "Buy Reroll Race",
+    ["Buy Ghoul Race"] = "Buy Ghoul Race",
+    ["Buy Cyborg Race (2.5k)"] = "Buy Cyborg Race (2.5k)",
+    ["Craft SharkTooth"] = "Craft SharkTooth",
+    ["Craft TerrorJaw"] = "Craft TerrorJaw",
+    ["Craft SharkAnchor"] = "Craft SharkAnchor",
+    ["Craft LeviathanCrown"] = "Craft LeviathanCrown",
+    ["Craft LeviathanShield"] = "Craft LeviathanShield",
+    ["Craft LeviathanBoat"] = "Craft LeviathanBoat",
+    ["Craft LegendaryScroll"] = "Craft LegendaryScroll",
+    ["Craft MythicalScroll"] = "Craft MythicalScroll",
+    ["Redeem All Codes"] = "Redeem All Codes",
+    ["Rejoin Server"] = "Rejoin Server",
+    ["Hop Server"] = "Hop Server",
+    ["Hop to Lowest Players"] = "Hop to Lowest Players",
+    ["Hop to Lowest Pings Server"] = "Hop to Lowest Pings Server",
+    ["Input Job Id"] = "Input Job Id",
+    ["Teleport [Job ID]"] = "Teleport [Job ID]",
+    ["Copy JobID"] = "Copy JobID",
+    ["Open Awakenings Expert"] = "Open Awakenings Expert",
+    ["Open Title Selection"] = "Open Title Selection",
+    ["Disable Chat GUI"] = "Disable Chat GUI",
+    ["Disable Leader Board GUI"] = "Disable Leader Board GUI",
+    ["Set Pirate Team"] = "Set Pirate Team",
+    ["Set Marine Team"] = "Set Marine Team",
+    ["Unlock All Portals"] = "Unlock All Portals",
+    ["Select Haki States"] = "Select Haki States",
+    ["ChangeBusoStage"] = "ChangeBusoStage",
+    ["Turn on RTX Mode"] = "Turn on RTX Mode",
+    ["Turn on Fast Mode"] = "Turn on Fast Mode",
+    ["Turn on Low CPU"] = "Turn on Low CPU",
+    ["Turn on increase Boats"] = "Turn on increase Boats",
+    ["No Fog"] = "No Fog",
+    ["Rain Fruits (Client)"] = "Rain Fruits (Client)",
+    ["Turn on Full Bright"] = "Turn on Full Bright",
+    ["Remove Hit VFX"] = "Remove Hit VFX",
+    ["Remove Death & Respawned VFX"] = "Remove Death & Respawned VFX",
+    ["Disable Notify"] = "Disable Notify",
+    ["Select Time"] = "Select Time",
+    ["Turn on Time"] = "Turn on Time",
+    ["Turn on Walk on Water"] = "Turn on Walk on Water",
+    ["Turn on Ice Walk"] = "Turn on Ice Walk",
+}, { __index = function(_, k) return k end })
+
 __DIO_BOOT("Load Hub 99%...")
 
 do
@@ -2778,6 +3130,14 @@ do
                             end
                             pcall(function()
                                 local __anyOn = (type(__DIO_FarmFlagsOn) == "function") and __DIO_FarmFlagsOn() or false
+                                -- V5.2 FIX TRUNG TWEEN: target hien tai co the thuoc feature VUA TAT
+                                -- (vd: bat Farm Cake trong khi FishBoat van bat giu shouldTween => tat
+                                -- Farm Cake xong target cake cu van ket lai, controller keo nhan vat
+                                -- ve cake mai mai). Xoa muc tieu MOI KHI CO TOGGLE BI TAT; feature
+                                -- van con on se tu _tp lai trong ~0.25s nen khong mat dieu khien.
+                                __DIO_TweenTarget = nil
+                                __DIO_LastTweenTarget = nil
+                                if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
                                 if not __anyOn and not __DIO_FlyBusy then
                                     shouldTween = false
                                     __DIO_TweenTarget = nil
@@ -3161,7 +3521,7 @@ __DIO_ApplyPerf = function(mode)
 end
 
 Tabs.Hop:AddDropdown({
-    Name = "FIX LAG ",
+    Name = __DIO_T["FIX LAG "],
     Description = "Note that these are fixed parameters that may change",
     Options = {"OFF", "Fps 30-60", "Fps 30-40", "Fps 40-60", "Delete All (40-45 Fps) "},
     Default = "OFF",
@@ -3388,7 +3748,7 @@ __DIO_SafeLoop(function()
 end, "L3254")
 
 WeaponDropdown = Tabs.Main:AddDropdown({
-    Name = "Select Weapon",
+    Name = __DIO_T["Select Weapon"],
     Options = {"Melee","Sword","Blox Fruit","Gun"},
     Default = "Melee",
     Callback = function(Value)
@@ -3427,7 +3787,7 @@ __DIO_SafeLoop(function()
     end
 end, "L3284")
 Tabs.Main:AddDropdown({
-    Name = "UI Scale",
+    Name = __DIO_T["UI Scale"],
     Options = {"Small", "Normal", "Big"},
     Default = "Normal",
     Callback = function(Value)
@@ -3626,7 +3986,7 @@ end
 __DIO_SyncMasteryIsland()
 
 Tabs.Main:AddDropdown({
-    Name = "Farm",
+    Name = __DIO_T["Farm"],
     Description = "",
     Options = {"Farm Level", "Farm Bone", "Farm Cake", "Farm Tyrant", "Farm Nearest"},
     Default = "Farm Level",
@@ -3642,7 +4002,7 @@ Tabs.Main:AddDropdown({
 })
 
 StartFarmToggle = Tabs.Main:AddToggle({
-    Name = "Start Farm",
+    Name = __DIO_T["Start Farm"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -3657,7 +4017,7 @@ StartFarmToggle = Tabs.Main:AddToggle({
 })
 
 Tabs.Main:AddToggle({
-    Name = "Accept Quest Level/Cake/Bone",
+    Name = __DIO_T["Accept Quest Level/Cake/Bone"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -3900,7 +4260,7 @@ __DIO_SafeLoop(function()
   end
 end, "L3773")
 FactoryRaids = Tabs.Main:AddToggle({
-Name = "Auto Factory Raid",
+Name = __DIO_T["Auto Factory Raid"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -3924,14 +4284,14 @@ __DIO_SafeLoop(function()
   end
 end, "L3795")
 RanBone = Tabs.Main:AddToggle({
-Name = "Auto Random Bones",
+Name = __DIO_T["Auto Random Bones"],
 Description = "",
 Default = false,
 Callback = function(Value)
   _G.Auto_Random_Bone = Value
 end})
 CastleRaids = Tabs.Main:AddToggle({
-Name = "Auto Pirate Raid",
+Name = __DIO_T["Auto Pirate Raid"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -3968,7 +4328,7 @@ __DIO_SafeLoop(function()
 end, "L3826")
 
 Ecto = Tabs.Main:AddToggle({
-Name = "Auto Farm Ectoplasm",
+Name = __DIO_T["Auto Farm Ectoplasm"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -3993,7 +4353,7 @@ end, "L3863")
 Tabs.Main:AddSection("Chest")
 
 ChestTW = Tabs.Main:AddToggle({
-Name = "Auto Farm Chest",
+Name = __DIO_T["Auto Farm Chest"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -4030,7 +4390,7 @@ end, "L3888")
 local __DIO_ChestBPBusy = false
 local __DIO_ChestBPConn = nil
 ChestBP = Tabs.Main:AddToggle({
-    Name = "Auto Chest Bypass",
+    Name = __DIO_T["Auto Chest Bypass"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -4106,7 +4466,7 @@ ChestBP = Tabs.Main:AddToggle({
 })
 
 StopI = Tabs.Main:AddToggle({
-Name = "Stop Items",
+Name = __DIO_T["Stop Items"],
 Description = "",
 Default = true,
 Callback = function(Value)
@@ -4257,7 +4617,7 @@ end, "BerryHop")
 Tabs.Main:AddSection("Farm Mob")
 if World1 then
     Tabs.Main:AddDropdown({
-        Name = "Select Mob",
+        Name = __DIO_T["Select Mob"],
         Default = "Bandit",
         Options = {
             "Bandit", "Monkey", "Gorilla", "Pirate", "Brute",
@@ -4275,7 +4635,7 @@ if World1 then
 end
 if World2 then
     Tabs.Main:AddDropdown({
-        Name = "Select Mob",
+        Name = __DIO_T["Select Mob"],
         Default = "Raider",
         Options = {
             "Raider", "Mercenary", "Swan Pirate", "Factory Staff",
@@ -4292,7 +4652,7 @@ if World2 then
 end
 if World3 then
     Tabs.Main:AddDropdown({
-        Name = "Select Mob",
+        Name = __DIO_T["Select Mob"],
         Options = {
             "Pirate Millionaire", "Dragon Crew Warrior", "Dragon Crew Archer",
             "Female Islander", "Giant Islander", "Marine Commodore",
@@ -4312,7 +4672,7 @@ if World3 then
     })
 end
 Tabs.Main:AddToggle({
-    Name = "Auto Kill Mob",
+    Name = __DIO_T["Auto Kill Mob"],
     Default = false,
     Callback = function(Value)
         _G.AutoKillMob = Value
@@ -4589,7 +4949,7 @@ local Sea3_Islands = {
 
 if World1 then
     Tabs.Main:AddDropdown({
-        Name = "Select Island",
+        Name = __DIO_T["Select Island"],
         Options = {"Pirates", "Marine", "Jungle", "Pirate Village", "Desert", "Frozen Village", "Marine Fortress", "Skylands Lower", "Prison", "Colosseum", "Magma Village", "Underwater City", "Skylands Upper"},
         Callback = function(Value)
             _G.SelectIsland = Value
@@ -4599,7 +4959,7 @@ end
 
 if World2 then
     Tabs.Main:AddDropdown({
-        Name = "Select Island",
+        Name = __DIO_T["Select Island"],
         Options = {"Kingdom of Rose", "Green Zone", "Graveyard Island", "Snow Mountain", "Hot and Cold (Cold)", "Hot and Cold (Hot)", "Cursed Ship", "Ice Castle", "Forgotten Island"},
         Callback = function(Value)
             _G.SelectIsland = Value
@@ -4609,7 +4969,7 @@ end
 
 if World3 then
     Tabs.Main:AddDropdown({
-        Name = "Select Island",
+        Name = __DIO_T["Select Island"],
         Options = {"Port Town", "Hydra Island", "Great Tree", "Floating Turtle", "Haunted Castle", "Sea of Treats", "Tiki Outpost", "Submerged Island"},
         Callback = function(Value)
             _G.SelectIsland = Value
@@ -4625,7 +4985,7 @@ elseif World3 then
     IslandData = Sea3_Islands
 end
 Tabs.Main:AddToggle({
-    Name = "Auto Farm All Island",
+    Name = __DIO_T["Auto Farm All Island"],
     Default = false,
     Callback = function(Value)
         _G.AutoFarmIsland = Value
@@ -4954,7 +5314,7 @@ __DIO_SafeLoop(function()
 end, "L4825")
 
 Tabs.Main:AddToggle({
-    Name = "Auto Dough King [Fully]",
+    Name = __DIO_T["Auto Dough King [Fully]"],
     Default = false,
     Callback = function(Value)
         _G.AutoDoughKing = Value
@@ -5028,7 +5388,7 @@ __DIO_SafeLoop(function()
 end, "L4855")
 
 Tabs.Main:AddToggle({
-    Name = "Auto Farm Dough King + Hop",
+    Name = __DIO_T["Auto Farm Dough King + Hop"],
     Default = false,
     Callback = function(Value)
         _G.AutoHop_Dough = Value
@@ -5409,7 +5769,7 @@ end
 Tabs.Main:AddSection("Farm Material")
 
 Test = Tabs.Main:AddDropdown({
-Name = "Choose Material",
+Name = __DIO_T["Choose Material"],
 		Description = "",
 		Options = MaterialList,
 		Callback = function(Value)
@@ -5419,7 +5779,7 @@ Name = "Choose Material",
 		end
 		})
 Toggle = Tabs.Main:AddToggle({
-Name = "Auto Farm Materials",
+Name = __DIO_T["Auto Farm Materials"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -5459,7 +5819,7 @@ end, "L5314")
 Tabs.Main:AddSection("Farm Boss")
 
 		BossDropdown = Tabs.Main:AddDropdown({
-		Name = "Select Boss",
+		Name = __DIO_T["Select Boss"],
 		Description = "",
 		Options = BossList,
 		Callback = function(value)
@@ -5469,7 +5829,7 @@ Tabs.Main:AddSection("Farm Boss")
 
 local __DIO_FarmBossThr = false
 FarmBoss = Tabs.Main:AddToggle({
-    Name = "Auto Farm Boss",
+    Name = __DIO_T["Auto Farm Boss"],
     Description = "",
     Default = false,
     Callback = function(value)
@@ -5542,7 +5902,7 @@ FarmBoss = Tabs.Main:AddToggle({
 })
 
 BossQ = Tabs.Main:AddToggle({
-    Name = "Accept Quests",
+    Name = __DIO_T["Accept Quests"],
     Description = "",
     Default = true,
     Callback = function(Value)
@@ -5556,7 +5916,7 @@ BossQ = Tabs.Main:AddToggle({
 })
 
 FarmAllBoss = Tabs.Main:AddToggle({
-   Name = "Auto Farm All Boss",
+   Name = __DIO_T["Auto Farm All Boss"],
     Default = false,
 Callback = function(Value)
     _G.AutoFarmAllBoss = Value
@@ -5613,7 +5973,7 @@ __DIO_BOOT("Load Services")
 Tabs.Main:AddSection("Farming Mastery")
 
 Tabs.Main:AddSlider({
-    Name = "Health Farm Mastery",
+    Name = __DIO_T["Health Farm Mastery"],
     Description = "",
     Min = 1,
     Max = 100,
@@ -5623,7 +5983,7 @@ Tabs.Main:AddSlider({
         _G.HealthFarmMastery = Value
     end})
 local MasteryFruits = Tabs.Main:AddToggle({
-Name = "Auto Mastery Fruits",
+Name = __DIO_T["Auto Mastery Fruits"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -5667,7 +6027,7 @@ __DIO_SafeLoop(function()
   end
 end, "L5523")
 local MasteryGun = Tabs.Main:AddToggle({
-Name = "Auto Mastery Gun",
+Name = __DIO_T["Auto Mastery Gun"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -5760,7 +6120,7 @@ __DIO_SafeLoop(function()
   end
 end, "L5562")
 local MasterySword = Tabs.Main:AddToggle({
-Name = "Auto Mastery All Sword",
+Name = __DIO_T["Auto Mastery All Sword"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -5827,14 +6187,14 @@ end, "L5655")
 
 Tabs.Settings:AddSection("Settings Farm")
 Initialize = Tabs.Settings:AddToggle({
-Name = "Fast Attack",
+Name = __DIO_T["Fast Attack"],
 Description = "",
 Default = true,
 Callback = function(Value)
   _G.Seriality = Value
 end})
 SkilluserFarm = Tabs.Settings:AddToggle({
-Name = "Auto Use Skill Melee/Sword If lag Mob or Ghost Mob",
+Name = __DIO_T["Auto Use Skill Melee/Sword If lag Mob or Ghost Mob"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -5954,7 +6314,7 @@ __DIO_SafeLoop(function()
 end, "L5829")
 
 Neartween = Tabs.Settings:AddToggle({
-Name = "Tween speed 600 if near",
+Name = __DIO_T["Tween speed 600 if near"],
 Description = "",
 Default = true,
 Callback = function(Value)
@@ -5974,14 +6334,14 @@ end})
 
 _G.Neartween = (GetSetting("UI/Settings/Tween speed 600 if near", true) == true)
 Bringmob = Tabs.Settings:AddToggle({
-Name = "Bring Mobs",
+Name = __DIO_T["Bring Mobs"],
 Description = "",
 Default = true,
 Callback = function(Value)
   _B = Value
 end})
 Tabs.Settings:AddToggle({
-	Name = "Up Y When Low Health",
+	Name = __DIO_T["Up Y When Low Health"],
 	Description = "",
 	Default = false,
 	Callback = function(Value)
@@ -5992,7 +6352,7 @@ end
 FastAttackModule = FastAttackModule or {}
 
 Tabs.Settings:AddSlider({
-    Name = "Fast Attack Delay",
+    Name = __DIO_T["Fast Attack Delay"],
     Min = 1,
     Max = 30,
     Default = 1,
@@ -6003,7 +6363,7 @@ Tabs.Settings:AddSlider({
     end
 })
 Tabs.Settings:AddDropdown({
-    Name = "Mode Farm",
+    Name = __DIO_T["Mode Farm"],
     Options = {"Normal", "Obrit", "Dodge"},
     Default = "Normal",
     Callback = function(Value)
@@ -6017,7 +6377,7 @@ _G.ModeFarm = GetSetting("UI/Settings/Mode Farm", "Normal")
 if _G.ModeFarm ~= "Normal" and _G.ModeFarm ~= "Obrit" and _G.ModeFarm ~= "Dodge" then _G.ModeFarm = "Normal" end
 
 Tabs.Settings:AddSlider({
-    Name = "Orbit Speed",
+    Name = __DIO_T["Orbit Speed"],
     Min = 20,
     Max = 600,
     Default = 170,
@@ -6028,7 +6388,7 @@ Tabs.Settings:AddSlider({
 })
 
 Tabs.Settings:AddSlider({
-    Name = "Orbit Height",
+    Name = __DIO_T["Orbit Height"],
     Min = 0,
     Max = 60,
     Default = 12,
@@ -6039,7 +6399,7 @@ Tabs.Settings:AddSlider({
 })
 
 Tabs.Settings:AddSlider({
-    Name = "mobs Bring",
+    Name = __DIO_T["mobs Bring"],
     Min = 1,
     Max = 20,
     Default = 3,
@@ -6050,7 +6410,7 @@ Tabs.Settings:AddSlider({
 })
 
 Tabs.Settings:AddSlider({
-    Name = "Bring Distance",
+    Name = __DIO_T["Bring Distance"],
     Min = 1,
     Max = 1000,
     Default = 300,
@@ -6061,7 +6421,7 @@ Tabs.Settings:AddSlider({
 })
 
 Tabs.Settings:AddSlider({
-    Name = "Farm Distance",
+    Name = __DIO_T["Farm Distance"],
     Min = 10,
     Max = 100,
     Default = 15,
@@ -6072,7 +6432,7 @@ Tabs.Settings:AddSlider({
 })
 
 Tabs.Settings:AddSlider({
-    Name = "Speed Tween",
+    Name = __DIO_T["Speed Tween"],
     Min = 1,
     Max = 500,
     Default = 190,
@@ -6111,7 +6471,7 @@ __DIO_SafeLoop(function()
     end
 end, "L5975")
 Tabs.Settings:AddSlider({
-    Name = "Hop Delay (Minutes)",
+    Name = __DIO_T["Hop Delay (Minutes)"],
     Min = 5,
     Max = 120,
     Default = 30,
@@ -6122,14 +6482,14 @@ Tabs.Settings:AddSlider({
 })
 
 CakeSM = Tabs.Settings:AddToggle({
-    Name = "Auto Summon Cake Prince",
+    Name = __DIO_T["Auto Summon Cake Prince"],
     Description = "",
     Default = false,
     Callback = function(Value)
     _G.AutoSpawnCP = Value
 end})
 Tabs.Settings:AddToggle({
-    Name = "Auto Set Spawn Point",
+    Name = __DIO_T["Auto Set Spawn Point"],
     Default = false,
     Callback = function(Value)
         getgenv().Set = Value
@@ -6141,7 +6501,7 @@ Tabs.Settings:AddToggle({
     end
 })
 BusuAura = Tabs.Settings:AddToggle({
-Name = "Auto Turn on Buso",
+Name = __DIO_T["Auto Turn on Buso"],
 Description = "",
 Default = true,
 Callback = function(Value)
@@ -6158,7 +6518,7 @@ __DIO_SafeLoop(function()
   end
 end, "L6036")
 Tabs.Settings:AddToggle({
-    Name = "Auto Haki Observation",
+    Name = __DIO_T["Auto Haki Observation"],
     Default = false,
     Callback = function(Value)
         getgenv().Observation = Value
@@ -6174,7 +6534,7 @@ __DIO_SafeLoop(function()
     end
 end, "L6053")
 RaceV3Aura = Tabs.Settings:AddToggle({
-Name = "Auto Turn on Race V3",
+Name = __DIO_T["Auto Turn on Race V3"],
 Description = "",
 Default = false,
 Flag = "AutoTurnonRaceV3",
@@ -6194,7 +6554,7 @@ __DIO_SafeLoop(function()
   end
 end, "L6070")
 RaceV4Aura = Tabs.Settings:AddToggle({
-Name = "Auto Turn on Race V4",
+Name = __DIO_T["Auto Turn on Race V4"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -6213,14 +6573,14 @@ __DIO_SafeLoop(function()
 end, "L6089")
 
 RandomAround = Tabs.Settings:AddToggle({
-Name = "Auto Turn on Spin (x,y,z) ",
+Name = __DIO_T["Auto Turn on Spin (x,y,z) "],
 Description = "",
 Default = false,
 Callback = function(Value)
   RandomCFrame = Value
 end})
 SafeModes = Tabs.Settings:AddToggle({
-Name = "Safe Mode",
+Name = __DIO_T["Safe Mode"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -6239,7 +6599,7 @@ end, "L6115")
 
 __DIO_AFKConn = nil
 Tabs.Settings:AddToggle({
-    Name = "Anti AFK",
+    Name = __DIO_T["Anti AFK"],
     Default = true,
     Callback = function(Value)
 
@@ -6260,7 +6620,7 @@ Tabs.Settings:AddToggle({
 })
 
 Tabs.Settings:AddToggle({
-    Name = "Auto Anti - Admin Join Server",
+    Name = __DIO_T["Auto Anti - Admin Join Server"],
     Description = "",
     Default = true,
     Callback = function(Value)
@@ -6288,7 +6648,7 @@ __DIO_SafeLoop(function()
 end, "L6156")
 
 Tabs.Settings:AddToggle({
-    Name = "No Clip",
+    Name = __DIO_T["No Clip"],
     Default = false,
     Callback = function(Value)
         getgenv().NoClip = Value
@@ -6318,7 +6678,7 @@ end)
 Tabs.Esp:AddSection("Stats Upgrade")
 
 StatusSelect = Tabs.Esp:AddSlider({
-Name = "Stats Value",
+Name = __DIO_T["Stats Value"],
 Description = "",
 Default = 10,
 Min = 0,
@@ -6329,7 +6689,7 @@ Callback = function(Value)
 end})
 
 StatsUpg = Tabs.Esp:AddToggle({
-Name = "Auto Melee",
+Name = __DIO_T["Auto Melee"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -6344,7 +6704,7 @@ __DIO_SafeLoop(function()
 end, "L6224")
 
 StatsUpg = Tabs.Esp:AddToggle({
-Name = "Auto Swords",
+Name = __DIO_T["Auto Swords"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -6358,7 +6718,7 @@ __DIO_SafeLoop(function()
   end
 end, "L6239")
 StatsUpg = Tabs.Esp:AddToggle({
-Name = "Auto Gun",
+Name = __DIO_T["Auto Gun"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -6372,7 +6732,7 @@ __DIO_SafeLoop(function()
   end
 end, "L6253")
 StatsUpg = Tabs.Esp:AddToggle({
-Name = "Auto Blox Fruit",
+Name = __DIO_T["Auto Blox Fruit"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -6386,7 +6746,7 @@ __DIO_SafeLoop(function()
   end
 end, "L6267")
 StatsUpg = Tabs.Esp:AddToggle({
-Name = "Auto Defense",
+Name = __DIO_T["Auto Defense"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -6404,7 +6764,7 @@ __DIO_BOOT("Load Tabs")
 Tabs.Fish:AddSection("Fishing")
 
 Tabs.Fish:AddDropdown({
-    Name = "Select Fishing Rod",
+    Name = __DIO_T["Select Fishing Rod"],
     Description = "",
     Options = {"Fishing Rod", "Gold Rod", "Shark Rod", "Shell Rod", "Treasure Rod"},
     Default = "Fishing Rod",
@@ -6419,7 +6779,7 @@ Tabs.Fish:AddDropdown({
 })
 
 BaitDropdown = Tabs.Fish:AddDropdown({
-    Name = "Select Bait",
+    Name = __DIO_T["Select Bait"],
     Description = "",
     Options = {"Basic Bait", "Kelp Bait", "Good Bait", "Abyssal Bait", "Frozen Bait", "Epic Bait", "Carnivore Bait"},
     Default = "Basic Bait",
@@ -6433,8 +6793,58 @@ BaitDropdown = Tabs.Fish:AddDropdown({
     end
 })
 
+-- =====================================================================
+-- V5.2: AUTO SLAP FISHING (dat ngay tren Auto Buy Bait theo yeu cau)
+-- Doc GreenZone/Tick cua minigame FishSlapMinigame, Tick roi vao vung xanh
+-- thi firesignal SlapButton. Khong phu thuoc RegisterFunction ben ngoai:
+-- co shim registry (neu he thong khac co dung thi van tuong thich) + driver
+-- loop rieng => toggle bat la chay luon trong hub nay.
+-- Flag dung la _G.AutoFishSlap (da co san trong __DIO_FarmFlagsOn).
+-- =====================================================================
+if type(RegisterFunction) ~= "function" then
+    RegisterFunction = function(name, fn)
+        __DIO_FnRegistry = __DIO_FnRegistry or {}
+        __DIO_FnRegistry[name] = fn
+    end
+end
+__DIO_SlapStep = function()
+    local __sg = plr and plr.PlayerGui and plr.PlayerGui:FindFirstChild("FishSlapMinigame")
+    if not __sg then return end
+    local Bar = __sg:FindFirstChild("Bar")
+    local GreenZone = Bar and Bar:FindFirstChild("GreenZone")
+    local Tick = Bar and Bar:FindFirstChild("Tick")
+    local SlapButton = __sg:FindFirstChild("SlapButton")
+    if not GreenZone or not Tick or not SlapButton then return end
+    local GreenAbsPos = GreenZone.AbsolutePosition
+    local AbsSize = GreenZone.AbsoluteSize
+    local Inset = AbsSize.Y * 0.1
+    local GreenTop = GreenAbsPos.Y + Inset
+    local GreenBottom = GreenAbsPos.Y + AbsSize.Y - Inset
+    local AbsY = Tick.AbsolutePosition.Y + (Tick.AbsoluteSize.Y / 2)
+    if AbsY >= GreenTop and AbsY <= GreenBottom then
+        if type(firesignal) == "function" then
+            pcall(firesignal, SlapButton.Activated)
+        end
+    end
+end
+SlapFishing = Tabs.Fish:AddToggle({
+Name = __DIO_T["Auto Slap Fishing"],
+Description = "",
+Default = false,
+Callback = function(Value)
+  _G.AutoFishSlap = Value
+  pcall(RegisterFunction, "AutoSlap", __DIO_SlapStep, true)
+end})
+__DIO_SafeLoop(function()
+  while __DIO_wait() do
+    if _G.AutoFishSlap then
+      pcall(__DIO_SlapStep)
+    end
+  end
+end, "SlapFishing")
+
 BuyBaitToggle = Tabs.Fish:AddToggle({
-    Name = "Auto Buy Bait",
+    Name = __DIO_T["Auto Buy Bait"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -6458,7 +6868,7 @@ __DIO_SafeLoop(function()
 end, "L6336")
 
 FishingToggle = Tabs.Fish:AddToggle({
-    Name = "Auto Fishing",
+    Name = __DIO_T["Auto Fishing"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -6537,7 +6947,7 @@ __DIO_SafeLoop(function()
 end, "L6382")
 
 FishingQ = Tabs.Fish:AddToggle({
-Name = "Auto Quest Fishing",
+Name = __DIO_T["Auto Quest Fishing"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -6573,7 +6983,7 @@ __DIO_SafeLoop(function()
 end, "L6449")
 
 QuestToggle = Tabs.Fish:AddToggle({
-    Name = "Auto Complete Quest",
+    Name = __DIO_T["Auto Complete Quest"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -6598,7 +7008,7 @@ __DIO_SafeLoop(function()
 end, "L6476")
 
 SellFishToggle = Tabs.Fish:AddToggle({
-    Name = "Auto Sell Fish",
+    Name = __DIO_T["Auto Sell Fish"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -6623,7 +7033,7 @@ __DIO_SafeLoop(function()
 end, "L6501")
 
 SpamSkillZ = Tabs.Fish:AddToggle({
-Name = "Auto Spam Skill Z",
+Name = __DIO_T["Auto Spam Skill Z"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -6647,7 +7057,7 @@ __DIO_SafeLoop(function()
 end, "L6525")
 
 TravelDress = Tabs.Quests:AddToggle({
-Name = "Auto Quest Sea 2",
+Name = __DIO_T["Auto Quest Sea 2"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -6682,7 +7092,7 @@ __DIO_SafeLoop(function()
   end
 end, "L6542")
 Zou = Tabs.Quests:AddToggle({
-Name = "Auto Quest Sea 3",
+Name = __DIO_T["Auto Quest Sea 3"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -6797,7 +7207,7 @@ end, "L6577")
 Tabs.Quests:AddSection("Farm Rip Indra")
 
 Tabs.Quests:AddToggle({
-Name = "Auto Attack Rip Indra",
+Name = __DIO_T["Auto Attack Rip Indra"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -6823,7 +7233,7 @@ __DIO_SafeLoop(function()
 end, "L6692")
 
 Tabs.Quests:AddToggle({
-Name = "Auto Unlocked Haki",
+Name = __DIO_T["Auto Unlocked Haki"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -6862,7 +7272,7 @@ __DIO_SafeLoop(function()
 end, "L6729")
 Tabs.Quests:AddSection("Bone")
 Tabs.Quests:AddToggle({
-Name = "Auto Soul Reaper",
+Name = __DIO_T["Auto Soul Reaper"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -6898,7 +7308,7 @@ __DIO_SafeLoop(function()
   end
 end, "L6777")
 Lucky = Tabs.Quests:AddToggle({
-Name = "Auto Try Luck Gravestone",
+Name = __DIO_T["Auto Try Luck Gravestone"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -6922,7 +7332,7 @@ __DIO_SafeLoop(function()
   end
 end, "L6793")
 Pray = Tabs.Quests:AddToggle({
-Name = "Auto Pray Gravestone",
+Name = __DIO_T["Auto Pray Gravestone"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -6979,7 +7389,7 @@ __DIO_SafeLoop(function()
 end, "L6851")
 
 EliteQ = Tabs.Quests:AddToggle({
-    Name = "Auto Farm Elite",
+    Name = __DIO_T["Auto Farm Elite"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -7050,7 +7460,7 @@ __DIO_SafeLoop(function()
 end, "L6875")
 
 EliteH = Tabs.Quests:AddToggle({
-	Name = "Auto Farm Elite + Hop",
+	Name = __DIO_T["Auto Farm Elite + Hop"],
 	Description = "",
 	Default = false,
 	Callback = function(Value)
@@ -7058,7 +7468,7 @@ EliteH = Tabs.Quests:AddToggle({
 end})
 
 Tabs.Quests:AddToggle({
-    Name = "Auto Get PlayerQuest",
+    Name = __DIO_T["Auto Get PlayerQuest"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -7072,7 +7482,7 @@ Tabs.Quests:AddToggle({
 })
 
 Tabs.Quests:AddToggle({
-    Name = "Auto Kill Player Quest",
+    Name = __DIO_T["Auto Kill Player Quest"],
     Default = false,
     Callback = function(Value)
         _G.AutoPlayerHunter = Value
@@ -7086,7 +7496,7 @@ Tabs.Quests:AddToggle({
 Tabs.Quests:AddSection("Tushita + Yama")
 
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Tushita Sword",
+Name = __DIO_T["Auto Tushita Sword"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -7125,7 +7535,7 @@ __DIO_SafeLoop(function()
   end
 end, "L6981")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Yama Sword",
+Name = __DIO_T["Auto Yama Sword"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -7155,7 +7565,7 @@ end, "L7020")
 
 Tabs.Quests:AddSection("Skull Guitars / Misc")
 Tabs.Quests:AddToggle({
-Name = "Auto Skull Guitar",
+Name = __DIO_T["Auto Skull Guitar"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -7333,7 +7743,7 @@ __DIO_SafeLoop(function()
   end
 end, "L7111")
 Tabs.Quests:AddToggle({
-Name = "Auto Farm Material Skull Guitar",
+Name = __DIO_T["Auto Farm Material Skull Guitar"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -7383,7 +7793,7 @@ end, "L7228")
 
 Tabs.Quests:AddSection("Cursed Dual Katana")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Get CDK [ Last Quest ]",
+Name = __DIO_T["Auto Get CDK [ Last Quest ]"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -7412,7 +7822,7 @@ __DIO_SafeLoop(function()
   end
 end, "L7278")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Yama CDK",
+Name = __DIO_T["Auto Yama CDK"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -7550,7 +7960,7 @@ __DIO_SafeLoop(function()
 end, "L7401")
 
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Tushita CDK",
+Name = __DIO_T["Auto Tushita CDK"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -7670,7 +8080,7 @@ __DIO_SafeLoop(function()
 end, "L7445")
 Tabs.Quests:AddSection("True Triple Katana Sword")
 Tabs.Quests:AddButton({
-Name = "Buy Legendary Sword",
+Name = __DIO_T["Buy Legendary Sword"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("LegendarySwordDealer","1")
@@ -7678,13 +8088,13 @@ Callback = function()
   replicated.Remotes.CommF_:InvokeServer("LegendarySwordDealer","3")
 end})
 Tabs.Quests:AddButton({
-Name = "Buy True Triple Katana Sword",
+Name = __DIO_T["Buy True Triple Katana Sword"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("MysteriousMan","2")
 end})
 Q = Tabs.Quests:AddToggle({
-Name = "Tween to Legendary Sword Dealer",
+Name = __DIO_T["Tween to Legendary Sword Dealer"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -7704,7 +8114,7 @@ end, "L7579")
 
 Tabs.Quests:AddSection("Pole / God Enal's")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Pole V1",
+Name = __DIO_T["Auto Pole V1"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -7725,7 +8135,7 @@ __DIO_SafeLoop(function()
   end
 end, "L7599")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Pole V2 [Beta]",
+Name = __DIO_T["Auto Pole V2 [Beta]"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -7759,7 +8169,7 @@ __DIO_SafeLoop(function()
   end
 end, "L7620")
 Tabs.Quests:AddToggle({
-Name = "Auto Saw Sword",
+Name = __DIO_T["Auto Saw Sword"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -7779,7 +8189,7 @@ __DIO_SafeLoop(function()
 end, "L7654")
 
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Saber Sword",
+Name = __DIO_T["Auto Saber Sword"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -7861,7 +8271,7 @@ if replicated.Remotes.CommF_:InvokeServer("ProQuestProgress","RichSon") == nil t
   end
 end, "L7674")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Cybrog",
+Name = __DIO_T["Auto Cybrog"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -7880,7 +8290,7 @@ __DIO_SafeLoop(function()
   end
 end, "L7756")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Usoap's Hat",
+Name = __DIO_T["Auto Usoap's Hat"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -7902,7 +8312,7 @@ __DIO_SafeLoop(function()
   end
 end, "L7775")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Bisento V2",
+Name = __DIO_T["Auto Bisento V2"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -7926,7 +8336,7 @@ __DIO_SafeLoop(function()
   end
 end, "L7797")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Warden Sword",
+Name = __DIO_T["Auto Warden Sword"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -7945,7 +8355,7 @@ __DIO_SafeLoop(function()
   end
 end, "L7821")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Marine Coat",
+Name = __DIO_T["Auto Marine Coat"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -7964,7 +8374,7 @@ __DIO_SafeLoop(function()
   end
 end, "L7840")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Swan Coat",
+Name = __DIO_T["Auto Swan Coat"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -7985,7 +8395,7 @@ end, "L7859")
 
 Tabs.Quests:AddSection("Rengoku Sword")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Rengoku Sword",
+Name = __DIO_T["Auto Rengoku Sword"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8005,7 +8415,7 @@ __DIO_SafeLoop(function()
   end
 end, "L7880")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Key Rengoku",
+Name = __DIO_T["Auto Key Rengoku"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8029,7 +8439,7 @@ __DIO_SafeLoop(function()
   end
 end, "L7900")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Dragon Trident",
+Name = __DIO_T["Auto Dragon Trident"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8048,7 +8458,7 @@ __DIO_SafeLoop(function()
   end
 end, "L7924")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Long Sword",
+Name = __DIO_T["Auto Long Sword"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8067,7 +8477,7 @@ __DIO_SafeLoop(function()
   end
 end, "L7943")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Black Spikey",
+Name = __DIO_T["Auto Black Spikey"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8086,7 +8496,7 @@ __DIO_SafeLoop(function()
   end
 end, "L7962")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Dark Blade V3",
+Name = __DIO_T["Auto Dark Blade V3"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8112,7 +8522,7 @@ __DIO_SafeLoop(function()
   end
 end, "L7981")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Midnight Blade",
+Name = __DIO_T["Auto Midnight Blade"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8137,7 +8547,7 @@ __DIO_SafeLoop(function()
   end
 end, "L8007")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Darkbeard",
+Name = __DIO_T["Auto Darkbeard"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8160,7 +8570,7 @@ __DIO_SafeLoop(function()
   end
 end, "L8032")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Unlocked DonSwan",
+Name = __DIO_T["Auto Unlocked DonSwan"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8210,7 +8620,7 @@ __DIO_SafeLoop(function()
   end
 end, "L8055")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Swan Glasses",
+Name = __DIO_T["Auto Swan Glasses"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8231,7 +8641,7 @@ end, "L8105")
 
 Tabs.Quests:AddSection("Cavender + Twin Hooks + Bigmom")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Bigmom",
+Name = __DIO_T["Auto Bigmom"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8250,7 +8660,7 @@ __DIO_SafeLoop(function()
   end
 end, "L8126")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Canvendish Sword",
+Name = __DIO_T["Auto Canvendish Sword"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8269,7 +8679,7 @@ __DIO_SafeLoop(function()
   end
 end, "L8145")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Twin Hooks",
+Name = __DIO_T["Auto Twin Hooks"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8290,7 +8700,7 @@ __DIO_SafeLoop(function()
   end
 end, "L8164")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Serpent Bow",
+Name = __DIO_T["Auto Serpent Bow"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8310,7 +8720,7 @@ __DIO_SafeLoop(function()
   end
 end, "L8185")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Lei Accessory",
+Name = __DIO_T["Auto Lei Accessory"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8331,7 +8741,7 @@ end, "L8205")
 Tabs.Quests:AddSection("Collect Berry")
 
 Berry = Tabs.Quests:AddToggle({
-Name = "Auto Farm Berry",
+Name = __DIO_T["Auto Farm Berry"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8347,7 +8757,7 @@ __DIO_SafeLoop(function()
 end, "L8227")
 
 BerryH = Tabs.Quests:AddToggle({
-Name = "Auto Farm Berry + Hop",
+Name = __DIO_T["Auto Farm Berry + Hop"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8355,7 +8765,7 @@ Callback = function(Value)
 end})
 Tabs.Quests:AddSection("Buso/Aura Colours")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Teleport Barista Cousin",
+Name = __DIO_T["Auto Teleport Barista Cousin"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8373,13 +8783,13 @@ __DIO_SafeLoop(function()
   end
 end, "L8250")
 Tabs.Quests:AddButton({
-Name = "Buy Buso Colors",
+Name = __DIO_T["Buy Buso Colors"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("ColorsDealer","2")
 end})
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Rainbow Colors",
+Name = __DIO_T["Auto Rainbow Colors"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8459,7 +8869,7 @@ spawn(function()
   end
 end)
 Q = Tabs.Quests:AddToggle({
-Name = "Accept Rainbow Quest Faster",
+Name = __DIO_T["Accept Rainbow Quest Faster"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8468,7 +8878,7 @@ end})
 
 Tabs.Quests:AddSection("Instinct / Observation")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Farm Observation",
+Name = __DIO_T["Auto Farm Observation"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8570,7 +8980,7 @@ __DIO_ForestQuest50 = function()
 end
 
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Observation V2",
+Name = __DIO_T["Auto Observation V2"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8653,7 +9063,7 @@ __DIO_SafeLoop(function()
 end, "L8465")
 
 Bartilo = Tabs.Quests:AddToggle({
-Name = "Auto Done Bartilo Quest",
+Name = __DIO_T["Auto Done Bartilo Quest"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8721,7 +9131,7 @@ __DIO_SafeLoop(function()
   end
 end, "L8548")
 CitizenQ = Tabs.Quests:AddToggle({
-Name = "Auto Done Citizen Quest",
+Name = __DIO_T["Auto Done Citizen Quest"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8770,7 +9180,7 @@ __DIO_SafeLoop(function()
   end
 end, "L8616")
 Q = Tabs.Quests:AddToggle({
-Name = "Auto Training Dummy",
+Name = __DIO_T["Auto Training Dummy"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8823,7 +9233,7 @@ __DIO_BuyKick = function()
 end
 Tabs.Shop:AddSection("Fighting Melee Styles")
 __DIO_BuyMeleeToggles.BuyBlackLeg = Tabs.Shop:AddToggle({
-Name = "Buy  BlackLeg",
+Name = __DIO_T["Buy  BlackLeg"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8840,7 +9250,7 @@ Callback = function(Value)
   end
 end})
 __DIO_BuyMeleeToggles.BuyElectro = Tabs.Shop:AddToggle({
-Name = "Buy  Electro",
+Name = __DIO_T["Buy  Electro"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8857,7 +9267,7 @@ Callback = function(Value)
   end
 end})
 __DIO_BuyMeleeToggles.BuyFishmanKarate = Tabs.Shop:AddToggle({
-Name = "Buy  FishmanKarate",
+Name = __DIO_T["Buy  FishmanKarate"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8874,7 +9284,7 @@ Callback = function(Value)
   end
 end})
 __DIO_BuyMeleeToggles.BuyDragonClaw = Tabs.Shop:AddToggle({
-Name = "Buy  DragonClaw",
+Name = __DIO_T["Buy  DragonClaw"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8891,7 +9301,7 @@ Callback = function(Value)
   end
 end})
 SuperHuman = Tabs.Shop:AddToggle({
-Name = "Auto Superhuman",
+Name = __DIO_T["Auto Superhuman"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8934,7 +9344,7 @@ __DIO_SafeLoop(function()
   end
 end, "L8787")
 DeathStep = Tabs.Shop:AddToggle({
-Name = "Auto DeathStep",
+Name = __DIO_T["Auto DeathStep"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -8976,7 +9386,7 @@ __DIO_SafeLoop(function()
   end
 end, "L8830")
 SharkManV2 = Tabs.Shop:AddToggle({
-Name = "Auto Sharkman Karate",
+Name = __DIO_T["Auto Sharkman Karate"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -9017,7 +9427,7 @@ __DIO_SafeLoop(function()
   end
 end, "L8872")
 ElectricClaw = Tabs.Shop:AddToggle({
-Name = "Auto ElectricClaw",
+Name = __DIO_T["Auto ElectricClaw"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -9049,7 +9459,7 @@ __DIO_SafeLoop(function()
   end
 end, "L8913")
 DragonTalon = Tabs.Shop:AddToggle({
-Name = "Auto DragonTalon",
+Name = __DIO_T["Auto DragonTalon"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -9079,7 +9489,7 @@ __DIO_SafeLoop(function()
   end
 end, "L8945")
 Godhuman = Tabs.Shop:AddToggle({
-Name = "Auto Godhuman",
+Name = __DIO_T["Auto Godhuman"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -9133,7 +9543,7 @@ __DIO_SafeLoop(function()
   end
 end, "L8975")
 SanguineArt = Tabs.Shop:AddToggle({
-Name = "Auto SanguineArt",
+Name = __DIO_T["Auto SanguineArt"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -9224,7 +9634,7 @@ __DIO_SafeLoop(function()
     end
 end, "L9079")
 Tabs.Race:AddToggle({
-Name = "Auto Find Mirage Island",
+Name = __DIO_T["Auto Find Mirage Island"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -9287,7 +9697,7 @@ __DIO_SafeLoop(function()
   end
 end, "L9119")
 Tabs.Race:AddToggle({
-    Name = "Esp Mirage Island",
+    Name = __DIO_T["Esp Mirage Island"],
     Description = "",
     Value = false,
     Callback = function(Value)
@@ -9340,7 +9750,7 @@ UpdateIslandMirageESP = function()
     end
 end
 Tabs.Race:AddToggle({
-    Name = "Auto Tween To Mirage Island",
+    Name = __DIO_T["Auto Tween To Mirage Island"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -9367,7 +9777,7 @@ __DIO_SafeLoop(function()
     end
 end, "L9242")
 Tabs.Race:AddToggle({
-Name = "Auto Tween To Highest Point",
+Name = __DIO_T["Auto Tween To Highest Point"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -9383,7 +9793,7 @@ __DIO_SafeLoop(function()
   end
 end, "L9262")
 Tabs.Race:AddToggle({
-Name = "Auto Collect Gear",
+Name = __DIO_T["Auto Collect Gear"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -9407,7 +9817,7 @@ __DIO_SafeLoop(function()
   end
 end, "L9278")
 Tabs.Race:AddToggle({
-Name = "Change Transparency can see",
+Name = __DIO_T["Change Transparency can see"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -9435,7 +9845,7 @@ __DIO_SafeLoop(function()
   end
 end, "L9302")
 Tabs.Race:AddToggle({
-Name = "Auto Tween Advanced Fruit Dealer",
+Name = __DIO_T["Auto Tween Advanced Fruit Dealer"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -9453,7 +9863,7 @@ __DIO_SafeLoop(function()
   end
 end, "L9330")
 Tabs.Race:AddToggle({
-Name = "Auto Collect Mirage Chest",
+Name = __DIO_T["Auto Collect Mirage Chest"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -9490,7 +9900,7 @@ __DIO_SafeLoop(function()
 end, "L9348")
 
 Tabs.Race:AddButton({
-Name = "Talk With Stone",
+Name = __DIO_T["Talk With Stone"],
 Description = "",
 Callback = function()
   replicated:WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("RaceV4Progress","Begin")
@@ -9499,7 +9909,7 @@ Callback = function()
   replicated:WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer("RaceV4Progress","Continue")
 end})
 Tabs.Race:AddToggle({
-Name = "Auto Look At Moon",
+Name = __DIO_T["Auto Look At Moon"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -9520,7 +9930,7 @@ __DIO_SafeLoop(function()
 end, "L9398")
 
 Tabs.Race:AddToggle({
-    Name = "Look Moon + Auto V3",
+    Name = __DIO_T["Look Moon + Auto V3"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -9548,7 +9958,7 @@ end, "L9423")
 
 Tabs.Race:AddSection("Upgrade Races V2 And V3")
 RaceMink = Tabs.Race:AddToggle({
-Name = "Auto Upgrade Mink",
+Name = __DIO_T["Auto Upgrade Mink"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -9586,7 +9996,7 @@ __DIO_SafeLoop(function()
   end
 end, "L9443")
 RaceHuman = Tabs.Race:AddToggle({
-Name = "Auto Upgrade Human",
+Name = __DIO_T["Auto Upgrade Human"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -9633,7 +10043,7 @@ __DIO_SafeLoop(function()
   end
 end, "L9481")
 RaceSky = Tabs.Race:AddToggle({
-Name = "Auto Upgrade Angel",
+Name = __DIO_T["Auto Upgrade Angel"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -9676,7 +10086,7 @@ __DIO_SafeLoop(function()
   end
 end, "L9528")
 RaceFish = Tabs.Race:AddToggle({
-Name = "Auto Upgrade FishMan",
+Name = __DIO_T["Auto Upgrade FishMan"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -9727,7 +10137,7 @@ spawn(function()
     end)
 end)
 PullLv = Tabs.Race:AddToggle({
-Name = "Auto Pull Lever",
+Name = __DIO_T["Auto Pull Lever"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -9745,7 +10155,7 @@ __DIO_SafeLoop(function()
   end
 end, "L9622")
 Train = Tabs.Race:AddToggle({
-Name = "Auto Train V4",
+Name = __DIO_T["Auto Train V4"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -9774,7 +10184,7 @@ __DIO_SafeLoop(function()
 end, "L9640")
 
 Tabs.Race:AddButton({
-    Name = "Teleport to Temple of Time",
+    Name = __DIO_T["Teleport to Temple of Time"],
     Description = "",
     Callback = function()
         local plr = __SVC_PLR.LocalPlayer
@@ -9793,7 +10203,7 @@ Tabs.Race:AddButton({
     end
 })
 Tabs.Race:AddButton({
-Name = "Teleport to Ancient One",
+Name = __DIO_T["Teleport to Ancient One"],
 Description = "",
 Callback = function()
         local plr = __SVC_PLR.LocalPlayer
@@ -9817,7 +10227,7 @@ Callback = function()
     end
 })
 Tabs.Race:AddButton({
-Name = "Teleport to Ancient Clock",
+Name = __DIO_T["Teleport to Ancient Clock"],
 Description = "",
 Callback = function()
         local plr = __SVC_PLR.LocalPlayer
@@ -9845,7 +10255,7 @@ Callback = function()
     end
 })
 Doors = Tabs.Race:AddToggle({
-Name = "Auto Teleport to Race Doors",
+Name = __DIO_T["Auto Teleport to Race Doors"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -9873,7 +10283,7 @@ __DIO_SafeLoop(function()
   end
 end, "L9740")
 Trials = Tabs.Race:AddToggle({
-Name = "Auto Complete Trial Race",
+Name = __DIO_T["Auto Complete Trial Race"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -9966,7 +10376,7 @@ __DIO_SafeLoop(function()
   end
 end, "L9841")
 AutoKill = Tabs.Race:AddToggle({
-Name = "Auto Kill Player After Trial",
+Name = __DIO_T["Auto Kill Player After Trial"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -9997,7 +10407,7 @@ Tabs.Prehistoric:AddButton({
     end
 })
 DojoQ = Tabs.Prehistoric:AddToggle({
-Name = "Auto Dojo Trainer",
+Name = __DIO_T["Auto Dojo Trainer"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -10086,7 +10496,7 @@ __DIO_SafeLoop(function()
   end
 end, "L9893")
 BlazeEM = Tabs.Prehistoric:AddToggle({
-Name = "Auto Dragon Hunter",
+Name = __DIO_T["Auto Dragon Hunter"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -10157,7 +10567,7 @@ GetQuestDracoLevel = function()
   return replicated.Modules.Net:FindFirstChild("RF/InteractDragonQuest"):InvokeServer(unpack(v371))
 end
 Toggle = Tabs.Prehistoric:AddToggle({
-Name = "Tween To Upgrade Draco Trial",
+Name = __DIO_T["Tween To Upgrade Draco Trial"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -10183,7 +10593,7 @@ __DIO_SafeLoop(function()
   end
 end, "L10052")
 Toggle = Tabs.Prehistoric:AddToggle({
-Name = "Auto Draco (V1)",
+Name = __DIO_T["Auto Draco (V1)"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -10208,7 +10618,7 @@ __DIO_SafeLoop(function()
   end
 end, "L10078")
 fireflower = Tabs.Prehistoric:AddToggle({
-Name = "Auto Draco (V2)",
+Name = __DIO_T["Auto Draco (V2)"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -10243,7 +10653,7 @@ __DIO_SafeLoop(function()
   end
 end, "L10103")
 Toggle = Tabs.Prehistoric:AddToggle({
-Name = "Auto Draco (V3)",
+Name = __DIO_T["Auto Draco (V3)"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -10266,7 +10676,7 @@ __DIO_SafeLoop(function()
   end
 end, "L10138")
 Toggle = Tabs.Prehistoric:AddToggle({
-Name = "Auto Relic Draco Trial [Beta]",
+Name = __DIO_T["Auto Relic Draco Trial [Beta]"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -10296,7 +10706,7 @@ __DIO_SafeLoop(function()
   end
 end, "L10161")
 Toggle = Tabs.Prehistoric:AddToggle({
-Name = "Auto Train Draco v4",
+Name = __DIO_T["Auto Train Draco v4"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -10324,7 +10734,7 @@ __DIO_SafeLoop(function()
   end
 end, "L10191")
 dragoTpVolcano = Tabs.Prehistoric:AddToggle({
-Name = "Tween to Draco Trials",
+Name = __DIO_T["Tween to Draco Trials"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -10343,7 +10753,7 @@ __DIO_SafeLoop(function()
   end
 end, "L10219")
 bdrago = Tabs.Prehistoric:AddToggle({
-Name = "Swap Draco Race",
+Name = __DIO_T["Swap Draco Race"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -10365,7 +10775,7 @@ __DIO_SafeLoop(function()
   end
 end, "L10238")
 UpTalon = Tabs.Prehistoric:AddToggle({
-Name = "Upgrade Dragon Talon With Uzoth",
+Name = __DIO_T["Upgrade Dragon Talon With Uzoth"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -10392,7 +10802,7 @@ end, "L10260")
 Tabs.Prehistoric:AddSection("Volcanic Crafting")
 
 Tabs.Prehistoric:AddButton({
-Name = "Craft Dragonheart",
+Name = __DIO_T["Craft Dragonheart"],
 Description = "",
 Callback = function()
         local args = {
@@ -10405,7 +10815,7 @@ Callback = function()
 })
 
 Tabs.Prehistoric:AddButton({
-Name = "Craft Dragonstorm",
+Name = __DIO_T["Craft Dragonstorm"],
 Description = "",
 Callback = function()
         local args = {
@@ -10418,7 +10828,7 @@ Callback = function()
 })
 
 Tabs.Prehistoric:AddButton({
-    Name = "Craft Dino Hood",
+    Name = __DIO_T["Craft Dino Hood"],
     Callback = function()
         local args = {
             [1] = "CraftItem",
@@ -10430,7 +10840,7 @@ Tabs.Prehistoric:AddButton({
 })
 
 Tabs.Prehistoric:AddButton({
-    Name = "Craft T-Rex Skull",
+    Name = __DIO_T["Craft T-Rex Skull"],
     Callback = function()
         local args = {
             [1] = "CraftItem",
@@ -10444,7 +10854,7 @@ Tabs.Prehistoric:AddButton({
 Tabs.Prehistoric:AddSection("Prehistoric Island")
 
 Tabs.Prehistoric:AddButton({
-    Name = "Craft Volcanic Magnet",
+    Name = __DIO_T["Craft Volcanic Magnet"],
     Callback = function()
         local RF = __SVC_RS.Modules.Net["RF/Craft"]
 
@@ -10456,7 +10866,7 @@ Tabs.Prehistoric:AddButton({
 })
 
 Tabs.Prehistoric:AddToggle({
-    Name = "Craft Volcanic Magnet",
+    Name = __DIO_T["Craft Volcanic Magnet"],
     Default = false,
     Callback = function(Value)
         getgenv().AutoCraftVolcanic = Value
@@ -10481,7 +10891,7 @@ __DIO_SafeLoop(function()
 end, "L10352")
 
 Tabs.Prehistoric:AddToggle({
-    Name = "Auto Find Prehistoric Island",
+    Name = __DIO_T["Auto Find Prehistoric Island"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -10592,7 +11002,7 @@ __DIO_SafeLoop(function()
 end, "L10385")
 
 Tabs.Prehistoric:AddToggle({
-    Name = "Auto Start Prehistoric Event",
+    Name = __DIO_T["Auto Start Prehistoric Event"],
     Default = false,
     Callback = function(Value)
         _G.AutoStartPrehistoric = Value
@@ -10628,7 +11038,7 @@ __DIO_SafeLoop(function()
 end, "L10492")
 
 Tabs.Prehistoric:AddToggle({
-    Name = "Auto Patch Prehistoric Event",
+    Name = __DIO_T["Auto Patch Prehistoric Event"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -10758,7 +11168,7 @@ __DIO_SafeLoop(function()
 end, "L10596")
 
 Kaura = Tabs.Prehistoric:AddToggle({
-    Name = "Kill Aura",
+    Name = __DIO_T["Kill Aura"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -10794,7 +11204,7 @@ __DIO_SafeLoop(function()
     end
 end, "L10657")
 Vocan = Tabs.Prehistoric:AddToggle({
-Name = "Auto Collect Dino Bones",
+Name = __DIO_T["Auto Collect Dino Bones"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -10814,7 +11224,7 @@ __DIO_SafeLoop(function()
   end
 end, "L10689")
 Vocan = Tabs.Prehistoric:AddToggle({
-Name = "Auto Collect Dragon Eggs",
+Name = __DIO_T["Auto Collect Dragon Eggs"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -10830,7 +11240,7 @@ __DIO_SafeLoop(function()
   end
 end, "L10709")
 Toggle = Tabs.Prehistoric:AddToggle({
-Name = "Auto Reset When Complete Volcano",
+Name = __DIO_T["Auto Reset When Complete Volcano"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -10860,14 +11270,14 @@ local ListSeaBoat={"Guardian","PirateGrandBrigade","MarineGrandBrigade","PirateB
 local ListSeaZone={"Lv 1","Lv 2","Lv 3","Lv 4","Lv 5","Lv 6","Lv Infinite"}
 
 Tabs.SeaEvent:AddButton({
-    Name = "Remove Lighting Effect",
+    Name = __DIO_T["Remove Lighting Effect"],
     Callback = function()
         __SVC_LIGHT.BaseAtmosphere:Destroy()
     end
 })
 
 Tabs.SeaEvent:AddToggle({
-    Name = "Ship Speed Modifier",
+    Name = __DIO_T["Ship Speed Modifier"],
     Default = false,
     Callback = function(Value)
         getgenv().SpeedBoat = Value
@@ -10892,7 +11302,7 @@ __SVC_RUN.RenderStepped:Connect(function()
     end
 end)
 Tabs.SeaEvent:AddSlider({
-    Name = "Ship Speed",
+    Name = __DIO_T["Ship Speed"],
     Min = 0,
     Max = 1000,
     Increment = 1,
@@ -10902,7 +11312,7 @@ Tabs.SeaEvent:AddSlider({
     end
 })
 Tabs.SeaEvent:AddToggle({
-    Name = "Auto Press W",
+    Name = __DIO_T["Auto Press W"],
     Default = false,
     Callback = function(Value)
         getgenv().AutoPressW = Value
@@ -10923,7 +11333,7 @@ __DIO_SafeLoop(function()
 end, "L10797")
 if getgenv().NoClipShip == nil then getgenv().NoClipShip = true end
 Tabs.SeaEvent:AddToggle({
-    Name = "No Clip Ship",
+    Name = __DIO_T["No Clip Ship"],
     Default = true,
     Callback = function(Value)
         getgenv().NoClipShip = Value
@@ -10953,7 +11363,7 @@ __DIO_SafeLoop(function()
     end
 end, "L10818")
 Tabs.SeaEvent:AddSlider({
-    Name = "Boat Speed Tween",
+    Name = __DIO_T["Boat Speed Tween"],
     Min = 1,
     Max = 300,
     Default = 165,
@@ -10972,8 +11382,52 @@ _G.SelectedBoat = _G.SelectedBoat or GetSetting("UI/SeaEvent/Select Boats", "Gua
 _G.DangerSc = _G.DangerSc or GetSetting("UI/SeaEvent/Select Sea Level", "Lv 6") or "Lv 6"
 Tabs.SeaEvent:AddSection("Choose Sea Event")
 
+-- =====================================================================
+-- V5.2: CHON WEAPON + SKILL DE SAN SEA EVENT (dat ngay tren Select Boats)
+-- CHI ap dung cho: Leviathan, Sea Beast, PirateGrandBrigade, Fish Boat.
+-- Cac entity khac (Shark, Piranha, Terror Shark, Crew...) van dung weapon
+-- mac dinh player chon o "Select Weapon" (Tabs.Main) nhu cu.
+-- Rang buoc skill de khong bam phim loi:
+--   Melee / Sword / Gun : Z, X
+--   Blox Fruit          : Z, X, C, V, F
+-- Doi weapon => danh sach skill tu dong rebuild; skill khong hop le => ve "Z".
+-- =====================================================================
+_G.SeaEventWeapon = GetSetting("UI/SeaEvent/Select Weapon Sea Event", "Melee") or "Melee"
+_G.SeaEventSkill  = GetSetting("UI/SeaEvent/Select Skill", "Z") or "Z"
+__DIO_SeaSkillAllow = { ["Melee"] = {"Z","X"}, ["Sword"] = {"Z","X"}, ["Gun"] = {"Z","X"}, ["Blox Fruit"] = {"Z","X","C","V","F"} }
+__DIO_SeaSkillDrop = nil
 Q = Tabs.SeaEvent:AddDropdown({
-    Name = "Select Boats",
+    Name = __DIO_T["Select Weapon Sea Event"],
+    Options = {"Melee","Sword","Gun","Blox Fruit"},
+    Default = _G.SeaEventWeapon,
+    Callback = function(Value)
+        _G.SeaEventWeapon = Value
+        local __allow = __DIO_SeaSkillAllow[Value] or {"Z","X"}
+        if __DIO_SeaSkillDrop then
+            pcall(function()
+                __DIO_SeaSkillDrop:CLEAR_DROPDOWN()
+                for _, __s in ipairs(__allow) do
+                    __DIO_SeaSkillDrop:ADD_DROPDOWN_OPTION(__s)
+                end
+            end)
+        end
+        if not table.find(__allow, _G.SeaEventSkill) then
+            _G.SeaEventSkill = "Z"
+        end
+    end
+})
+__DIO_SeaSkillDrop = Tabs.SeaEvent:AddDropdown({
+    Name = __DIO_T["Select Skill"],
+    Options = __DIO_SeaSkillAllow[_G.SeaEventWeapon] or {"Z","X"},
+    Default = _G.SeaEventSkill,
+    Callback = function(Value)
+        local __allow = __DIO_SeaSkillAllow[_G.SeaEventWeapon] or {"Z","X"}
+        _G.SeaEventSkill = table.find(__allow, Value) and Value or "Z"
+    end
+})
+
+Q = Tabs.SeaEvent:AddDropdown({
+    Name = __DIO_T["Select Boats"],
 	Options = ListSeaBoat,
 	Default = "Guardian",
 	Callback = function(Value)
@@ -10986,21 +11440,41 @@ Q = Tabs.SeaEvent:AddDropdown({
     end
 })
 Tabs.SeaEvent:AddButton({
-Name = "Buy Boats",
+Name = __DIO_T["Buy Boats"],
 Description = "",
 Default = true,
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("BuyBoat",(_G.SelectedBoat or "Guardian"))
 end})
 Q = Tabs.SeaEvent:AddDropdown({
-Name = "Select Sea Level",
+Name = __DIO_T["Select Sea Level"],
 Options = ListSeaZone,
 Default = "Lv 6",
 Callback = function(Value)
   _G.DangerSc = Value
 end})
+-- V5.2: Dodge + Dodge Height da duoc doi len day (ngay tren Auto Sail Boat)
+Tabs.SeaEvent:AddToggle({
+Name = __DIO_T["Dodge Sea Beast / Terror Shark"],
+Description = "",
+Default = true,
+Callback = function(Value)
+  _G.DodgeSeaBeast = Value
+  if not Value then __DIO_Dodging = false end
+end})
+
+Tabs.SeaEvent:AddSlider({
+    Name = __DIO_T["Dodge Height (Y)"],
+    Min = 100,
+    Max = 400,
+    Default = 200,
+    Callback = function(Value)
+        _G.DodgeHeight = tonumber(Value) or 200
+    end
+})
+
 Q = Tabs.SeaEvent:AddToggle({
-Name = "Auto Sail Boat",
+Name = __DIO_T["Auto Sail Boat"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -11086,88 +11560,78 @@ end, "L10953")
 
 Tabs.SeaEvent:AddSection("Entity Sea Event")
 
-Tabs.SeaEvent:AddToggle({
-Name = "Auto Shark",
-Description = "",
-Default = false,
-Callback = function(Value)
-  _G.Shark = Value
-end})
-
-Tabs.SeaEvent:AddToggle({
-Name = "Auto Piranha",
-Description = "",
-Default = false,
-Callback = function(Value)
-  _G.Piranha = Value
-end})
-
-Tabs.SeaEvent:AddToggle({
-Name = "Dodge Sea Beast / Terror Shark",
-Description = "",
-Default = true,
-Callback = function(Value)
-  _G.DodgeSeaBeast = Value
-  if not Value then __DIO_Dodging = false end
-end})
-
-Tabs.SeaEvent:AddSlider({
-    Name = "Dodge Height (Y)",
-    Min = 100,
-    Max = 400,
-    Default = 200,
+-- V5.1: dropdown CHON NHIEU sea event cung luc (MultiSelect cua Library-Redz).
+-- Callback nhan table map {["Terror Shark"]=true, ...} => lien ket sang cac flag _G
+-- ma cac loop farm bien dang dung (TerrorShark/Piranha/Shark/SeaBeast1/FishBoat/HCM/PGB).
+-- Cach thuong (single) chi chon duoc 1 roi phai chuyen lai -> gio chon nhieu bay song song.
+__DIO_SeaSelPrev = {}
+__DIO_SeaEntityMap = {
+    ["Terror Shark"]        = "TerrorShark",
+    ["Piranha"]             = "Piranha",
+    ["Shark"]               = "Shark",
+    ["Sea Beast"]           = "SeaBeast1",
+    ["Fish Boat"]           = "FishBoat",
+    ["Fish Crew Member"]    = "MobCrew",
+    ["Haunted Crew Member"] = "HCM",
+    ["PirateGrandBrigade"]  = "PGB",
+}
+Q = Tabs.SeaEvent:AddDropdown({
+    Name = __DIO_T["Select Sea Event"],
+    Options = {"Terror Shark","Piranha","Shark","Sea Beast","Fish Boat","Fish Crew Member","Haunted Crew Member","PirateGrandBrigade"},
+    Default = {}, -- luu y: MultiSelect phai de table ({}) chu khong phai false nhu ban cu
+    MultiSelect = true,
     Callback = function(Value)
-        _G.DodgeHeight = tonumber(Value) or 200
+        -- chuan hoa: chap nhan ca dang map {["Ten"]=true} lan dang mang {"Ten",...}
+        -- (khi restore tu file settings gia tri co the la 1 trong 2 dang nay)
+        local __sel = {}
+        if type(Value) == "table" then
+            for __k, __v in pairs(Value) do
+                if __v == true then
+                    if type(__k) == "string" and __DIO_SeaEntityMap[__k] then
+                        __sel[__k] = true
+                    elseif type(__k) == "number" and __DIO_SeaEntityMap[Value[__k]] then
+                        __sel[Value[__k]] = true
+                    end
+                end
+            end
+        end
+        for __name, __flag in pairs(__DIO_SeaEntityMap) do
+            if __sel[__name] then
+                _G[__flag] = true
+                __DIO_SeaSelPrev[__name] = true
+            elseif __DIO_SeaSelPrev[__name] then
+                -- truoc do la chon o dropdown nay, gio bo chon => tat flag tuong ung
+                _G[__flag] = false
+                __DIO_SeaSelPrev[__name] = nil
+            end
+        end
     end
 })
 
-Tabs.SeaEvent:AddToggle({
-Name = "Auto Terror Shark",
-Description = "",
-Default = false,
-Callback = function(Value)
-  _G.TerrorShark = Value
-end})
 
-Tabs.SeaEvent:AddToggle({
-Name = "Auto Fish Crew Member",
-Description = "",
-Default = false,
-Callback = function(Value)
-  _G.MobCrew = Value
-end})
 
-Tabs.SeaEvent:AddToggle({
-Name = "Auto Haunted Crew Member",
-Description = "",
-Default = false,
-Callback = function(Value)
-  _G.HCM = Value
-end})
 
-Tabs.SeaEvent:AddToggle({
-Name = "Auto Attack PirateGrandBrigade",
-Description = "",
-Default = false,
-Callback = function(Value)
-  _G.PGB = Value
-end})
 
-Tabs.SeaEvent:AddToggle({
-Name = "Auto Attack Fish Boat",
-Description = "",
-Default = false,
-Callback = function(Value)
-  _G.FishBoat = Value
-end})
 
-Tabs.SeaEvent:AddToggle({
-Name = "Auto Attack Sea Beast",
-Description = "",
-Default = false,
-Callback = function(Value)
-  _G.SeaBeast1 = Value
-end})
+
+
+
+-- V5.2: tan cong sea target bang weapon+skill chon trong dropdown
+-- (dung cho SeaBeast1/Leviathan/FishBoat/PGB). Neu chua chon weapon thi
+-- giu nguyen combo cu (Blox Fruit neu co fruit strong, khong thi full combo).
+__DIO_SeaSkillAtk = function()
+    if _G.SeaEventWeapon then
+        weaponSc(_G.SeaEventWeapon)
+        Useskills(_G.SeaEventWeapon, _G.SeaEventSkill or "Z")
+    elseif CheckF() then
+        weaponSc("Blox Fruit") Useskills("Blox Fruit","Z") Useskills("Blox Fruit","X") Useskills("Blox Fruit","C")
+    else
+        Useskills("Melee","Z") Useskills("Melee","X")
+        __DIO_wait(.1) Useskills("Sword","Z") Useskills("Sword","X")
+        __DIO_wait(.1) Useskills("Blox Fruit","Z") Useskills("Blox Fruit","X") Useskills("Blox Fruit","C")
+        __DIO_wait(.1) Useskills("Gun","Z") Useskills("Gun","X")
+    end
+end
 
 __DIO_SafeLoop(function()
   while __DIO_wait(1) do
@@ -11177,8 +11641,8 @@ __DIO_SafeLoop(function()
       if _G.Piranha then local a={"Piranha"}if CheckPiranha()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) Attack.Kill(c,_G.Piranha)until _G.Piranha==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
       if _G.MobCrew then local a={"Fish Crew Member"}if CheckFishCrew()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) Attack.Kill(c,_G.MobCrew)until _G.MobCrew==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
       if _G.HCM then local a={"Haunted Crew Member"}if CheckHauntedCrew()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) Attack.Kill(c,_G.HCM)until _G.HCM==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
-      if _G.SeaBeast1 then if workspace.SeaBeasts:FindFirstChild("SeaBeast1")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)_tp(CFrame.new(b.HumanoidRootPart.Position.X,__SVC_WS.Map["WaterBase-Plane"].Position.Y+200,b.HumanoidRootPart.Position.Z))if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then AitSeaSkill_Custom=b.HumanoidRootPart.CFrame;MousePos=AitSeaSkill_Custom.Position;if CheckF()then weaponSc("Blox Fruit")Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")else Useskills("Melee","Z")Useskills("Melee","X")Useskills("Melee","C")__DIO_wait(.1)Useskills("Sword","Z")Useskills("Sword","X")__DIO_wait(.1)Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")__DIO_wait(.1)Useskills("Gun","Z")Useskills("Gun","X")end end until _G.SeaBeast1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
-      if _G.Leviathan1 then if workspace.SeaBeasts:FindFirstChild("Leviathan")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Leviathan Segment")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)_tp(CFrame.new(b.HumanoidRootPart.Position.X,__SVC_WS.Map["WaterBase-Plane"].Position.Y+200,b.HumanoidRootPart.Position.Z))if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then MousePos=b:FindFirstChild("Leviathan Segment").Position;if CheckF()then weaponSc("Blox Fruit")Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")else Useskills("Melee","Z")Useskills("Melee","X")Useskills("Melee","C")__DIO_wait(.1)Useskills("Sword","Z")Useskills("Sword","X")__DIO_wait(.1)Useskills("Blox Fruit","Z")Useskills("Blox Fruit","X")Useskills("Blox Fruit","C")__DIO_wait(.1)Useskills("Gun","Z")Useskills("Gun","X")end end until _G.Leviathan1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
+      if _G.SeaBeast1 then if workspace.SeaBeasts:FindFirstChild("SeaBeast1")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)_tp(CFrame.new(b.HumanoidRootPart.Position.X,__SVC_WS.Map["WaterBase-Plane"].Position.Y+200,b.HumanoidRootPart.Position.Z))if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then AitSeaSkill_Custom=b.HumanoidRootPart.CFrame;MousePos=AitSeaSkill_Custom.Position;__DIO_SeaSkillAtk() end until _G.SeaBeast1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
+      if _G.Leviathan1 then if workspace.SeaBeasts:FindFirstChild("Leviathan")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Leviathan Segment")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)_tp(CFrame.new(b.HumanoidRootPart.Position.X,__SVC_WS.Map["WaterBase-Plane"].Position.Y+200,b.HumanoidRootPart.Position.Z))if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then MousePos=b:FindFirstChild("Leviathan Segment").Position;__DIO_SeaSkillAtk() end until _G.Leviathan1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
       if _G.FishBoat then
         if CheckEnemiesBoat() then
             for a,b in pairs(workspace.Enemies:GetChildren()) do
@@ -11189,14 +11653,7 @@ __DIO_SafeLoop(function()
                   if plr:DistanceFromCharacter(b.Engine.CFrame.Position) <= 150 then
                     AitSeaSkill_Custom = b.Engine.CFrame
                     MousePos = AitSeaSkill_Custom.Position
-                    if CheckF() then
-                      weaponSc("Blox Fruit") Useskills("Blox Fruit","Z") Useskills("Blox Fruit","X") Useskills("Blox Fruit","C")
-                    else
-                      Useskills("Melee","Z") Useskills("Melee","X") Useskills("Melee","C")
-                      __DIO_wait(.1) Useskills("Sword","Z") Useskills("Sword","X")
-                      __DIO_wait(.1) Useskills("Blox Fruit","Z") Useskills("Blox Fruit","X") Useskills("Blox Fruit","C")
-                      __DIO_wait(.1) Useskills("Gun","Z") Useskills("Gun","X")
-                    end
+                    __DIO_SeaSkillAtk()
                   end
                 until _G.FishBoat == false or not b:FindFirstChild("VehicleSeat") or b.Health.Value <= 0
                 end
@@ -11213,14 +11670,7 @@ __DIO_SafeLoop(function()
                   if plr:DistanceFromCharacter(b.Engine.CFrame.Position) <= 150 then
                     AitSeaSkill_Custom = b.Engine.CFrame
                     MousePos = AitSeaSkill_Custom.Position
-                    if CheckF() then
-                      weaponSc("Blox Fruit") Useskills("Blox Fruit","Z") Useskills("Blox Fruit","X") Useskills("Blox Fruit","C")
-                    else
-                      Useskills("Melee","Z") Useskills("Melee","X") Useskills("Melee","C")
-                      __DIO_wait(.1) Useskills("Sword","Z") Useskills("Sword","X")
-                      __DIO_wait(.1) Useskills("Blox Fruit","Z") Useskills("Blox Fruit","X") Useskills("Blox Fruit","C")
-                      __DIO_wait(.1) Useskills("Gun","Z") Useskills("Gun","X")
-                    end
+                    __DIO_SeaSkillAtk()
                   end
                 until _G.PGB == false or not b:FindFirstChild("VehicleSeat") or b.Health.Value <= 0
                 end
@@ -11234,7 +11684,7 @@ end, "L11058")
 Tabs.SeaEvent:AddSection("Kitsune Island / Event")
 
 Tabs.SeaEvent:AddToggle({
-Name = "Auto Find Kitsune Island",
+Name = __DIO_T["Auto Find Kitsune Island"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -11298,7 +11748,7 @@ __DIO_SafeLoop(function()
 end, "L11129")
 
 Tabs.SeaEvent:AddToggle({
-Name = "Auto Teleport to Shrine Actived",
+Name = __DIO_T["Auto Teleport to Shrine Actived"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -11326,7 +11776,7 @@ __DIO_SafeLoop(function()
 end, "L11193")
 
 Tabs.SeaEvent:AddToggle({
-Name = "Auto Collect Azure Ember",
+Name = __DIO_T["Auto Collect Azure Ember"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -11348,7 +11798,7 @@ __DIO_SafeLoop(function()
 end, "L11221")
 
 Tabs.SeaEvent:AddToggle({
-Name = "Auto Trade Azure Ember",
+Name = __DIO_T["Auto Trade Azure Ember"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -11367,14 +11817,14 @@ __DIO_SafeLoop(function()
 end, "L11243")
 
 Tabs.SeaEvent:AddButton({
-Name = "Trade Items Azure",
+Name = __DIO_T["Trade Items Azure"],
 Description = "",
 Callback = function()
   replicated.Modules.Net:FindFirstChild("RF/KitsuneStatuePray"):InvokeServer()
 end})
 
 Tabs.SeaEvent:AddButton({
-Name = "Talk with kitsune statue",
+Name = __DIO_T["Talk with kitsune statue"],
 Description = "",
 Callback = function()
   replicated.Modules.Net:FindFirstChild("RE/TouchKitsuneStatue"):FireServer()
@@ -11403,14 +11853,14 @@ __DIO_SafeLoop(function()
 end, "L11272")
 
 Tabs.SeaEvent:AddButton({
-    Name = "Buy Spy",
+    Name = __DIO_T["Buy Spy"],
     Callback = function()
         __SVC_RS.Remotes.CommF_:InvokeServer("InfoLeviathan", "2")
     end
 })
 
 Tabs.SeaEvent:AddToggle({
-    Name = "Auto Find Frozen Dimension",
+    Name = __DIO_T["Auto Find Frozen Dimension"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -11480,7 +11930,7 @@ __DIO_SafeLoop(function()
   end
 end, "L11312")
 Tabs.SeaEvent:AddToggle({
-Name = "Auto Teleport Frozen Dimension",
+Name = __DIO_T["Auto Teleport Frozen Dimension"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -11496,7 +11946,7 @@ __DIO_SafeLoop(function()
   end
 end, "L11375")
 Tabs.SeaEvent:AddToggle({
- Name = "Shot Leviathan Heart [Beta]",
+ Name = __DIO_T["Shot Leviathan Heart [Beta]"],
  Description = "",
  Default = false,
 Callback = function(Value)
@@ -11568,7 +12018,7 @@ __DIO_SafeLoop(function()
     end
 end, "L11393")
 Tabs.SeaEvent:AddToggle({
-Name = "Auto Drive To Hydra Island",
+Name = __DIO_T["Auto Drive To Hydra Island"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -11625,7 +12075,7 @@ __DIO_SafeLoop(function()
 end, "L11463")
 
 Tabs.SeaEvent:AddToggle({
-Name = "Auto Attack Leviathan",
+Name = __DIO_T["Auto Attack Leviathan"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -11980,7 +12430,7 @@ ChestEsp = function()
 end
 
 Tabs.Esp:AddToggle({
-    Name = "Esp Player",
+    Name = __DIO_T["Esp Player"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -12007,7 +12457,7 @@ pcall(EspPly)
 })
 
 Tabs.Esp:AddToggle({
-    Name = "Esp Chest",
+    Name = __DIO_T["Esp Chest"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -12031,7 +12481,7 @@ pcall(ChestEsp)
 })
 
 Tabs.Esp:AddToggle({
-    Name = "Esp Fruit",
+    Name = __DIO_T["Esp Fruit"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -12056,7 +12506,7 @@ pcall(DevEsp)
 })
 
 Tabs.Esp:AddToggle({
-    Name = "Esp Island",
+    Name = __DIO_T["Esp Island"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -12081,7 +12531,7 @@ pcall(LocationEsp)
 })
 
 Tabs.Esp:AddToggle({
-    Name = "Esp Legendary Sword",
+    Name = __DIO_T["Esp Legendary Sword"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -12102,7 +12552,7 @@ pcall(LegenSword)
 })
 
 Tabs.Esp:AddToggle({
-    Name = "Esp Haki Color",
+    Name = __DIO_T["Esp Haki Color"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -12123,7 +12573,7 @@ pcall(HakiClorEsp)
 })
 
 Tabs.Esp:AddToggle({
-    Name = "Esp SeaEvent Island",
+    Name = __DIO_T["Esp SeaEvent Island"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -12148,7 +12598,7 @@ pcall(EventIslandEsp)
 })
 
 Tabs.Esp:AddToggle({
-    Name = "Esp Advanced Dealer",
+    Name = __DIO_T["Esp Advanced Dealer"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -12238,7 +12688,7 @@ pcall(function()
 end)
 
 RandomFF = Tabs.Raids:AddToggle({
-Name = "Auto Random Fruit",
+Name = __DIO_T["Auto Random Fruit"],
 Description = "Roll trai ac quy qua he Gacha (ZiolesGacha). Tu mo cua so gacha roi bam nut Roll/Spin.",
 Default = false,
 Callback = function(Value)
@@ -12428,7 +12878,7 @@ __DIO_SafeLoop(function()
   end
 end, "L12309")
 DropF = Tabs.Raids:AddToggle({
-Name = "Auto Drop Fruit",
+Name = __DIO_T["Auto Drop Fruit"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -12442,7 +12892,7 @@ __DIO_SafeLoop(function()
   end
 end, "L12323")
 StoredF = Tabs.Raids:AddToggle({
-Name = "Auto Store Fruit",
+Name = __DIO_T["Auto Store Fruit"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -12456,7 +12906,7 @@ __DIO_SafeLoop(function()
   end
 end, "L12337")
 TwF = Tabs.Raids:AddToggle({
-Name = "Auto Tween to Fruit",
+Name = __DIO_T["Auto Tween to Fruit"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -12474,7 +12924,7 @@ __DIO_SafeLoop(function()
   end
 end, "L12351")
 BringF = Tabs.Raids:AddToggle({
-Name = "Auto Collect Fruit",
+Name = __DIO_T["Auto Collect Fruit"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -12489,7 +12939,7 @@ __DIO_SafeLoop(function()
 end, "L12369")
 
 Tabs.Raids:AddDropdown({
-    Name = "Select Fruit Shop",
+    Name = __DIO_T["Select Fruit Shop"],
     Options = {
         "Rocket-Rocket", "Spin-Spin", "Blade-Blade", "Spring-Spring",
         "Bomb-Bomb", "Smoke-Smoke", "Spike-Spike", "Flame-Flame",
@@ -12508,7 +12958,7 @@ Tabs.Raids:AddDropdown({
     end
 })
 Tabs.Raids:AddToggle({
-    Name = "Auto Buy Fruit Shop",
+    Name = __DIO_T["Auto Buy Fruit Shop"],
     Default = false,
     Callback = function(Value)
         getgenv().AutoBuyFruitSniper = Value
@@ -12576,7 +13026,7 @@ Tabs.Raids:AddSection("Dungeon Event / Raiding")
 DungeonTables = {"Flame","Ice","Quake","Light","Dark","String","Rumble","Magma","Human: Buddha","Sand","Bird: Phoenix","Dough"}
 _G.SelectChip = _G.SelectChip or "Flame" -- FIXED V4: default chip (tranh RaidsNpc Select nil)
 Q = Tabs.Raids:AddDropdown({
-Name = "Select Chip",
+Name = __DIO_T["Select Chip"],
 Description = "",
 Options = DungeonTables,
 Callback = function(Value)
@@ -12584,7 +13034,7 @@ Callback = function(Value)
 end})
 
 Tabs.Raids:AddToggle({
-    Name = "Get Fruit In Inventory Below 1M",
+    Name = __DIO_T["Get Fruit In Inventory Below 1M"],
     Default = false,
     Callback = function(Value)
         getgenv().AutoGetFruit = Value
@@ -12612,7 +13062,7 @@ __DIO_SafeLoop(function()
     end
 end, "L12479")
 AutoChipBeli = Tabs.Raids:AddToggle({
-    Name = "Auto Buy Chip [Beli]",
+    Name = __DIO_T["Auto Buy Chip [Beli]"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -12638,7 +13088,7 @@ __DIO_SafeLoop(function()
 end, "L12514")
 
 AutoChipFruit = Tabs.Raids:AddToggle({
-    Name = "Auto Buy Chip [Devil Fruit]",
+    Name = __DIO_T["Auto Buy Chip [Devil Fruit]"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -12673,7 +13123,7 @@ __DIO_SafeLoop(function()
 end, "L12540")
 
 StartR = Tabs.Raids:AddToggle({
-    Name = "Auto Start Raid",
+    Name = __DIO_T["Auto Start Raid"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -12768,7 +13218,7 @@ __DIO_SafeLoop(function()
 end, "L12578")
 
 Raiding = Tabs.Raids:AddToggle({
-    Name = "Auto Raid + Next Island",
+    Name = __DIO_T["Auto Raid + Next Island"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -12865,7 +13315,7 @@ __DIO_SafeLoop(function()
 end, "L12668")
 
 Tabs.Raids:AddToggle({
-Name = "Auto Awakening",
+Name = __DIO_T["Auto Awakening"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -12883,7 +13333,7 @@ __DIO_SafeLoop(function()
 end, "L12760")
 
 Tabs.Raids:AddToggle({
-    Name = "Auto Teleport To Lab",
+    Name = __DIO_T["Auto Teleport To Lab"],
     Default = false,
     Callback = function(Value)
         _G.TpLab = Value
@@ -12906,20 +13356,20 @@ Tabs.Raids:AddToggle({
 Tabs.Raids:AddSection("Items Law/Order Sword")
 
 Tabs.Raids:AddButton({
-Name = "Buy Microchip Law",
+Name = __DIO_T["Buy Microchip Law"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("BlackbeardReward","Microchip","2")
 end})
 Tabs.Raids:AddButton({
-Name = "Start Law Raids",
+Name = __DIO_T["Start Law Raids"],
 Description = "",
 Callback = function()
   fireclickdetector(workspace.Map.CircleIsland.RaidSummon.Button.Main.ClickDetector)
 end})
 
 Tabs.Raids:AddToggle({
-    Name = "Auto Buy Microchip Law",
+    Name = __DIO_T["Auto Buy Microchip Law"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -12938,7 +13388,7 @@ __DIO_SafeLoop(function()
 end, "L12816")
 
 Tabs.Raids:AddToggle({
-    Name = "Auto Start Law Raids",
+    Name = __DIO_T["Auto Start Law Raids"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -12957,7 +13407,7 @@ __DIO_SafeLoop(function()
 end, "L12835")
 
 Tabs.Raids:AddToggle({
-Name = "Auto Kill Law",
+Name = __DIO_T["Auto Kill Law"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -12986,7 +13436,7 @@ local function GetHRP()
 end
 
 Tabs.Raids:AddToggle({
-    Name = "Auto Farm Dungeon",
+    Name = __DIO_T["Auto Farm Dungeon"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -13035,7 +13485,7 @@ __DIO_SafeLoop(function()
 end, "L12890")
 
 Tabs.Raids:AddToggle({
-    Name = "TP Exit (1)",
+    Name = __DIO_T["TP Exit (1)"],
     Default = false,
     Callback = function(v)
         _G.TPFloor1 = v
@@ -13078,7 +13528,7 @@ __DIO_SafeLoop(function()
 end, "L12947")
 
 Tabs.Raids:AddToggle({
-    Name = "TP Exit (2)",
+    Name = __DIO_T["TP Exit (2)"],
     Default = false,
     Callback = function(v)
         _G.TPFloor2 = v
@@ -13116,7 +13566,7 @@ __DIO_SafeLoop(function()
 end, "L12976")
 
 Tabs.Raids:AddToggle({
-    Name = "TP Exit (3)",
+    Name = __DIO_T["TP Exit (3)"],
     Default = false,
     Callback = function(v)
         _G.TPFloor3 = v
@@ -13158,7 +13608,7 @@ __DIO_SafeLoop(function()
 end, "L13025")
 
 Tabs.Raids:AddToggle({
-    Name = "TP Exit (4)",
+    Name = __DIO_T["TP Exit (4)"],
     Default = false,
     Callback = function(v)
         _G.TPFloor4 = v
@@ -13214,7 +13664,7 @@ for _, v in pairs(__SVC_PLR:GetChildren()) do
 end
 
 Tabs.Combat:AddDropdown({
-    Name = "Select Players",
+    Name = __DIO_T["Select Players"],
     Description = "",
     Options = PlrList,
     Callback = function(Value)
@@ -13228,7 +13678,7 @@ Tabs.Combat:AddDropdown({
 })
 
 Tabs.Combat:AddToggle({
-    Name = "Teleport To Select Players",
+    Name = __DIO_T["Teleport To Select Players"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -13245,7 +13695,7 @@ Tabs.Combat:AddToggle({
 })
 
 Tabs.Combat:AddToggle({
-    Name = "Spectate Select Players",
+    Name = __DIO_T["Spectate Select Players"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -13264,7 +13714,7 @@ Tabs.Combat:AddToggle({
 })
 
 Tabs.Combat:AddDropdown({
-    Name = "Select Aim Method",
+    Name = __DIO_T["Select Aim Method"],
     Description = "",
     Options = {"Aim Player","Nearest Aim"},
     Callback = function(Value)
@@ -13273,7 +13723,7 @@ Tabs.Combat:AddDropdown({
 })
 
 Tabs.Combat:AddToggle({
-    Name = "Aimbot Method Skills",
+    Name = __DIO_T["Aimbot Method Skills"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -13320,7 +13770,7 @@ __DIO_SafeLoop(function()
 end, "L13189")
 
 Tabs.Combat:AddToggle({
-    Name = "Aimbot Camera Closet Players",
+    Name = __DIO_T["Aimbot Camera Closet Players"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -13418,7 +13868,7 @@ __DIO_SafeLoop(function()
 end, "L13269")
 
 Tabs.Combat:AddToggle({
-    Name = "Auto Enable PvP",
+    Name = __DIO_T["Auto Enable PvP"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -13450,7 +13900,7 @@ __DIO_SafeLoop(function()
 end, "L13320")
 
 Tabs.Combat:AddToggle({
-    Name = "Auto Safe Mode",
+    Name = __DIO_T["Auto Safe Mode"],
     Default = false,
     Callback = function(Value)
         _G.SafeMode = Value
@@ -13645,7 +14095,7 @@ player.CharacterAdded:Connect(function(character)
 end)
 
 Tabs.Combat:AddToggle({
-    Name = "Enable Fly",
+    Name = __DIO_T["Enable Fly"],
     Default = false,
     Callback = function(Value)
         toggleFly(Value)
@@ -13653,7 +14103,7 @@ Tabs.Combat:AddToggle({
 })
 
 Tabs.Combat:AddSlider({
-    Name = "Speed Fly Mode",
+    Name = __DIO_T["Speed Fly Mode"],
     Min = 10,
     Max = 200,
     Default = 50,
@@ -13663,7 +14113,7 @@ Tabs.Combat:AddSlider({
 })
 
 Tabs.Combat:AddToggle({
-    Name = "Dash No Cooldown",
+    Name = __DIO_T["Dash No Cooldown"],
     Default = false,
     Callback = function(Value)
         getgenv().DodgeNoCD = Value
@@ -13686,7 +14136,7 @@ local function NoCooldown()
 end
 
 Tabs.Combat:AddToggle({
-    Name = "Instance Mink V3 [ INF ]",
+    Name = __DIO_T["Instance Mink V3 [ INF ]"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -13712,7 +14162,7 @@ __DIO_SafeLoop(function()
 end, "L13583")
 
 Tabs.Combat:AddToggle({
-    Name = "Instance Energy [ INF ]",
+    Name = __DIO_T["Instance Energy [ INF ]"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -13724,7 +14174,7 @@ Tabs.Combat:AddToggle({
 })
 
 Tabs.Combat:AddToggle({
-    Name = "Instance Soru [ INF ]",
+    Name = __DIO_T["Instance Soru [ INF ]"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -13736,7 +14186,7 @@ Tabs.Combat:AddToggle({
 })
 
 Tabs.Combat:AddToggle({
-    Name = "Instance Observation Range [ INF ]",
+    Name = __DIO_T["Instance Observation Range [ INF ]"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -13748,7 +14198,7 @@ Tabs.Combat:AddToggle({
 })
 
 Tabs.Combat:AddToggle({
-    Name = "Ignore Same Teams",
+    Name = __DIO_T["Ignore Same Teams"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -13762,7 +14212,7 @@ Tabs.Combat:AddToggle({
 })
 
 Tabs.Combat:AddToggle({
-    Name = "Accept Allies",
+    Name = __DIO_T["Accept Allies"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -13792,19 +14242,19 @@ end, "L13664")
 Tabs.Travel:AddSection("Travel - Worlds")
 
 Tabs.Travel:AddButton({
-Name = "Travel East Blue (World 1)",
+Name = __DIO_T["Travel East Blue (World 1)"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("TravelMain")
 end})
 Tabs.Travel:AddButton({
-Name = "Travel Dressrosa (World 2)",
+Name = __DIO_T["Travel Dressrosa (World 2)"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("TravelDressrosa")
 end})
 Tabs.Travel:AddButton({
-Name = "Travel Zou (World 3)",
+Name = __DIO_T["Travel Zou (World 3)"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("TravelZou")
@@ -13821,14 +14271,14 @@ if __LocFolder then
     end
 end
 Travelllll = Tabs.Travel:AddDropdown({
-Name = "Select Travelling",
+Name = __DIO_T["Select Travelling"],
 Description = "",
 Options = Location,
 Callback = function(Value)
   _G.Island = Value
 end})
 GoIsland = Tabs.Travel:AddToggle({
-Name = "Auto Travel",
+Name = __DIO_T["Auto Travel"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -13867,13 +14317,13 @@ elseif World3 then
 end
 
 PortalTP = Tabs.Travel:AddDropdown({
-Name = "Select Portal",
+Name = __DIO_T["Select Portal"],
 Options = Location_Portal,
 Callback = function(Value)
   _G.Island_PT = Value
 end})
 Tabs.Travel:AddButton({
-Name = "requestEntrance",
+Name = __DIO_T["requestEntrance"],
 Description = "",
 Callback = function()
   if _G.Island_PT == "Sky" then
@@ -13902,13 +14352,13 @@ Tabs.Travel:AddSection("Travel - NPCs")
 local __NPCsFolder = replicated:FindFirstChild("NPCs")
 if __NPCsFolder then for _, v in pairs(__NPCsFolder:GetChildren()) do table.insert(NPCList, v.Name) end end
 NPCsPos = Tabs.Travel:AddDropdown({
-Name = "Select NPCs",
+Name = __DIO_T["Select NPCs"],
 Options = NPCList,
 Callback = function(Value)
   NPClist = Value
 end})
 GoNPCs = Tabs.Travel:AddToggle({
-Name = "Auto Tween to NPC",
+Name = __DIO_T["Auto Tween to NPC"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -13928,25 +14378,25 @@ end, "L13803")
 
 Tabs.Shop:AddSection("Shop Options")
 Tabs.Shop:AddButton({
-Name = "Buy Buso",
+Name = __DIO_T["Buy Buso"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("BuyHaki","Buso")
 end})
 Tabs.Shop:AddButton({
-Name = "Buy Geppo",
+Name = __DIO_T["Buy Geppo"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("BuyHaki","Geppo")
 end})
 Tabs.Shop:AddButton({
-Name = "Buy Soru",
+Name = __DIO_T["Buy Soru"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("BuyHaki","Soru")
 end})
 Tabs.Shop:AddButton({
-Name = "Buy Ken",
+Name = __DIO_T["Buy Ken"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("KenTalk","Buy")
@@ -14233,31 +14683,31 @@ end, "L14110")
 
 Tabs.Shop:AddSection("Accessory")
 Tabs.Shop:AddButton({
-Name = "Buy Tomoe Ring",
+Name = __DIO_T["Buy Tomoe Ring"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("BuyItem","Tomoe Ring")
 end})
 Tabs.Shop:AddButton({
-Name = "Buy Black Cape",
+Name = __DIO_T["Buy Black Cape"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("BuyItem","Black Cape")
 end})
 Tabs.Shop:AddButton({
-Name = "Buy Swordsman Hat",
+Name = __DIO_T["Buy Swordsman Hat"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("BuyItem","Swordsman Hat")
 end})
 Tabs.Shop:AddButton({
-Name = "Buy Bizarre Rifle",
+Name = __DIO_T["Buy Bizarre Rifle"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("Ectoplasm","Buy", 1)
 end})
 Tabs.Shop:AddButton({
-Name = "Buy Ghoul Mask",
+Name = __DIO_T["Buy Ghoul Mask"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("Ectoplasm","Buy", 2)
@@ -14265,97 +14715,97 @@ end})
 
 Tabs.Shop:AddSection("Weapon World1")
 Tabs.Shop:AddButton({
-Name = "Buy Cutlass",
+Name = __DIO_T["Buy Cutlass"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("BuyItem","Cutlass")
 end})
 Tabs.Shop:AddButton({
-Name = "Buy Katana",
+Name = __DIO_T["Buy Katana"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("BuyItem","Katana")
 end})
 Tabs.Shop:AddButton({
-Name = "Buy Iron Mace",
+Name = __DIO_T["Buy Iron Mace"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("BuyItem","Iron Mace")
 end})
 Tabs.Shop:AddButton({
-Name = "Buy Duel Katana",
+Name = __DIO_T["Buy Duel Katana"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("BuyItem","Duel Katana")
 end})
 Tabs.Shop:AddButton({
-Name = "Buy Triple Katana",
+Name = __DIO_T["Buy Triple Katana"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("BuyItem","Triple Katana")
 end})
 Tabs.Shop:AddButton({
-Name = "Buy Pipe",
+Name = __DIO_T["Buy Pipe"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("BuyItem","Pipe")
 end})
 Tabs.Shop:AddButton({
-Name = "Buy Dual-Headed Blade",
+Name = __DIO_T["Buy Dual-Headed Blade"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("BuyItem","Dual-Headed Blade")
 end})
 Tabs.Shop:AddButton({
-Name = "Buy Bisento",
+Name = __DIO_T["Buy Bisento"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("BuyItem","Bisento")
 end})
 Tabs.Shop:AddButton({
-Name = "Buy Soul Cane",
+Name = __DIO_T["Buy Soul Cane"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("BuyItem","Soul Cane")
 end})
 Tabs.Shop:AddButton({
-Name = "Buy Slingshot",
+Name = __DIO_T["Buy Slingshot"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("BuyItem","Slingshot")
 end})
 Tabs.Shop:AddButton({
-Name = "Buy Musket",
+Name = __DIO_T["Buy Musket"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("BuyItem","Musket")
 end})
 Tabs.Shop:AddButton({
-Name = "Buy Dual Flintlock",
+Name = __DIO_T["Buy Dual Flintlock"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("BuyItem","Dual Flintlock")
 end})
 Tabs.Shop:AddButton({
-Name = "Buy Flintlock",
+Name = __DIO_T["Buy Flintlock"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("BuyItem","Flintlock")
 end})
 Tabs.Shop:AddButton({
-Name = "Buy Refined Flintlock",
+Name = __DIO_T["Buy Refined Flintlock"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("BuyItem","Refined Flintlock")
 end})
 Tabs.Shop:AddButton({
-Name = "Buy Cannon",
+Name = __DIO_T["Buy Cannon"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("BuyItem","Cannon")
 end})
 Tabs.Shop:AddButton({
-Name = "Buy Kabucha",
+Name = __DIO_T["Buy Kabucha"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("BlackbeardReward","Slingshot","2")
@@ -14363,25 +14813,25 @@ end})
 
 Tabs.Shop:AddSection("Fragments shop")
 Tabs.Shop:AddButton({
-Name = "Buy Refund Stats",
+Name = __DIO_T["Buy Refund Stats"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("BlackbeardReward","Refund","2")
 end})
 Tabs.Shop:AddButton({
-Name = "Buy Reroll Race",
+Name = __DIO_T["Buy Reroll Race"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("BlackbeardReward","Reroll","2")
 end})
 Tabs.Shop:AddButton({
-Name = "Buy Ghoul Race",
+Name = __DIO_T["Buy Ghoul Race"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("Ectoplasm"," Change", 4)
 end})
 Tabs.Shop:AddButton({
-Name = "Buy Cyborg Race (2.5k)",
+Name = __DIO_T["Buy Cyborg Race (2.5k)"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("CyborgTrainer"," Buy")
@@ -14390,7 +14840,7 @@ end})
 Tabs.SeaEvent:AddSection("Crafting Items")
 
 Tabs.SeaEvent:AddButton({
-Name = "Craft SharkTooth",
+Name = __DIO_T["Craft SharkTooth"],
 Description = "",
 Callback = function()
         local args = {
@@ -14403,7 +14853,7 @@ Callback = function()
 })
 
 Tabs.SeaEvent:AddButton({
-Name = "Craft TerrorJaw",
+Name = __DIO_T["Craft TerrorJaw"],
 Description = "",
 Callback = function()
         local args = {
@@ -14416,7 +14866,7 @@ Callback = function()
 })
 
 Tabs.SeaEvent:AddButton({
-Name = "Craft SharkAnchor",
+Name = __DIO_T["Craft SharkAnchor"],
 Description = "",
 Callback = function()
         local args = {
@@ -14429,7 +14879,7 @@ Callback = function()
 })
 
 Tabs.SeaEvent:AddButton({
-Name = "Craft LeviathanCrown",
+Name = __DIO_T["Craft LeviathanCrown"],
 Description = "",
 Callback = function()
         local args = {
@@ -14442,7 +14892,7 @@ Callback = function()
 })
 
 Tabs.SeaEvent:AddButton({
-Name = "Craft LeviathanShield",
+Name = __DIO_T["Craft LeviathanShield"],
 Description = "",
 Callback = function()
         local args = {
@@ -14455,7 +14905,7 @@ Callback = function()
 })
 
 Tabs.SeaEvent:AddButton({
-Name = "Craft LeviathanBoat",
+Name = __DIO_T["Craft LeviathanBoat"],
 Description = "",
 Callback = function()
         local args = {
@@ -14468,7 +14918,7 @@ Callback = function()
 })
 
 Tabs.SeaEvent:AddButton({
-Name = "Craft LegendaryScroll",
+Name = __DIO_T["Craft LegendaryScroll"],
 Description = "",
 Callback = function()
         local args = {
@@ -14481,7 +14931,7 @@ Callback = function()
 })
 
 Tabs.SeaEvent:AddButton({
-Name = "Craft MythicalScroll",
+Name = __DIO_T["Craft MythicalScroll"],
 Description = "",
 Callback = function()
         local args = {
@@ -14495,7 +14945,7 @@ Callback = function()
 
 Tabs.Misc:AddSection("Server - Function")
 Tabs.Misc:AddButton({
-    Name = "Redeem All Codes",
+    Name = __DIO_T["Redeem All Codes"],
     Description = "",
     Callback = function()
         local codes = {
@@ -14532,13 +14982,13 @@ Tabs.Misc:AddButton({
     end
 })
 Tabs.Misc:AddButton({
-Name = "Rejoin Server",
+Name = __DIO_T["Rejoin Server"],
 Description = "",
 Callback = function()
   __SVC_TP:Teleport(game.PlaceId, game.Players.LocalPlayer)
 end})
 Tabs.Misc:AddButton({
-    Name = "Hop Server",
+    Name = __DIO_T["Hop Server"],
     Description = "",
     Callback = function()
         task.spawn(function()
@@ -14571,7 +15021,7 @@ Tabs.Misc:AddButton({
     end
 })
 Tabs.Misc:AddButton({
-Name = "Hop to Lowest Players",
+Name = __DIO_T["Hop to Lowest Players"],
 Description = "",
 Callback = function()
   local Http = __SVC_HTTP
@@ -14600,7 +15050,7 @@ Callback = function()
 end})
 
 Tabs.Misc:AddButton({
-Name = "Hop to Lowest Pings Server",
+Name = __DIO_T["Hop to Lowest Pings Server"],
 Description = "",
 Callback = function()
 local HTTPService = __SVC_HTTP
@@ -14641,7 +15091,7 @@ end})
 local replicated = __SVC_RS
 
 Tabs.Misc:AddTextBox({
-    Name = "Input Job Id",
+    Name = __DIO_T["Input Job Id"],
     Placeholder = "Job ID",
     ClearOnFocus = true,
     Callback = function(Value)
@@ -14650,7 +15100,7 @@ Tabs.Misc:AddTextBox({
 })
 
 Tabs.Misc:AddButton({
-    Name = "Teleport [Job ID]",
+    Name = __DIO_T["Teleport [Job ID]"],
     Callback = function()
         if getgenv().Job and getgenv().Job ~= "" then
             __SVC_TP
@@ -14663,7 +15113,7 @@ Tabs.Misc:AddButton({
     end
 })
 Tabs.Misc:AddButton({
-Name = "Copy JobID",
+Name = __DIO_T["Copy JobID"],
 Description = "",
 Callback = function()
   setclipboard(tostring(game.JobId))
@@ -14672,20 +15122,20 @@ end})
 Tabs.Misc:AddSection("Player Gui / Others")
 
 Tabs.Misc:AddButton({
-Name = "Open Awakenings Expert",
+Name = __DIO_T["Open Awakenings Expert"],
 Description = "",
 Callback = function()
   plr.PlayerGui.Main.AwakeningToggler.Visible = true
 end})
 Tabs.Misc:AddButton({
-Name = "Open Title Selection",
+Name = __DIO_T["Open Title Selection"],
 Description = "",
 Callback = function()
   replicated.Remotes.CommF_:InvokeServer("getTitles",true)
   plr.PlayerGui.Main.Titles.Visible = true
 end})
 DisbleChat = Tabs.Misc:AddToggle({
-Name = "Disable Chat GUI",
+Name = __DIO_T["Disable Chat GUI"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -14700,7 +15150,7 @@ Callback = function(Value)
 end
 })
 DisbleLeaderB = Tabs.Misc:AddToggle({
-Name = "Disable Leader Board GUI",
+Name = __DIO_T["Disable Leader Board GUI"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -14715,19 +15165,19 @@ Callback = function(Value)
 end
 })
 Tabs.Misc:AddButton({
-Name = "Set Pirate Team",
+Name = __DIO_T["Set Pirate Team"],
 Description = "",
 Callback = function()
   Pirates()
 end})
 Tabs.Misc:AddButton({
-Name = "Set Marine Team",
+Name = __DIO_T["Set Marine Team"],
 Description = "",
 Callback = function()
   Marines()
 end})
 UnPortal = Tabs.Misc:AddToggle({
-Name = "Unlock All Portals",
+Name = __DIO_T["Unlock All Portals"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -14760,13 +15210,13 @@ Tabs.Misc:AddSection("Graphics / Haki Stats")
 
 HakiSt = {"State 0","State 1","State 2","State 3","State 4","State 5"}
 HakiStat = Tabs.Misc:AddDropdown({
-Name = "Select Haki States",
+Name = __DIO_T["Select Haki States"],
 Options = HakiSt,
 Callback = function(Value)
   _G.SelectStateHaki = Value
 end})
 Tabs.Misc:AddButton({
-Name = "ChangeBusoStage",
+Name = __DIO_T["ChangeBusoStage"],
 Description = "",
 Callback = function()
   if _G.SelectStateHaki == "State 0" then
@@ -14784,7 +15234,7 @@ Callback = function()
   end
 end})
 rtxM = Tabs.Hop:AddToggle({
-Name = "Turn on RTX Mode",
+Name = __DIO_T["Turn on RTX Mode"],
 Description = "",
 Default = false,
 
@@ -14858,7 +15308,7 @@ Callback = function(Value)
 end
 })
 Tabs.Hop:AddButton({
-Name = "Turn on Fast Mode",
+Name = __DIO_T["Turn on Fast Mode"],
 Description = "",
 Callback = function()
   for _,zx in next, workspace:GetDescendants() do
@@ -14866,13 +15316,13 @@ Callback = function()
   end
 end})
 Tabs.Hop:AddButton({
-Name = "Turn on Low CPU",
+Name = __DIO_T["Turn on Low CPU"],
 Description = "",
 Callback = function()
   LowCpu()
 end})
 Tabs.Misc:AddButton({
-Name = "Turn on increase Boats",
+Name = __DIO_T["Turn on increase Boats"],
 Description = "",
 Callback = function()
   local __boatsIBV5 = workspace:FindFirstChild("Boats")
@@ -14887,7 +15337,7 @@ Callback = function()
   end
 end})
 Tabs.Hop:AddButton({
-Name = "No Fog",
+Name = __DIO_T["No Fog"],
 Description = "",
 Callback = function()
   if Lighting:FindFirstChild("LightingLayers") then Lighting.LightingLayers:Destroy() end
@@ -14897,7 +15347,7 @@ end})
 
 Tabs.Misc:AddSection("Configure - God")
 Tabs.Misc:AddButton({
-Name = "Rain Fruits (Client)",
+Name = __DIO_T["Rain Fruits (Client)"],
 Description = "",
 Callback = function()
   for i, v in pairs(game:GetObjects("rbxassetid://14759368201")[1]:GetChildren()) do
@@ -14915,7 +15365,7 @@ Callback = function()
   end
 end})
 briggt1 = Tabs.Hop:AddToggle({
-Name = "Turn on Full Bright",
+Name = __DIO_T["Turn on Full Bright"],
 Description = "",
 Default = true,
 Callback = function(Value)
@@ -14933,7 +15383,7 @@ end
 })
 
 DisableHitVFX = Tabs.Hop:AddToggle({
-    Name = "Remove Hit VFX",
+    Name = __DIO_T["Remove Hit VFX"],
     Description = "Removes slash and sword visual effects for better visibility",
     Default = false,
     Callback = function(Value)
@@ -14962,7 +15412,7 @@ __DIO_SafeLoop(function()
     end
 end, "L14837")
 RmvVFX = Tabs.Hop:AddToggle({
-Name = "Remove Death & Respawned VFX",
+Name = __DIO_T["Remove Death & Respawned VFX"],
 Description = "",
 Default = true,
 Callback = function(Value)
@@ -14979,7 +15429,7 @@ __DIO_SafeLoop(function()
   end
 end, "L14857")
 DisblesNotify = Tabs.Hop:AddToggle({
-Name = "Disable Notify",
+Name = __DIO_T["Disable Notify"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -15009,7 +15459,7 @@ __DIO_SafeLoop(function()
 end, "L14876")
 
 DayN = Tabs.Misc:AddDropdown({
-Name = "Select Time",
+Name = __DIO_T["Select Time"],
 Description = "",
 Options = {"Day", "Night"},
 Default = "Day",
@@ -15017,7 +15467,7 @@ Callback = function(Value)
   _G.SelectDN = Value
 end})
 dayornight = Tabs.Misc:AddToggle({
-Name = "Turn on Time",
+Name = __DIO_T["Turn on Time"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -15038,7 +15488,7 @@ __DIO_SafeLoop(function()
   end
 end, "L14912")
 walkWater = Tabs.Misc:AddToggle({
-Name = "Turn on Walk on Water",
+Name = __DIO_T["Turn on Walk on Water"],
 Description = "",
 Default = true,
 Callback = function(Value)
@@ -15051,7 +15501,7 @@ Callback = function(Value)
 end
 })
 iceWalk = Tabs.Misc:AddToggle({
-Name = "Turn on Ice Walk",
+Name = __DIO_T["Turn on Ice Walk"],
 Description = "",
 Default = false,
 Callback = function(Value)
