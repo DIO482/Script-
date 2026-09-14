@@ -9,6 +9,38 @@
 --  * Fixed toggles: AutoKillMob, Auto Farm Dough King, +Hop, Buy Melee, Auto Start Raid
 --  * Optimized spawn/task.wait like Banana/OMG Hub
 -- ============================================================================
+-- [UPDATE TỔNG HỢP FARM 2026-09-14]
+--  * Dropdown "Farm" (Farm Level / Farm Bone / Farm Cake / Farm Tyrant / Farm Nearest)
+--    + toggle "Start Farm": chọn mode rồi bấm Start Farm, cùng lúc chỉ chạy ĐÚNG 1 mode
+--    -> hết cảnh nhiều loop farm giành tween khi bật/tắt toggle nhanh liên tục.
+--  * Xoá toggle riêng: Auto Farm Level, Auto Farm Cake Prince, Auto Farm Bone,
+--    Auto Farm Nearest, Auto Farm Boss TOTS (loop giữ nguyên, flag không đổi).
+--  * Toggle "Accept Quest Level/Cake/Bone" thay cho 2 toggle Accept Bone/Cake:
+--    chỉ tự nhận quest của mode đang chọn ở dropdown Farm.
+--  * Farm Tyrant GHÉP Auto Summon Boss: rảnh là tự đi 8 điểm triệu hồi (xoá toggle riêng).
+--  * Auto Dough King [Fully]: có Dough King là đánh ngay (như Farm Dough King cũ) +
+--    tự tìm điều kiện triệu hồi; ĐÃ CÓ Sweet Chalice thì KHÔNG farm cocoa nữa (fix bug).
+--  * Farm Bone: thêm ANTI-RAGDOLL (cấm state Ragdoll/FallingDown, tự GettingUp khi bị).
+--  * Xoá dropdown "Choose Island" (Mastery): đảo mastery theo dropdown Farm phía trên.
+--  * [FIX BUG CHUNG] "bật nhanh quá / liên tục / Auto Settings -> ShouldTween không bay,
+--    _G. không chạy": 3 supervisor bay (stomper / watcher OnFarm / vòng kéo block) giờ
+--    BẤT TỬ - chết vì lỗi là tự restart sau 0.5s; Start Farm bật shouldTween NGAY lập tức;
+--    block (part bay) mất khỏi workspace được tự gắn lại.
+-- ============================================================================
+-- [FIX BUY-MELEE + AUTO START RAID 2026-09-14 (lần 2)]
+--  Bug user báo: bật Buy Melee (BlackLeg/Electro/FishmanKarate/DragonClaw) + Auto Start Raid
+--  thì KHÔNG có lớp màu xanh báo "đang bật" như farm cake/bone VÀ không tween đến CFrame.
+--  Nguyên nhân + cách sửa:
+--  * 4 flag _G.BuyMelee_* KHÔNG nằm trong cond-list stomper (nơi tạo highlight xanh +
+--    shouldTween=true) -> đã THÊM vào: bật toggle là có màu + noclip như farm ngay lập tức.
+--  * 4 callback Buy + Auto Start Raid giờ tự bật shouldTween = true NGAY khi bật toggle.
+--  * Guard `plr.WeaponAssetCache` (6 chỗ: driver mua + 5 loop auto melee) return VĨNH VIỄN
+--    nếu player không có child này -> chết im cả tính năng (không bay, không màu). Giờ chỉ
+--    đợi tối đa 15s sau boot rồi bỏ qua guard.
+--  * Driver mua: thiếu Beli/Fragments giờ NOTIFY (trước đây im lặng không biết tại sao).
+--  * Auto Start Raid: chưa có chip KHÔNG còn đứng im - vẫn bay về đứng cạnh nút Raid +
+--    thông báo "bật Auto Buy Chip"; có chip là tự bấm nút ngay như cũ.
+-- ============================================================================
 
 -- [CONFIG] User can set before load
 getgenv().Team = getgenv().Team or "Pirates" -- Pirates/Marines
@@ -1617,10 +1649,19 @@ local blockfind = workspace:FindFirstChild(block.Name)
 -- Khong can 60Hz: OnFarm chi doc boi vong keo nhan vat. 20Hz du, va chi ghi khi GIA TRI DOI
 -- (ghi vao getgenv() moi frame la 60 lan/s ghi bang global khong can thiet).
 task.spawn(function()
-    local __prevOF = nil
-    while __DIO_wait(0.05) do
-        local v = (block and block.Parent == workspace and shouldTween) and true or false
-        if v ~= __prevOF then __prevOF = v getgenv().OnFarm = v end
+    while true do -- [FIX TOGGLE-SPAM / SHOULDTWEEN-DEAD 1/3] supervisor bất tử: loop này là
+        -- cầu truyền shouldTween -> OnFarm. Nếu chết vì lỗi ngoài pcall (bật/tắt toggle nhanh
+        -- liên tục, respawn giữa chừng...) thì trước đây "không bay" VĨNH VIỄN tới khi reload.
+        -- Giờ chết là tự restart sau 0.5s.
+        local __okW, __errW = pcall(function()
+            local __prevOF = nil
+            while __DIO_wait(0.05) do
+                local v = (block and block.Parent == workspace and shouldTween) and true or false
+                if v ~= __prevOF then __prevOF = v getgenv().OnFarm = v end
+            end
+        end)
+        if not __okW then warn("[DIO] OnFarm watcher died -> restart: " .. tostring(__errW)) end
+        task.wait(0.5)
     end
 end)
 -- [FIX BUG-2 CRITICAL] Ban cu: __DIO_wait() = 60/s. Khi OnFarm=true: GetChildren + n*CanCollide=false
@@ -1678,9 +1719,17 @@ task.spawn(function()
             end
         end
     end
-    while true do
-        pcall(step)
-        if getgenv().OnFarm then __DIO_wait() else __DIO_wait(0.2) end -- khong farm = khong can 60Hz
+    while true do -- [FIX TOGGLE-SPAM / SHOULDTWEEN-DEAD 2/3] supervisor bất tử (vòng kéo
+        -- block/nhân vật): chết vì lỗi ngoài pcall -> tự restart sau 0.5s, không còn cảnh
+        -- "ShouldTween không bay vĩnh viễn" sau khi bật/tắt toggle nhanh liên tục.
+        local __okP, __errP = pcall(function()
+            while true do
+                pcall(step)
+                if getgenv().OnFarm then __DIO_wait() else __DIO_wait(0.2) end -- khong farm = khong can 60Hz
+            end
+        end)
+        if not __okP then warn("[DIO] Block pull loop died -> restart: " .. tostring(__errP)) end
+        task.wait(0.5)
     end
 end)
 
@@ -2175,12 +2224,21 @@ function BTP(p)
     until (p.Position - humanoidRootPart.Position).Magnitude <= 2000
 end
 spawn(function()
-  while __DIO_wait(0.1) do -- [FIX LAG] mỗi frame -> 0.1s
+  while true do -- [FIX TOGGLE-SPAM / SHOULDTWEEN-DEAD 3/3] supervisor bất tử (vòng bật/tắt
+    -- shouldTween theo flag): chết vì lỗi ngoài pcall -> tự restart sau 0.5s -> không bao giờ
+    -- bị "shouldTween chết vĩnh viễn, _G. bật rồi mà không bay" nữa.
+    local __okST, __errST = pcall(function()
+      while __DIO_wait(0.1) do -- [FIX LAG] mỗi frame -> 0.1s
     pcall(function()
+      -- [FIX BLOCK-LOST] block (part bay) bị mất khỏi workspace -> gắn lại ngay,
+      -- không thì mọi _tp đều lặng lẽ chết trong pcall = "bật toggle mà không bay".
+      if __DIO_Block and __DIO_Block.Parent ~= workspace then
+          pcall(function() __DIO_Block.Parent = workspace end)
+      end
       -- [FIX BUY-TWEEN] them co __DIO_BuyFlying (chi true TRONG LUC nut Buy Melee dang bay den
       -- teacher) -> shouldTween=true de he thong goc keo nhan vat theo block: DUNG co che ma
       -- Auto Farm Bone / Auto Farm Cake Prince dang bay ngon. Khong con phai hack block/shouldTween.
-      if _G.SailBoat_Hydra or _G.WardenBoss or _G.AutoFactory or _G.HighestMirage or _G.HCM or _G.PGB or _G.Leviathan1 or _G.UPGDrago or _G.Complete_Trials or _G.TpDrago_Prehis or _G.BuyDrago or __DIO_BuyFlying or _G.AutoFireFlowers or _G.DT_Uzoth or _G.AutoBerry or _G.Prefully or _G.Prehis_Find or _G.Prehis_Skills or _G.Prehis_DB or _G.Prehis_DE or _G.FarmBlazeEM or _G.Dojoo or _G.CollectPresent or _G.AutoLawKak or _G.TpLab or _G.AutoPhoenixF or _G.AutoFarmChest or _G.AutoHytHallow or _G.LongsWord or _G.BlackSpikey or _G.AutoHolyTorch or _G.TrainDrago  or _G.AutoSaber or _G.FarmMastery_Dev or _G.CitizenQuest or _G.AutoEctoplasm or _G.KeysRen or _G.Auto_Rainbow_Haki or _G.obsFarm or _G.AutoBigmom or _G.Doughv2 or _G.AuraBoss or _G.Raiding or _G.Auto_Cavender or _G.TpPly or _G.Bartilo_Quest or _G.Level or _G.FarmEliteHunt or _G.AutoZou or _G.AutoFarm_Bone or getgenv().AutoMaterial or _G.CraftVM or _G.FrozenTP or _G.ShotHL or _G.TPDoor or _G.AcientOne or _G.AutoFarmNear or _G.AutoRaidCastle or _G.DarkBladev3 or _G.AutoFarmRaid or _G.Auto_Cake_Prince or _G.Addealer or _G.TPNpc or _G.TwinHook or _G.FindMirage or _G.FrozenDimension or _G.FarmChestM or _G.Shark or _G.TerrorShark or _G.Piranha or _G.MobCrew or _G.SeaBeast1 or _G.FishBoat or _G.AutoPole or _G.AutoPoleV2 or _G.Auto_SuperHuman or _G.AutoDeathStep or _G.Auto_SharkMan_Karate or _G.Auto_Electric_Claw or _G.AutoDragonTalon or _G.Auto_Def_DarkCoat or _G.Auto_God_Human or _G.Auto_Tushita or _G.AutoMatSoul or _G.AutoKenVTWO or _G.AutoSerpentBow or _G.AutoFMon or _G.Auto_Soul_Guitar or _G.TPGEAR or _G.AutoSaw or _G.AutoTridentW2 or _G.AutoEvoRace or _G.AutoGetQuestBounty or _G.MarinesCoat or _G.TravelDres or _G.Defeating or _G.DummyMan or _G.Auto_Yama or _G.Auto_SwanGG or _G.SwanCoat or _G.AutoEcBoss or _G.Auto_Mink or _G.Auto_Human or _G.Auto_Skypiea or _G.Auto_Fish or _G.CDK_TS or _G.CDK_YM or _G.CDK or _G.AutoFarmGodChalice or _G.AutoFistDarkness or _G.AutoMiror or _G.Teleport or _G.AutoKilo or _G.AutoGetUsoap or _G.Praying or _G.TryLucky or _G.AutoColShad or _G.AutoUnHaki or _G.Auto_DonAcces or _G.AutoRipIngay or _G.DragoV3 or _G.DragoV1 or _G.SailBoats or NextIs or _G.FarmGodChalice or _G.IceBossRen or senth or senth2 or _G.Lvthan or _G.beasthunter or _G.DangerLV or _G.Relic123 or _G.tweenKitsune or _G.Collect_Ember or _G.AutofindKitIs or _G.snaguine or _G.TwFruits or _G.tweenKitShrine or _G.Tp_LgS or _G.Tp_MasterA or _G.tweenShrine or _G.FarmMastery_G or _G.FarmMastery_S or _G.FarmBoss or _G.AutoFarmAllBoss or _G.AutoFishSlap or _G.FarmTyrant or _G.FarmPhaBinh or _G.AutoSpawnCP or _G.AutoBerryH or _G.AutoChestBP or _G.FarmEliteHop or _G.AutoHop_Dough or _G.AutoDoughKing or _G.AutoAttackDoughKing or _G.AutoChipFruit or _G.AutoChipBeli or _G.Auto_StartRaid or _G.StartEvent or _G.AutoMysticIsland or _G.AutoPlayerHunter or _G.SafeMode or _G.AutoKillMob or _G.AutoStartPrehistoric or _G.AutoUnHaki or _G.AutoFarmIsland or _G.AutoFarmDungeon or _G.AutoFarmCandy or _G.AutoTP_Gift or _G.AutoTPGift or _G.AutoTPAndCollect or _G.MasterAutoLevel or _G.MasterAutoCandy or _G.TPFloor1 or _G.TPFloor2 or _G.TPFloor3 or _G.TPFloor4 or _G.FarmEliteH or _G.Safemode or _G.Greybeard or _G.ResetPH then -- [FIX FLYBUSY-FLAG] 4 toggle co loop rieng nhung khong nam trong cond list -> stomper stomp shouldTween moi 0.1s -> khong bao gio bay (cung benh BuyMelee cu)          
+      if _G.SailBoat_Hydra or _G.WardenBoss or _G.AutoFactory or _G.HighestMirage or _G.HCM or _G.PGB or _G.Leviathan1 or _G.UPGDrago or _G.Complete_Trials or _G.TpDrago_Prehis or _G.BuyDrago or __DIO_BuyFlying or _G.BuyMelee_BuyBlackLeg or _G.BuyMelee_BuyElectro or _G.BuyMelee_BuyFishmanKarate or _G.BuyMelee_BuyDragonClaw or _G.AutoFireFlowers or _G.DT_Uzoth or _G.AutoBerry or _G.Prefully or _G.Prehis_Find or _G.Prehis_Skills or _G.Prehis_DB or _G.Prehis_DE or _G.FarmBlazeEM or _G.Dojoo or _G.CollectPresent or _G.AutoLawKak or _G.TpLab or _G.AutoPhoenixF or _G.AutoFarmChest or _G.AutoHytHallow or _G.LongsWord or _G.BlackSpikey or _G.AutoHolyTorch or _G.TrainDrago  or _G.AutoSaber or _G.FarmMastery_Dev or _G.CitizenQuest or _G.AutoEctoplasm or _G.KeysRen or _G.Auto_Rainbow_Haki or _G.obsFarm or _G.AutoBigmom or _G.Doughv2 or _G.AuraBoss or _G.Raiding or _G.Auto_Cavender or _G.TpPly or _G.Bartilo_Quest or _G.Level or _G.FarmEliteHunt or _G.AutoZou or _G.AutoFarm_Bone or getgenv().AutoMaterial or _G.CraftVM or _G.FrozenTP or _G.ShotHL or _G.TPDoor or _G.AcientOne or _G.AutoFarmNear or _G.AutoRaidCastle or _G.DarkBladev3 or _G.AutoFarmRaid or _G.Auto_Cake_Prince or _G.Addealer or _G.TPNpc or _G.TwinHook or _G.FindMirage or _G.FrozenDimension or _G.FarmChestM or _G.Shark or _G.TerrorShark or _G.Piranha or _G.MobCrew or _G.SeaBeast1 or _G.FishBoat or _G.AutoPole or _G.AutoPoleV2 or _G.Auto_SuperHuman or _G.AutoDeathStep or _G.Auto_SharkMan_Karate or _G.Auto_Electric_Claw or _G.AutoDragonTalon or _G.Auto_Def_DarkCoat or _G.Auto_God_Human or _G.Auto_Tushita or _G.AutoMatSoul or _G.AutoKenVTWO or _G.AutoSerpentBow or _G.AutoFMon or _G.Auto_Soul_Guitar or _G.TPGEAR or _G.AutoSaw or _G.AutoTridentW2 or _G.AutoEvoRace or _G.AutoGetQuestBounty or _G.MarinesCoat or _G.TravelDres or _G.Defeating or _G.DummyMan or _G.Auto_Yama or _G.Auto_SwanGG or _G.SwanCoat or _G.AutoEcBoss or _G.Auto_Mink or _G.Auto_Human or _G.Auto_Skypiea or _G.Auto_Fish or _G.CDK_TS or _G.CDK_YM or _G.CDK or _G.AutoFarmGodChalice or _G.AutoFistDarkness or _G.AutoMiror or _G.Teleport or _G.AutoKilo or _G.AutoGetUsoap or _G.Praying or _G.TryLucky or _G.AutoColShad or _G.AutoUnHaki or _G.Auto_DonAcces or _G.AutoRipIngay or _G.DragoV3 or _G.DragoV1 or _G.SailBoats or NextIs or _G.FarmGodChalice or _G.IceBossRen or senth or senth2 or _G.Lvthan or _G.beasthunter or _G.DangerLV or _G.Relic123 or _G.tweenKitsune or _G.Collect_Ember or _G.AutofindKitIs or _G.snaguine or _G.TwFruits or _G.tweenKitShrine or _G.Tp_LgS or _G.Tp_MasterA or _G.tweenShrine or _G.FarmMastery_G or _G.FarmMastery_S or _G.FarmBoss or _G.AutoFarmAllBoss or _G.AutoFishSlap or _G.FarmTyrant or _G.FarmPhaBinh or _G.AutoSpawnCP or _G.AutoBerryH or _G.AutoChestBP or _G.FarmEliteHop or _G.AutoHop_Dough or _G.AutoDoughKing or _G.AutoAttackDoughKing or _G.AutoChipFruit or _G.AutoChipBeli or _G.Auto_StartRaid or _G.StartEvent or _G.AutoMysticIsland or _G.AutoPlayerHunter or _G.SafeMode or _G.AutoKillMob or _G.AutoStartPrehistoric or _G.AutoUnHaki or _G.AutoFarmIsland or _G.AutoFarmDungeon or _G.AutoFarmCandy or _G.AutoTP_Gift or _G.AutoTPGift or _G.AutoTPAndCollect or _G.MasterAutoLevel or _G.MasterAutoCandy or _G.TPFloor1 or _G.TPFloor2 or _G.TPFloor3 or _G.TPFloor4 or _G.FarmEliteH or _G.Safemode or _G.Greybeard or _G.ResetPH then -- [FIX FLYBUSY-FLAG] 4 toggle co loop rieng nhung khong nam trong cond list -> stomper stomp shouldTween moi 0.1s -> khong bao gio bay (cung benh BuyMelee cu)          
        shouldTween = true
         -- [FIX FPS-FINAL-2] khi NGOI THUYEN bay (find Leviathan/Frozen/Prehis/Kitsune): chi can
         -- shouldTween=true de mover keo block. KHONG gan BodyClip (BodyVelocity chong lai chuyen
@@ -2214,9 +2272,13 @@ end
       elseif not __DIO_FlyBusy then -- [FIX FLYBUSY 1/3] vong nay stomp shouldTween=false moi 0.1s khi khong co toggle farm -> tween cua BuyMelee bi Cancel ngay = nhan vat dung yen ("chi hien notify"). Khi wrapper dang bay thi KHONG stomp.
         shouldTween = false
         if plr.Character.HumanoidRootPart:FindFirstChild("BodyClip") then plr.Character.HumanoidRootPart:FindFirstChild("BodyClip"):Destroy() end
-        if plr.Character:FindFirstChild('highlight') then plr.Character:FindFirstChild('highlight'):Destroy() end	        
+        if plr.Character:FindFirstChild('highlight') then plr.Character:FindFirstChild('highlight'):Destroy() end
       end
     end)
+      end -- while __DIO_wait(0.1)
+    end)
+    if not __okST then warn("[DIO] shouldTween stomper died -> restart: " .. tostring(__errST)) end
+    task.wait(0.5)
   end
 end)
 QuestB = function()
@@ -2947,6 +3009,9 @@ spawn(function()
     end)
 end)
 
+local EyeStatus = Tabs.Status:AddParagraph("Check Status Eyes", "")
+
+
 local FullMoonCheck = Tabs.Status:AddParagraph("Full Moon", "")
 local __prevMoon = nil -- [FIX FPS-FINAL-7] SetDesc chi khi DOI
 
@@ -3187,56 +3252,137 @@ task.spawn(function()
     end
 end)
 
--- ============================================================
 -- ============================================================================
--- [FARM LEVEL - GHÉP LOGIC BANANA + CHỐNG GHOST MOB DIO + TỐI ƯU DIO]
+-- [FARM TỔNG HỢP] Dropdown "Farm" + Toggle "Start Farm" + Toggle Accept Quest
 -- ============================================================================
--- GHI CHÉP CƠ CHẾ "GHOST MOB" Ở ĐÂY (chi tiết đầy đủ ở khối __DIO_Ghost* phía trên):
---   GHOST MOB = quái có model + thanh máu nhưng KHÔNG nhận sát thương (game spawn lỗi /
---   sync). Cứ đánh mãi không chết -> tưởng farm kẹt. Cơ chế phá:
---      * Lần đầu gặp mob: ghi lại HP trong __DIO_GhostData[mob].
---      * Cứ mỗi nhịp attack, __DIO_GhostCheck(mob) so HP hiện tại vs HP đã ghi:
---          - HP ĐỔI  -> mob nhận dame bình thường -> reset đồng hồ, đánh tiếp.
---          - >= 3 GIÂY HP KHÔNG ĐỔI -> con này NGHI ghost -> tự động bắn SKILL Z/X/C
---            (1 số ghost chỉ "hồi sinh" khi bị skill trúng -> phá được ghost).
---          - >= 6 GIÂY VẪN KHÔNG ĐỔI -> đánh dấu SKIP VĨNH VIỄN trong __DIO_GhostSkip
---            cho tới khi nó chết/bị xoá -> mọi vòng chọn quái SAU đó đều bỏ qua nó
---            và loop "CHUYỂN BÃI" (tp sang spawn point khác) như nhánh dưới đây.
---
--- LOGIC BANANA ĐƯỢC GHÉP VÀO (bản Bear-Hub rewrite trong BananaCatHubV3):
---   (a) lv >= 2600 phải sang Submerged Island: thử lại sau 20s nếu travel lỗi
---       (DIO cũ chỉ thử 1 lần -> fail là đứng im vĩnh viễn).
---   (b) Khi cần nhận quest: có đủ 4 "CỬA requestEntrance" (Fishman / Ship / Sky 2 tầng)
---       để không tween băng biển -> chết -> kẹt.
---   (c) Chờ cho tới khi tới NPC THẬT (<= 50 studs, tối đa 15s) rồi mới StartQuest
---       (DIO cũ chờ 2s rồi so <= 10 -> quest xa không bao giờ kịp).
---   (d) Chọn quái GẦN NHẤT (GetNearestMob) thay vì con đầu tiên trong danh sách.
---
--- TỐI ƯU GIỮ TỪ DIO: poll Sec (4/s), mọi thân vòng bọc pcall (mob chết giữa chừng
--- không giết thread), dùng __DIO_wait thay __DIO_wait, bỏ qua toàn bộ thao tác khi
--- chưa có quest. KHÔNG tạo table mới trong vòng nóng.
+-- Thay cho 5 toggle riêng lẻ cũ: Auto Farm Level / Auto Farm Cake Prince /
+-- Auto Farm Bone / Auto Farm Nearest / Auto Farm Boss TOTS (+ Auto Summon Boss).
+--   * Chọn mode ở dropdown -> bấm "Start Farm" để chạy (dropdown một mình KHÔNG tự chạy farm).
+--   * Cùng lúc chỉ ĐÚNG 1 flag farm được bật -> không còn 2-3 loop cùng giành
+--     block/tween khi bật nhanh liên tục (nguyên nhân "ShouldTween không bay, _G không chạy").
+--   * "Farm Tyrant" đã GHÉP Auto Summon Boss: hết boss + hết mob phụ = tự đi 8 điểm
+--     triệu hồi Tyrant (không cần toggle "Auto Summon Boss" riêng nữa).
 -- ============================================================================
-
--- [FIX FARM LEVEL] Khai báo trước toggle để callback capture đúng upvalue
--- (bug cũ: local đặt SAU toggle -> callback set global khác với biến local mà
--- spawn loop dùng -> tắt toggle không reset được trạng thái).
 local alreadyTeleported = false
 local teleporting       = false
 local __DIO_LvlTryT     = 0   -- mốc thời gian lần thử travel Submerged gần nhất
 local __DIO_LvlQTryT    = 0   -- [FIX QUEST-STUCK] mốc lần StartQuest gần nhất (cooldown 8s)
 
-FarmLevel = Tabs.Main:AddToggle({
-    Name = "Auto Farm Level",
+_G.FarmMode  = _G.FarmMode or "Farm Level"
+_G.StartFarm = _G.StartFarm or false
+__DIO_OwnFarmFlag = nil -- flag farm mà Start Farm đang giữ (chỉ xoá ĐÚNG flag mình bật,
+                        -- không stomp flag mà các tính năng melee khác "mượn" qua __DIO_BorrowFlag)
+
+-- Reset trạng thái farm level (upvalue chung với loop phía dưới)
+local function __DIO_LvlReset()
+    alreadyTeleported = false
+    teleporting       = false
+    __DIO_LvlTryT     = 0
+end
+
+-- [FIX TOGGLE-SPAM] Tắt SẠCH farm tổng hợp + dọn state. Idempotent: gọi bao nhiêu lần,
+-- gọi sai thứ tự (bật/tắt nhanh liên tục) cũng không lỗi, không bỏ sót flag.
+function __DIO_FarmHardStop()
+    if __DIO_OwnFarmFlag then
+        _G[__DIO_OwnFarmFlag] = false
+        __DIO_OwnFarmFlag = nil
+    end
+    __DIO_LvlReset()
+    pcall(__DIO_GhostReset)   -- xoá skip-list ghost để lần bật sau chạy sạch từ đầu
+    __DIO_CakeBoss = nil      -- quên boss cake cũ, lần bật sau tìm lại từ đầu
+end
+
+-- Bật ĐÚNG 1 flag tương ứng mode đang chọn (chỉ khi Start Farm đang bật)
+function __DIO_ApplyFarmMode()
+    __DIO_FarmHardStop()
+    if not _G.StartFarm then
+        StopTween(false)
+        return
+    end
+    local __mode = _G.FarmMode
+    if __mode == "Farm Level" then
+        __DIO_OwnFarmFlag = "Level"
+        _G.Level = true
+    elseif __mode == "Farm Bone" then
+        __DIO_OwnFarmFlag = "AutoFarm_Bone"
+        _G.AutoFarm_Bone = true
+    elseif __mode == "Farm Cake" then
+        __DIO_OwnFarmFlag = "Auto_Cake_Prince"
+        _G.Auto_Cake_Prince = true
+    elseif __mode == "Farm Tyrant" then
+        __DIO_OwnFarmFlag = "FarmTyrant"
+        _G.FarmTyrant = true  -- summon đã ghép vào loop Tyrant (không dùng _G.FarmPhaBinh nữa)
+    elseif __mode == "Farm Nearest" then
+        __DIO_OwnFarmFlag = "AutoFarmNear"
+        _G.AutoFarmNear = true
+    end
+    -- [FIX TOGGLE-SPAM] bật shouldTween NGAY, không đợi nhịp stomper 0.1s
+    -- -> không còn cửa sổ chết 0.1-0.2s để watcher cancel mất tween vừa tạo khi bật nhanh.
+    shouldTween = true
+end
+
+-- Toggle "Accept Quest Level/Cake/Bone": chỉ tự nhận quest của mode ĐANG CHỌN.
+-- Chọn Cake + bật toggle -> tự nhận quest Cake; chọn Bone -> quest Bone; Level -> quest Level.
+function __DIO_ApplyAcceptQuest()
+    local __on   = (_G.AcceptQuest == true)
+    local __mode = _G.FarmMode
+    _G.AcceptQuestL = __on and __mode == "Farm Level"
+    _G.AcceptQuestC = __on and __mode == "Farm Cake"
+    _G.AcceptQuestB = __on and __mode == "Farm Bone"
+    if not __on then
+        -- dọn tween/target y hệt 2 toggle Accept cũ (không ảnh hưởng toggle khác)
+        StopTween(false)
+        __DIO_CurTarget = nil
+        if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+    end
+end
+
+-- [FIX MASTERY] ĐÃ XÓA dropdown "Choose Island" (Farming Mastery):
+-- đảo mastery giờ theo dropdown "Farm" phía trên (__DIO_SyncMasteryIsland):
+--   Farm Cake -> Cake | các mode khác -> Bone (mặc định như bản cũ).
+function __DIO_SyncMasteryIsland()
+    SelectIsland = (_G.FarmMode == "Farm Cake") and "Cake" or "Bone"
+end
+__DIO_SyncMasteryIsland()
+
+Tabs.Main:AddDropdown({
+    Name = "Farm",
+    Description = "",
+    Options = {"Farm Level", "Farm Bone", "Farm Cake", "Farm Tyrant", "Farm Nearest"},
+    Default = "Farm Level",
+    Callback = function(Value)
+        _G.FarmMode = Value
+        __DIO_SyncMasteryIsland()      -- mastery đảo cũng theo mode mới
+        if _G.StartFarm then
+            -- đang chạy mà đổi mode -> chuyển qua farm mob của mode mới luôn
+            __DIO_ApplyFarmMode()
+        end
+        __DIO_ApplyAcceptQuest()       -- quest tự theo mode mới (chỉ nhận quest mode đang chọn)
+    end
+})
+
+StartFarmToggle = Tabs.Main:AddToggle({
+    Name = "Start Farm",
     Description = "",
     Default = false,
     Callback = function(Value)
-        _G.Level = Value
-        if not Value then
-            alreadyTeleported = false
-            teleporting = false
-            __DIO_LvlTryT = 0
-            pcall(__DIO_GhostReset)  -- xóa skip-list ghost khi tắt (để lần sau bật lại sạch)
+        _G.StartFarm = Value
+        if Value then
+            __DIO_ApplyFarmMode()
+        else
+            __DIO_FarmHardStop()
+            StopTween(false)
         end
+    end
+})
+
+Tabs.Main:AddToggle({
+    Name = "Accept Quest Level/Cake/Bone",
+    Description = "",
+    Default = false,
+    Callback = function(Value)
+        _G.AcceptQuest = Value
+        __DIO_ApplyAcceptQuest()
     end
 })
 
@@ -3334,7 +3480,9 @@ task.spawn(function()
                 end
 
                 -- ====== C1) đang làm quest KHÔNG khớp level -> bỏ quest ======
-                if qGUI.Visible and questTitle ~= ""
+                -- [GHÉP ACCEPT QUEST] chỉ tự quản lý quest khi toggle "Accept Quest Level/Cake/Bone"
+                -- đang bật Ở MODE Farm Level (_G.AcceptQuestL). Tắt -> không đụng quest, vẫn farm.
+                if _G.AcceptQuestL and qGUI.Visible and questTitle ~= ""
                    and not string.find(questTitle, questData[1]) then
                     replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
                     __DIO_wait(0.3)
@@ -3343,7 +3491,7 @@ task.spawn(function()
 
                 -- ====== C2) chưa có quest -> tới NPC nhận quest đúng cách ======
 
-                if not qGUI.Visible then
+                if _G.AcceptQuestL and not qGUI.Visible then
                     local PosQ = questData[6]  -- CFrame NPC giao quest (từ GetQuestPoint)
                     local __qBlock = false  -- có chặn nhánh farm không (đang phải bay tới NPC)
                     if PosQ then
@@ -3486,13 +3634,9 @@ task.spawn(function()
     end
 end)
 
-ClosetMons = Tabs.Main:AddToggle({
-Name = "Auto Farm Nearest", 
-Description = "", 
-Default = false, 
-Callback = function(Value)
-  _G.AutoFarmNear = Value
-end})
+-- [ĐÃ TỔNG HỢP] Toggle "Auto Farm Nearest" (ClosetMons) ĐÃ XÓA:
+-- giờ là option "Farm Nearest" trong dropdown "Farm" phía trên (bấm Start Farm để chạy).
+-- Loop bên dưới giữ nguyên, vẫn đọc _G.AutoFarmNear.
 spawn(function()
   while __DIO_wait(1) do -- [FIX PERF 62] 0.1 -> 1 (yeu cau user: uu tien FPS; vong poll gated nen logic khong time-out)
     pcall(function()
@@ -3532,7 +3676,13 @@ spawn(function()
     end)
   end
 end)
-
+RanBone = Tabs.Main:AddToggle({
+Name = "Auto Random Bones", 
+Description = "", 
+Default = false,
+Callback = function(Value)
+  _G.Auto_Random_Bone = Value
+end})
 CastleRaids = Tabs.Main:AddToggle({
 Name = "Auto Pirate Raid", 
 Description = "", 
@@ -4358,18 +4508,10 @@ end
 -- trong khi toggle "Accept Quests" set _G.AcceptQuestC -> nhận quest không bao giờ
 -- chạy. Giờ đọc đúng _G.AcceptQuestC.
 -- ============================================================================
-Cake = Tabs.Main:AddToggle({
-    Name = "Auto Farm Cake Prince",
-    Description = "",
-    Default = false,
-    Callback = function(Value)
-        _G.Auto_Cake_Prince = Value
-        if not Value then
-            pcall(__DIO_GhostReset)  -- xóa skip-list ghost khi tắt
-            __DIO_CakeBoss = nil     -- quên boss cũ để lần bật lại tìm lại từ đầu
-        end
-    end
-})
+-- [ĐÃ TỔNG HỢP] Toggle "Auto Farm Cake Prince" (Cake) ĐÃ XÓA:
+-- giờ là option "Farm Cake" trong dropdown "Farm" phía trên (bấm Start Farm để chạy).
+-- Việc xoá skip-list ghost + quên boss cũ khi tắt chuyển vào __DIO_FarmHardStop().
+-- Loop bên dưới giữ nguyên, vẫn đọc _G.Auto_Cake_Prince.
 
 -- [TỐI ƯU FPS] CFrame hằng số + bảng mob dựng 1 lần, dùng chung mọi vòng.
 local __DIO_CakeQuestCF  = CFrame.new(-1927.92, 37.80, -12842.54)  -- NPC nhận quest bánh
@@ -4540,27 +4682,10 @@ task.spawn(function()
         end
     end
 end)
-CakeQ = Tabs.Main:AddToggle({
-Name = "Accept Cake Prince Quests",
-Description = "",
-Default = false,
-Callback = function(Value)
-        _G.AcceptQuestC = Value
-        if not Value then
-            StopTween(false)
-            __DIO_CurTarget = nil
-            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
-        end
-    end
-})
-
-CakeSM = Tabs.Main:AddToggle({
-    Name = "Auto Summon Cake Prince",
-    Description = "",
-    Default = false,
-    Callback = function(Value)
-    _G.AutoSpawnCP = Value
-end})
+-- [ĐÃ TỔNG HỢP] Toggle "Accept Cake Prince Quests" (CakeQ) ĐÃ XÓA:
+-- gộp vào toggle "Accept Quest Level/Cake/Bone" phía trên. Bật toggle + dropdown chọn
+-- "Farm Cake" -> _G.AcceptQuestC tự true (tự nhận quest Cake); chọn mode khác -> tự false.
+-- Việc dọn tween khi tắt chuyển vào __DIO_ApplyAcceptQuest().
 
 spawn(function()
     while __DIO_wait(2) do
@@ -4597,36 +4722,43 @@ spawn(function()
     while __DIO_wait(1) do -- [FIX PERF 62] 0.1 -> 1 (yeu cau user: uu tien FPS; vong poll gated nen logic khong time-out)
         if _G.AutoDoughKing then
             pcall(function()
+                -- ====== [GHÉP AUTO FARM DOUGH KING] CÓ BOSS -> ĐÁNH LUÔN ======
+                -- Bản cũ nhánh boss nằm SAU elseif RedDoor nên không bao giờ được đánh.
+                -- Giờ check boss TRƯỚC TIÊN: thấy Dough King là đánh ngay (như Auto Farm Dough King cũ).
+                local __bossDK = GetConnectionEnemies("Dough King")
+                if __bossDK then
+                    repeat
+                        __DIO_wait(0.25)
+                        if not _G.AutoDoughKing then break end
+                        Attack.Kill(__bossDK, _G.AutoDoughKing)
+                    until not _G.AutoDoughKing or not __bossDK.Parent or __bossDK.Humanoid.Health <= 0
+                    return -- boss vừa chết / thoát -> nhịp sau kiểm tra lại từ đầu
+                end
+
+                -- ====== TỰ TÌM ĐIỀU KIỆN TRIỆU HỒI (giữ logic Fully cũ) ======
                 if not workspace.Map.CakeLoaf:FindFirstChild("RedDoor") then
                     if GetBP("Red Key") then
                         replicated.Remotes.CommF_:InvokeServer("CakeScientist", "Check")
                         replicated.Remotes.CommF_:InvokeServer("RaidsNpc", "Check")
                     end
-                elseif workspace.Map.CakeLoaf:FindFirstChild("RedDoor") then
-                    if GetBP("Red Key") then
-                        repeat
-                            __DIO_wait(0.25)
-                            _tp(CFrame.new(-2681.97998, 64.3921585, -12853.7363,0.149007782, -1.87902192e-08, 0.98883605,3.60619588e-08, 1, 1.35681812e-08,-0.98883605, 3.36376011e-08, 0.149007782))
-                        until not getgenv().AutoDoughKing or (plr.Character.HumanoidRootPart.Position - CFrame.new(-2681.97998, 64.3921585, -12853.7363,0.149007782, -1.87902192e-08, 0.98883605,3.60619588e-08, 1, 1.35681812e-08,-0.98883605, 3.36376011e-08, 0.149007782).Position).Magnitude <= 5 -- [FIX PERF 22] CFrame-CFrame = runtime error -> step chot khong bao gio chay; doi thanh khoang cach.Magnitude <= 5
-                        EquipWeapon("Red Key")
-                    end
-                elseif GetConnectionEnemies("Dough King") then
-                    local v = GetConnectionEnemies("Dough King")
-                    if v then
-                        repeat
-                            __DIO_wait(0.25)
-                            Attack.Kill(v, _G.AutoDoughKing)
-                        until not _G.AutoDoughKing or not v.Parent or v.Humanoid.Health <= 0
-                    else
-                        _tp(CFrame.new(-1943.676513671875, 251.5095672607422, -12337.880859375))
-                    end
+                elseif GetBP("Red Key") then
+                    repeat
+                        __DIO_wait(0.25)
+                        _tp(CFrame.new(-2681.97998, 64.3921585, -12853.7363,0.149007782, -1.87902192e-08, 0.98883605,3.60619588e-08, 1, 1.35681812e-08,-0.98883605, 3.36376011e-08, 0.149007782))
+                    until not _G.AutoDoughKing or (plr.Character.HumanoidRootPart.Position - CFrame.new(-2681.97998, 64.3921585, -12853.7363,0.149007782, -1.87902192e-08, 0.98883605,3.60619588e-08, 1, 1.35681812e-08,-0.98883605, 3.36376011e-08, 0.149007782).Position).Magnitude <= 5 -- [FIX PERF 22] CFrame-CFrame = runtime error -> step chot khong bao gio chay; doi thanh khoang cach.Magnitude <= 5
+                    EquipWeapon("Red Key")
                 end
+
+                -- ====== SWEET CHALICE ======
+                -- [FIX BUG CHALICE] ĐÃ CÓ Sweet Chalice -> chỉ triệu hồi, KHÔNG farm cocoa nữa
+                -- (bản cũ dù có chalice vẫn lao đi farm Cocoa Warrior/Chocolate Bar Battler).
                 if GetBP("Sweet Chalice") then
                     replicated.Remotes.CommF_:InvokeServer("CakePrinceSpawner", true)
-                    _G.AutoAttackDoughKing = true
-                else
-                    _G.AutoAttackDoughKing = false
+                    _G.FarmEliteHunt = false -- đủ chalice rồi, không cần săn God's Chalice nữa
+                    return
                 end
+
+                -- Chưa có Sweet Chalice: craft khi đủ nguyên liệu + farm God's Chalice
                 if GetBP("God's Chalice") and GetM("Conjured Cocoa") >= 10 then
                     replicated.Remotes.CommF_:InvokeServer("SweetChaliceNpc")
                 end
@@ -4637,6 +4769,7 @@ spawn(function()
                 else
                     _G.FarmEliteHunt = false
                 end
+                -- [FIX BUG CHALICE] chỉ farm cocoa khi CHƯA có Sweet Chalice
                 if GetM("Conjured Cocoa") <= 10 then
                     local v = GetConnectionEnemies{"Cocoa Warrior", "Chocolate Bar Battler"}
                     if v then
@@ -4652,36 +4785,9 @@ spawn(function()
         end
     end
 end)
-Tabs.Main:AddToggle({
-    Name = "Auto Farm Dough King",
-    Default = false,
-    Callback = function(Value)
-        _G.AutoAttackDoughKing = Value
-        if not Value then
-            StopTween(false)
-            __DIO_CurTarget = nil
-            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
-        end
-    end
-})
-spawn(function()
-    while __DIO_wait(1) do -- [FIX PERF 62] 0.1 -> 1 (yeu cau user: uu tien FPS; vong poll gated nen logic khong time-out)
-        if _G.AutoAttackDoughKing then
-            pcall(function()
-                local v = GetConnectionEnemies("Dough King")
-                if v then
-                    repeat 
-                        __DIO_wait(0.25)
-                        Attack.Kill(v,_G.AutoAttackDoughKing)
-                    until not _G.AutoAttackDoughKing or not v.Parent or v.Humanoid.Health <= 0
-                else
-                    _tp(CFrame.new(-1943.6765, 251.5095, -12337.8809))
-                end
-            end)
-        end
-    end
-end)
-
+-- [ĐÃ GHÉP] Toggle "Auto Farm Dough King" + loop riêng của nó ĐÃ XÓA:
+-- hành vi "có Dough King là đánh ngay" được GHÉP vào loop "Auto Dough King [Fully]" phía trên
+-- (check boss TRƯỚC tiên trong mỗi nhịp). _G.AutoAttackDoughKing không còn toggle nào ghi.
 
 Tabs.Main:AddToggle({
     Name = "Auto Farm Dough King + Hop",
@@ -4747,7 +4853,7 @@ spawn(function()
     end
 end)
 
-Tabs.Main:AddSection("Farming Bone")
+
 -- ============================================================================
 -- [FARM BONE - GHÉP LOGIC BANANA + CHỐNG GHOST MOB + ANTI-FALL]
 -- ============================================================================
@@ -4772,15 +4878,55 @@ Tabs.Main:AddSection("Farming Bone")
 -- FIX XUNG ĐỘT FILE: toggle đổi tên thành "Accept Bone Quests" (trước đây trùng tên
 -- "Accept Quests" với 2 toggle khác -> trùng key save-settings, bật cái này kéo cái kia).
 -- ============================================================================
-Tabs.Main:AddToggle({
-    Name = "Auto Farm Bone",
-    Description = "",
-    Default = false,
-    Callback = function(Value)
-        _G.AutoFarm_Bone = Value
-        if not Value then pcall(__DIO_GhostReset) end  -- xóa skip-list ghost khi tắt
+-- [ĐÃ TỔNG HỢP] Toggle "Auto Farm Bone" ĐÃ XÓA:
+-- giờ là option "Farm Bone" trong dropdown "Farm" phía trên (bấm Start Farm để chạy).
+-- Việc xoá skip-list ghost khi tắt chuyển vào __DIO_FarmHardStop().
+-- Loop bên dưới giữ nguyên, vẫn đọc _G.AutoFarm_Bone.
+
+-- ============================================================================
+-- [FIX ANTI-RAGDOLL FARM BONE] Quái ở Haunted Castle hay gây knockback/ragdoll
+-- làm nhân vật nằm lăn / ngồi sắp -> farm đứng im, tween không bay.
+-- Loop này CHỈ chạy khi Farm Bone đang bật (_G.AutoFarm_Bone):
+--   * cấm hẳn state Ragdoll / FallingDown của Humanoid;
+--   * đang bị ragdoll (state / Sit / PlatformStand) thì ép GettingUp dậy ngay;
+--   * tắt farm -> trả lại state mặc định (không ảnh hưởng tính năng khác).
+-- ============================================================================
+task.spawn(function()
+    while true do -- [FIX TOGGLE-SPAM] supervisor bất tử: lỗi ngoài pcall cũng tự restart
+        local __okAR, __errAR = pcall(function()
+            while __DIO_wait(0.1) do
+                if _G.AutoFarm_Bone then
+                    pcall(function()
+                        local char = plr.Character
+                        local hum = char and char:FindFirstChildOfClass("Humanoid")
+                        if hum then
+                            hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+                            hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+                            local __st = hum:GetState()
+                            if __st == Enum.HumanoidStateType.Ragdoll
+                               or __st == Enum.HumanoidStateType.FallingDown
+                               or hum.Sit or hum.PlatformStand then
+                                hum.Sit = false
+                                hum.PlatformStand = false
+                                hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+                            end
+                        end
+                    end)
+                else
+                    pcall(function() -- tắt farm -> trả state mặc định cho humanoid hiện tại
+                        local hum = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
+                        if hum then
+                            hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
+                            hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+                        end
+                    end)
+                end
+            end
+        end)
+        if not __okAR then warn("[DIO] AntiRagdoll Bone restarted: " .. tostring(__errAR)) end
+        task.wait(0.5)
     end
-})
+end)
 
 -- Cache tĩnh: bảng mob O(1) + CFrame hằng số -> không dựng lại từng vòng.
 local __DIO_BoneMobs = {
@@ -4920,117 +5066,11 @@ spawn(function()
         end
     end
 end)
-BoneQ = Tabs.Main:AddToggle({
-Name = "Accept Bone Quests",
-Description = "",
-Default = false,
-Callback = function(Value)
-        _G.AcceptQuestB = Value
-        if not Value then
-            StopTween(false)
-            __DIO_CurTarget = nil
-            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
-        end
-    end
-})
-
-Tabs.Main:AddToggle({
-Name = "Auto Soul Reaper", 
-Description = "", 
-Default = false,
-Callback = function(Value)
-  _G.AutoHytHallow = Value
-end})
-spawn(function()
-  while __DIO_wait(Sec) do
-    if _G.AutoHytHallow then
-      pcall(function()
-        local v = GetConnectionEnemies("Soul Reaper")
-	    if v then
-          repeat __DIO_wait(Sec) Attack.Kill(v,_G.AutoHytHallow) until v.Humanoid.Health <= 0 or _G.AutoHytHallow == false -- [FIX LAG] __DIO_wait()->__DIO_wait(Sec)
-        else
-          if not GetBP("Hallow Essence") then
-            repeat __DIO_wait(1)replicated.Remotes.CommF_:InvokeServer("Bones","Buy",1,1)until _G.AutoHytHallow == false or GetBP("Hallow Essence") -- [FIX SPAM-1] 10Hz->1Hz (server trade, mua nhanh hon khong loi)
-          else
-            repeat __DIO_wait(.1) _tp(CFrame.new(-8932.322265625, 146.83154296875, 6062.55078125))until _G.AutoHytHallow == false or ((plr.Character.HumanoidRootPart.Position - CFrame.new(-8932.322265625, 146.83154296875, 6062.55078125).Position).Magnitude <= 5) -- [FIX PERF 23] CFrame== hang so float khong bao gio khop -> treo repeat; doi thanh khoang cach
-		    EquipWeapon("Hallow Essence")
-          end
-        end
-      end)
-    end
-  end
-end)
-RanBone = Tabs.Main:AddToggle({
-Name = "Auto Random Bones", 
-Description = "", 
-Default = false,
-Callback = function(Value)
-  _G.Auto_Random_Bone = Value
-end})
-spawn(function()
-  while __DIO_wait(Sec) do
-    pcall(function()
-      if _G.Auto_Random_Bone then    
-  	    repeat __DIO_wait(0.25) replicated.Remotes.CommF_:InvokeServer("Bones","Buy",1,1) until not _G.Auto_Random_Bone
-      end
-    end)
-  end
-end)
-Lucky = Tabs.Main:AddToggle({
-Name = "Auto Try Luck Gravestone", 
-Description = "", 
-Default = false,
-Callback = function(Value)
-  _G.TryLucky = Value
-end})
-spawn(function()
-  while __DIO_wait(Sec) do
-    if _G.TryLucky then
-    -- [FIX FPS 5] pcall + nil-guard (chet/respawn = thread chet vien vien) + do khoang cach
-    -- thay cho so sanh CFrame "==" (12 so phai khop tuyet doi -> nhanh invoke co the khong bao gio chay)
-    pcall(function()
-      local __hrpG = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
-      if not __hrpG then return end
-      local try_bones_luck = CFrame.new(-8761.3154296875, 164.85829162598, 6161.1567382813)
-      if ((__hrpG.Position - try_bones_luck.Position).Magnitude > 5) then
-        _tp(try_bones_luck)
-      else
-	   replicated.Remotes.CommF_:InvokeServer("gravestoneEvent",1)
-      end
-    end)
-    end
-  end
-end)
-Pray = Tabs.Main:AddToggle({
-Name = "Auto Pray Gravestone", 
-Description = "", 
-Default = false,
-Callback = function(Value)
-  _G.Praying = Value
-end})
-spawn(function()
-  while __DIO_wait(Sec) do
-    if _G.Praying then
-    -- [FIX FPS 5] nhu Try Luck: pcall + nil-guard + khoang cach thay "=="
-    pcall(function()
-      local __hrpG = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
-      if not __hrpG then return end
-      local try_bones_luck = CFrame.new(-8761.3154296875, 164.85829162598, 6161.1567382813)
-      if ((__hrpG.Position - try_bones_luck.Position).Magnitude > 5) then
-	   _tp(try_bones_luck)
-      else
-	   replicated.Remotes.CommF_:InvokeServer("gravestoneEvent",2)
-      end
-    end)
-    end
-  end
-end)
-
-
-Tabs.Main:AddSection("Tyrant of the Skies")
-
-local EyeStatus = Tabs.Main:AddParagraph("Check Status Eyes", "")
-
+-- [ĐÃ TỔNG HỢP] Toggle "Accept Bone Quests" (BoneQ) ĐÃ XÓA:
+-- gộp vào toggle "Accept Quest Level/Cake/Bone" phía trên. Bật toggle + dropdown chọn
+-- "Farm Bone" -> _G.AcceptQuestB tự true (tự nhận quest Bone); chọn mode khác -> tự false.
+-- Việc dọn tween khi tắt chuyển vào __DIO_ApplyAcceptQuest().
+ 
 function Check_Eye()
     -- [FIX FPS-FINAL-9] nil-guard: chi o Sea 3 + TikiOutpost moi co IslandModel. Truoc day
     -- index truc tiep -> o Sea 1/2 hoac khi map chua spawn, loop status nem error moi giay.
@@ -5074,13 +5114,9 @@ task.spawn(function()
     end
 end)
 
-FarmTyrant = Tabs.Main:AddToggle({
-Name = "Auto Farm Boss TOTS", 
-Description = "", 
-Default = false,
-Callback = function(Value) 
-    _G.FarmTyrant = Value 
-end})
+-- [ĐÃ TỔNG HỢP] Toggle "Auto Farm Boss TOTS" (FarmTyrant) ĐÃ XÓA:
+-- giờ là option "Farm Tyrant" trong dropdown "Farm" phía trên (bấm Start Farm để chạy).
+-- Kèm theo đã GHÉP "Auto Summon Boss" vào loop bên dưới (xem __DIO_PhaBinhSummon).
 
 spawn(function()
     while __DIO_wait(Sec) do
@@ -5090,13 +5126,7 @@ spawn(function()
                 local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
                 if not hrp then return end
 
-                local bossPos = Vector3.new(-16268.287, 152.616, 1390.773)
-                
-                if (hrp.Position - bossPos).Magnitude > 5 then
-                    _tp(CFrame.new(bossPos))
-                    repeat __DIO_wait(0.25) until not _G.FarmTyrant or (plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and (plr.Character.HumanoidRootPart.Position - bossPos).Magnitude <= 5)
-                end
-
+                -- ====== 1) CÓ BOSS -> ĐÁNH NGAY (bỏ ép đứng chờ ở bossPos như bản cũ) ======
                 local boss = workspace.Enemies:FindFirstChild("Tyrant of the Skies")
                 if boss and boss:FindFirstChild("Humanoid") and boss.Humanoid.Health > 0 then
                     repeat
@@ -5109,12 +5139,15 @@ spawn(function()
                     return
                 end
 
+                -- ====== 2) CÓ MOB PHỤ TRỌ VỰC -> FARM (giữ logic cũ) ======
                 local mobList = {"Serpent Hunter","Skull Slayer","Isle Champion","Sun-kissed Warrior"}
+                local __farmedMob = false
                 for _, mobName in ipairs(mobList) do
-                    if not _G.FarmTyrant then break end
+                    if not _G.FarmTyrant then return end
                     for _, mob in pairs(workspace.Enemies:GetChildren()) do
-                        if not _G.FarmTyrant then break end
+                        if not _G.FarmTyrant then return end
                         if mob and mob.Name == mobName and mob:FindFirstChild("HumanoidRootPart") and mob:FindFirstChild("Humanoid") and mob.Humanoid.Health > 0 then
+                            __farmedMob = true
                             if (hrp.Position - mob.HumanoidRootPart.Position).Magnitude > 5000 then
                                 _tp(mob.HumanoidRootPart.CFrame * CFrame.new(0,30,0))
                                 local t0 = tick()
@@ -5130,18 +5163,20 @@ spawn(function()
                         end
                     end
                 end
+                if __farmedMob then return end
+
+                -- ====== 3) RẢNH -> TỰ TRIỆU HỒI [GHÉP AUTO SUMMON BOSS] ======
+                -- Bản cũ phải bật thêm toggle "Auto Summon Boss" riêng mới đi phá bình;
+                -- giờ khi không có boss lẫn mob phụ là tự đi 8 điểm triệu hồi luôn.
+                if __DIO_PhaBinhSummon then pcall(__DIO_PhaBinhSummon) end
             end)
         end
     end
 end)
 
-FarmPhaBinh = Tabs.Main:AddToggle({
-Name = "Auto Summon Boss", 
-Description = "", 
-Default = false,
-Callback = function(Value)
-    _G.FarmPhaBinh = Value
-end})
+-- [ĐÃ GHÉP] Toggle "Auto Summon Boss" (FarmPhaBinh) ĐÃ XÓA:
+-- "khi đủ điều kiện thì tự triệu hồi" -> hàm __DIO_PhaBinhSummon() được loop Farm Tyrant
+-- gọi tự động khi rảnh (không có boss + không có mob phụ). Không cần bật toggle riêng nữa.
 
 local function sendSkillKey(skillKey)
     local virtualInputManager = __SVC_VIM
@@ -5160,7 +5195,7 @@ local function equipAndUseSkill(toolType)
             item.Parent = character
             __DIO_wait(0.12)
             for _, skill in ipairs({"Z", "X", "C", "V", "F"}) do
-                if not _G.FarmPhaBinh then break end
+                if not _G.FarmTyrant then break end -- [GHÉP] giờ thuộc Farm Tyrant
                 pcall(function() sendSkillKey(skill) end)
                 __DIO_wait(0.12)
             end
@@ -5181,40 +5216,40 @@ local PhaBinhPoints = {
     CFrame.new(-16335.0966796875, 159.33399963378906, 1324.885986328125),
 }
 
-spawn(function()
-    while __DIO_wait(Sec) do
-        if _G.FarmPhaBinh then
-            pcall(function()
-                if not (plr and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and plr.Character:FindFirstChild("Humanoid") and plr.Character.Humanoid.Health > 0) then return end
+-- [GHÉP AUTO SUMMON BOSS vào FARM TYRANT] 1 lượt đi đủ 8 điểm + bắn skill phá bình.
+-- Loop Farm Tyrant gọi hàm này khi rảnh. Luôn kiểm tra _G.FarmTyrant để thoát ngay khi
+-- tắt Start Farm / đổi mode, và nhường ưu tiên nếu boss vừa spawn giữa lúc đi điểm.
+__DIO_PhaBinhSummon = function()
+    if not (plr and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and plr.Character:FindFirstChild("Humanoid") and plr.Character.Humanoid.Health > 0) then return end
 
-                for _, point in ipairs(PhaBinhPoints) do
-                    if not _G.FarmPhaBinh then break end
+    for _, point in ipairs(PhaBinhPoints) do
+        if not _G.FarmTyrant then return end
+        -- boss vừa ra giữa lúc đi điểm -> bỏ dở summon, nhịp sau loop ưu tiên đánh boss
+        local __wsEnemies = workspace:FindFirstChild("Enemies")
+        if __wsEnemies and __wsEnemies:FindFirstChild("Tyrant of the Skies") then return end
 
-                    _tp(point)
+        _tp(point)
 
-                    local arrived = false
-                    local start = tick()
-                    while tick() - start < 12 and not arrived and _G.FarmPhaBinh do
-                        local hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
-                        if not hrp then break end
-                        local dist = (hrp.Position - point.Position).Magnitude
-                        if dist <= 3 then
-                            arrived = true
-                            break
-                        end
-                        __DIO_wait(0.1)
-                    end
+        local arrived = false
+        local start = tick()
+        while tick() - start < 12 and not arrived and _G.FarmTyrant do
+            local hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+            if not hrp then return end
+            local dist = (hrp.Position - point.Position).Magnitude
+            if dist <= 3 then
+                arrived = true
+                break
+            end
+            __DIO_wait(0.1)
+        end
 
-                    if _G.FarmPhaBinh and arrived then
-                        equipAndUseSkill("Melee")
-                        equipAndUseSkill("Sword")
-                        equipAndUseSkill("Gun")
-                    end
-                end
-            end)
+        if _G.FarmTyrant and arrived then
+            equipAndUseSkill("Melee")
+            equipAndUseSkill("Sword")
+            equipAndUseSkill("Gun")
         end
     end
-end)
+end
 
 
 Tabs.Main:AddSection("Farm Material")
@@ -5431,15 +5466,10 @@ task.spawn(function()
 end)
 
 Tabs.Main:AddSection("Farming Mastery")
-local posMastery = {"Cake","Bone"}
-local Mastery_Config = Tabs.Main:AddDropdown({
-Name = "Choose Island",
-		Description = "",
-        Options = posMastery,
-        Default = "Bone", -- [FIX CHUNK2-D] thieu ngoac kep -> doc global undefined (nil)
-		Callback = function(Value)
-  SelectIsland = Value
-end})
+-- [FIX] ĐÃ XÓA dropdown "Choose Island" (+ local posMastery):
+-- đảo mastery giờ theo dropdown "Farm" phía trên qua __DIO_SyncMasteryIsland():
+--   Farm Cake -> Cake | các mode khác -> Bone (mặc định như bản cũ).
+-- SelectIsland được khởi tạo + cập nhật tự động, các loop mastery bên dưới giữ nguyên.
 local MasteryFruits = Tabs.Main:AddToggle({
 Name = "Auto Mastery Fruits", 
 Description = "", 
@@ -5968,6 +5998,14 @@ Tabs.Settings:AddSlider({
         _G.HopDelay = Value * 60
     end
 })
+
+CakeSM = Tabs.Settings:AddToggle({
+    Name = "Auto Summon Cake Prince",
+    Description = "",
+    Default = false,
+    Callback = function(Value)
+    _G.AutoSpawnCP = Value
+end})
 Tabs.Settings:AddToggle({
     Name = "Auto Set Spawn Point",
     Default = false,
@@ -6634,9 +6672,9 @@ spawn(function()
     end)
   end
 end)
-Tabs.Main:AddSection("Farm Rip Indra")
+Tabs.Quests:AddSection("Farm Rip Indra")
 
-Tabs.Main:AddToggle({
+Tabs.Quests:AddToggle({
 Name = "Auto Attack Rip Indra", 
 Description = "", 
 Default = false,
@@ -6668,7 +6706,7 @@ spawn(function()
   end
 end)
 
-Tabs.Main:AddToggle({
+Tabs.Quests:AddToggle({
 Name = "Auto Unlocked Haki", 
 Description = "", 
 Default = false,
@@ -6706,9 +6744,95 @@ spawn(function()
     end
   end
 end)
-Tabs.Main:AddSection("Farm Elite Hunter")
+Tabs.Quests:AddSection("Bone")
+Tabs.Quests:AddToggle({
+Name = "Auto Soul Reaper", 
+Description = "", 
+Default = false,
+Callback = function(Value)
+  _G.AutoHytHallow = Value
+end})
+spawn(function()
+  while __DIO_wait(Sec) do
+    if _G.AutoHytHallow then
+      pcall(function()
+        local v = GetConnectionEnemies("Soul Reaper")
+	    if v then
+          repeat __DIO_wait(Sec) Attack.Kill(v,_G.AutoHytHallow) until v.Humanoid.Health <= 0 or _G.AutoHytHallow == false -- [FIX LAG] __DIO_wait()->__DIO_wait(Sec)
+        else
+          if not GetBP("Hallow Essence") then
+            repeat __DIO_wait(1)replicated.Remotes.CommF_:InvokeServer("Bones","Buy",1,1)until _G.AutoHytHallow == false or GetBP("Hallow Essence") -- [FIX SPAM-1] 10Hz->1Hz (server trade, mua nhanh hon khong loi)
+          else
+            repeat __DIO_wait(.1) _tp(CFrame.new(-8932.322265625, 146.83154296875, 6062.55078125))until _G.AutoHytHallow == false or ((plr.Character.HumanoidRootPart.Position - CFrame.new(-8932.322265625, 146.83154296875, 6062.55078125).Position).Magnitude <= 5) -- [FIX PERF 23] CFrame== hang so float khong bao gio khop -> treo repeat; doi thanh khoang cach
+		    EquipWeapon("Hallow Essence")
+          end
+        end
+      end)
+    end
+  end
+end)
 
-local Process = Tabs.Main:AddParagraph("Elites Process", "")
+spawn(function()
+  while __DIO_wait(Sec) do
+    pcall(function()
+      if _G.Auto_Random_Bone then    
+  	    repeat __DIO_wait(0.25) replicated.Remotes.CommF_:InvokeServer("Bones","Buy",1,1) until not _G.Auto_Random_Bone
+      end
+    end)
+  end
+end)
+Lucky = Tabs.Quests:AddToggle({
+Name = "Auto Try Luck Gravestone", 
+Description = "", 
+Default = false,
+Callback = function(Value)
+  _G.TryLucky = Value
+end})
+spawn(function()
+  while __DIO_wait(Sec) do
+    if _G.TryLucky then
+    -- [FIX FPS 5] pcall + nil-guard (chet/respawn = thread chet vien vien) + do khoang cach
+    -- thay cho so sanh CFrame "==" (12 so phai khop tuyet doi -> nhanh invoke co the khong bao gio chay)
+    pcall(function()
+      local __hrpG = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+      if not __hrpG then return end
+      local try_bones_luck = CFrame.new(-8761.3154296875, 164.85829162598, 6161.1567382813)
+      if ((__hrpG.Position - try_bones_luck.Position).Magnitude > 5) then
+        _tp(try_bones_luck)
+      else
+	   replicated.Remotes.CommF_:InvokeServer("gravestoneEvent",1)
+      end
+    end)
+    end
+  end
+end)
+Pray = Tabs.Quest:AddToggle({
+Name = "Auto Pray Gravestone", 
+Description = "", 
+Default = false,
+Callback = function(Value)
+  _G.Praying = Value
+end})
+spawn(function()
+  while __DIO_wait(Sec) do
+    if _G.Praying then
+    -- [FIX FPS 5] nhu Try Luck: pcall + nil-guard + khoang cach thay "=="
+    pcall(function()
+      local __hrpG = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+      if not __hrpG then return end
+      local try_bones_luck = CFrame.new(-8761.3154296875, 164.85829162598, 6161.1567382813)
+      if ((__hrpG.Position - try_bones_luck.Position).Magnitude > 5) then
+	   _tp(try_bones_luck)
+      else
+	   replicated.Remotes.CommF_:InvokeServer("gravestoneEvent",2)
+      end
+    end)
+    end
+  end
+end)
+Tabs.Quests:AddSection("Farm Elite Hunter")
+
+local Process = Tabs.Quests:AddParagraph("Elites Process", "")
 __EliteProg = "" -- [FIX FPS-FINAL-4] cache progress: chi 1 loop goi remote EliteHunter, loop con lai doc cache
 spawn(function()
     local __prevElite = nil -- [FIX PERF 31] SetDesc chi khi gia tri DOI (ui khong ve lai voi cung chuoi)
@@ -6722,7 +6846,7 @@ spawn(function()
     end
 end)
 
-local EliteHunter = Tabs.Main:AddParagraph("Elite Spawn", "Status: ")
+local EliteHunter = Tabs.Quests:AddParagraph("Elite Spawn", "Status: ")
 spawn(function()
     local previousStatus = ""
     while __DIO_wait(2) do -- [FIX FPS-FINAL-4] 1s -> 2s + KHONG goi remote nua (doc __EliteProg)
@@ -6739,7 +6863,7 @@ spawn(function()
     end
 end)
 
-EliteQ = Tabs.Main:AddToggle({
+EliteQ = Tabs.Quests:AddToggle({
     Name = "Auto Farm Elite",
     Description = "",
     Default = false,
@@ -6810,7 +6934,7 @@ spawn(function()
     end
 end)
 
-EliteH = Tabs.Main:AddToggle({
+EliteH = Tabs.Quests:AddToggle({
 	Name = "Auto Farm Elite + Hop",
 	Description = "",
 	Default = false,
@@ -6818,7 +6942,7 @@ EliteH = Tabs.Main:AddToggle({
 	_G.FarmEliteH = Value
 end})
 
-Tabs.Main:AddToggle({
+Tabs.Quests:AddToggle({
     Name = "Auto Get PlayerQuest",
     Description = "",
     Default = false,
@@ -6832,7 +6956,7 @@ Tabs.Main:AddToggle({
     end
 })
 
-Tabs.Main:AddToggle({
+Tabs.Quests:AddToggle({
     Name = "Auto Kill Player Quest", 
     Default = false,
     Callback = function(Value)
@@ -8089,9 +8213,9 @@ spawn(function()
     end
   end
 end)
-Tabs.Main:AddSection("Collect Berry")
+Tabs.Quests:AddSection("Collect Berry")
 
-Berry = Tabs.Main:AddToggle({
+Berry = Tabs.Quests:AddToggle({
 Name = "Auto Farm Berry", 
 Description = "", 
 Default = false,
@@ -8127,7 +8251,7 @@ spawn(function()
   end
 end)
 
-BerryH = Tabs.Main:AddToggle({
+BerryH = Tabs.Quests:AddToggle({
 Name = "Auto Farm Berry + Hop", 
 Description = "", 
 Default = false,
@@ -8614,6 +8738,9 @@ Default = false,
 Callback = function(Value)
   _G.BuyMelee_BuyBlackLeg = (Value == true)
   if Value then
+    -- [FIX BUY-INDICATOR 1/2] bat shouldTween NGAY nhu toggle farm -> highlight xanh + noclip
+    -- keo theo bat tuc; cond-list stomper (da them 4 flag BuyMelee_*) giu trang thai nay lien tuc.
+    shouldTween = true
     __DIO_BuyKick()
   else
     -- [FIX BUY-TOGGLE-OFF] tat thi dung tween ngay
@@ -8629,6 +8756,8 @@ Default = false,
 Callback = function(Value)
   _G.BuyMelee_BuyElectro = (Value == true)
   if Value then
+    -- [FIX BUY-INDICATOR] bat shouldTween NGAY nhu toggle farm (xem BuyBlackLeg)
+    shouldTween = true
     __DIO_BuyKick()
   else
     -- [FIX BUY-TOGGLE-OFF] tat thi dung tween ngay
@@ -8644,6 +8773,8 @@ Default = false,
 Callback = function(Value)
   _G.BuyMelee_BuyFishmanKarate = (Value == true)
   if Value then
+    -- [FIX BUY-INDICATOR] bat shouldTween NGAY nhu toggle farm (xem BuyBlackLeg)
+    shouldTween = true
     __DIO_BuyKick()
   else
     -- [FIX BUY-TOGGLE-OFF] tat thi dung tween ngay
@@ -8659,6 +8790,8 @@ Default = false,
 Callback = function(Value)
   _G.BuyMelee_BuyDragonClaw = (Value == true)
   if Value then
+    -- [FIX BUY-INDICATOR] bat shouldTween NGAY nhu toggle farm (xem BuyBlackLeg)
+    shouldTween = true
     __DIO_BuyKick()
   else
     -- [FIX BUY-TOGGLE-OFF] tat thi dung tween ngay
@@ -8685,7 +8818,7 @@ spawn(function()
         -- vong chi xu ly 1 prerequisite roi return; (c) moi chuyen bay co cancelFn -> TAT toggle la huy
         -- ngay giua duong: khong tween di mua nua.
         local __on = function() return not _G.Auto_SuperHuman end
-        if not plr:FindFirstChild("WeaponAssetCache") then return end
+        if not plr:FindFirstChild("WeaponAssetCache") and tick() - __DIO_BootT0 < 15 then return end -- [FIX WAC-GUARD] chi doi 15s sau boot, het thi bo qua (game update mat child nay cung khong chet im)
         if GetBP("Superhuman") then return end
         local M_Beli = (plr.Data and plr.Data.Beli and plr.Data.Beli.Value) or 0
         local M_Frag = (plr.Data and plr.Data.Fragments and plr.Data.Fragments.Value) or 0
@@ -8727,7 +8860,7 @@ spawn(function()
     if _G.AutoDeathStep then
       pcall(function()
         local __on = function() return not _G.AutoDeathStep end
-        if not plr:FindFirstChild("WeaponAssetCache") then return end
+        if not plr:FindFirstChild("WeaponAssetCache") and tick() - __DIO_BootT0 < 15 then return end -- [FIX WAC-GUARD] chi doi 15s sau boot, het thi bo qua (game update mat child nay cung khong chet im)
         if GetBP("Death Step") then return end
         if not GetBP("Black Leg") then
           if __DIO_FlyTo(__DIO_MeleeCF("BuyBlackLeg"), 15, __on) then replicated.Remotes.CommF_:InvokeServer("BuyBlackLeg") end -- [FIX SYNC-AUTO]
@@ -8773,7 +8906,7 @@ spawn(function()
     if _G.Auto_SharkMan_Karate then
       pcall(function()
         local __on = function() return not _G.Auto_SharkMan_Karate end
-        if not plr:FindFirstChild("WeaponAssetCache") then return end
+        if not plr:FindFirstChild("WeaponAssetCache") and tick() - __DIO_BootT0 < 15 then return end -- [FIX WAC-GUARD] chi doi 15s sau boot, het thi bo qua (game update mat child nay cung khong chet im)
         if GetBP("Sharkman Karate") then return end
         if not GetBP("Fishman Karate") then
           if __DIO_FlyTo(__DIO_MeleeCF("BuyFishmanKarate"), 15, __on) then replicated.Remotes.CommF_:InvokeServer("BuyFishmanKarate") end -- [FIX SYNC-AUTO]
@@ -8815,7 +8948,7 @@ spawn(function()
     if _G.Auto_Electric_Claw then
       pcall(function()
         local __on = function() return not _G.Auto_Electric_Claw end
-        if not plr:FindFirstChild("WeaponAssetCache") then return end
+        if not plr:FindFirstChild("WeaponAssetCache") and tick() - __DIO_BootT0 < 15 then return end -- [FIX WAC-GUARD] chi doi 15s sau boot, het thi bo qua (game update mat child nay cung khong chet im)
         if GetBP("Electric Claw") then return end
         if not GetBP("Electro") then
           if __DIO_FlyTo(__DIO_MeleeCF("BuyElectro"), 15, __on) then replicated.Remotes.CommF_:InvokeServer("BuyElectro") end -- [FIX SYNC-AUTO]
@@ -8848,7 +8981,7 @@ spawn(function()
     if _G.AutoDragonTalon then
       pcall(function()
         local __on = function() return not _G.AutoDragonTalon end
-        if not plr:FindFirstChild("WeaponAssetCache") then return end
+        if not plr:FindFirstChild("WeaponAssetCache") and tick() - __DIO_BootT0 < 15 then return end -- [FIX WAC-GUARD] chi doi 15s sau boot, het thi bo qua (game update mat child nay cung khong chet im)
         if GetBP("Dragon Talon") then return end
         if not GetBP("Dragon Claw") then
           if __DIO_FlyTo(__DIO_MeleeCF("BlackbeardReward"), 15, __on) then replicated.Remotes.CommF_:InvokeServer("BlackbeardReward","DragonClaw","2") end -- [FIX SYNC-AUTO]
@@ -12397,7 +12530,11 @@ StartR = Tabs.Raids:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.Auto_StartRaid = Value
-        if not Value then
+        if Value then
+            -- [FIX RAID-INDICATOR] nen shouldTween NGAY nhu toggle farm -> highlight xanh bat
+            -- tuc (cond-list stomper co san _G.Auto_StartRaid nen giu trang thai lien tuc sau do).
+            shouldTween = true
+        else
             StopTween(false)
             __DIO_CurTarget = nil
             if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
@@ -12416,6 +12553,7 @@ task.spawn(function()
     --   * Sea 1 khong co RaidSummon2 -> notify 1 lan roi nghi (khong bay loan).
     local __raidWarnedSea1 = false
     local __raidFireCD = 0
+    local __raidChipNotifyT = 0 -- [FIX RAID-NOCHIP] nhịp thông báo "chưa có chip" (1 lần/15s)
     while __DIO_wait(0.5) do
         if not _G.Auto_StartRaid then continue end
         pcall(function()
@@ -12428,7 +12566,6 @@ task.spawn(function()
             local top = main and main:FindFirstChild("TopHUDList")
             local raidTimer = top and top:FindFirstChild("RaidTimer")
             if raidTimer and raidTimer.Visible then return end -- dang trong raid roi
-            if not GetBP("Special Microchip") then return end -- chua co chip -> doi chip-buyers
             local btn
             if World2 then
                 local ci = workspace.Map and workspace.Map:FindFirstChild("CircleIsland")
@@ -12460,6 +12597,21 @@ task.spawn(function()
                 return
             end
             __raidWarnedSea1 = false
+            -- [FIX RAID-NOCHIP] Chưa có chip KHÔNG còn đứng im vô hình nữa:
+            --   * vẫn tween về đứng cạnh nút Raid -> user THẤY toggle đang hoạt động
+            --     (đúng yêu cầu "tween đến cframe đã đặt"), có chip là nhịp sau tự bấm ngay.
+            --   * thông báo hướng dẫn 1 lần/15s: chip do "Auto Buy Chip" mua.
+            if not GetBP("Special Microchip") then
+                local standChip = btnCF * CFrame.new(0, 3, 0)
+                if (root.Position - standChip.Position).Magnitude > 12 then
+                    _tp(standChip)
+                end
+                if tick() - __raidChipNotifyT > 15 then
+                    __raidChipNotifyT = tick()
+                    pcall(function() Window:Notify({Title = "Auto Start Raid", Content = "Chua co Special Microchip - bat 'Auto Buy Chip' de mua chip. Da den gan nut Raid, co chip se tu bat.", Duration = 4}) end)
+                end
+                return
+            end
             local standCF = btnCF * CFrame.new(0, 3, 0)
             if (root.Position - standCF.Position).Magnitude > 12 then
                 _tp(standCF) -- tween ve nut; tick sau danh gia lai (mai mai, khong latch)
@@ -13956,7 +14108,7 @@ do
                 pcall(function()
                     local ch = plr.Character
                     if not ch or not ch:FindFirstChild("HumanoidRootPart") then return end
-                    if not plr:FindFirstChild("WeaponAssetCache") then return end
+                    if not plr:FindFirstChild("WeaponAssetCache") and tick() - __DIO_BootT0 < 15 then return end -- [FIX WAC-GUARD] chi doi 15s sau boot, het thi bo qua (game update mat child nay cung khong chet im)
                     if __DIO_BuyBusy then return end
                     local beli = (plr.Data and plr.Data.Beli and plr.Data.Beli.Value) or 0
                     local frag = (plr.Data and plr.Data.Fragments and plr.Data.Fragments.Value) or 0
@@ -13970,6 +14122,14 @@ do
                             else
                                 __warned[j.key] = nil
                                 local enough = (not j.beli or beli >= j.beli) and (not j.frag or frag >= j.frag)
+                                -- [FIX BUY-SILENT] khong du Beli/Fragments -> thong bao 1 lan thay vi
+                                -- im lang ("bat toggle ma khong co gi xay ra"). Du tien thi xoa canh bao.
+                                if enough then
+                                    __warned[j.key .. "_poor"] = nil
+                                elseif not __warned[j.key .. "_poor"] then
+                                    __warned[j.key .. "_poor"] = true
+                                    pcall(function() Window:Notify({Title = "Buy Melee", Content = "Thieu " .. (j.beli and ("Beli " .. j.beli) or ("Fragments " .. j.frag)) .. " de mua " .. tostring(j.owned) .. " - khong bay (bay den cung khong mua duoc).", Duration = 4}) end)
+                                end
                                 -- [FIX BUY-SPAM] cooldown 8s/style: den noi ma chua so huu (mua loi /
                                 -- thieu tien phat sinh) -> cho 8s moi thu lai, khong spam remote+notify.
                                 if enough and (not __DIO_BuyJobT[j.key] or (tick() - __DIO_BuyJobT[j.key]) >= __DIO_BUY_RETRY) then
