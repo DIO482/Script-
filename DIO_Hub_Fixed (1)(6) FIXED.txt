@@ -11592,17 +11592,6 @@ __DIO_SafeLoop(function()
     end
 end, "L10953")
 
-Tabs.SeaEvent:AddSection("Entity Sea Event")
--- V5.3: Select Sea Event da duoc chuyen len tren Select Boats (Choose Sea Event)
-
-
-
-
-
-
-
-
-
 -- V5.2: tan cong sea target bang weapon+skill chon trong dropdown
 -- (dung cho SeaBeast1/Leviathan/FishBoat/PGB). Neu chua chon weapon thi
 -- giu nguyen combo cu (Blox Fruit neu co fruit strong, khong thi full combo).
@@ -11613,7 +11602,7 @@ __DIO_SeaSkillAtk = function()
     elseif CheckF() then
         weaponSc("Blox Fruit") Useskills("Blox Fruit","Z") Useskills("Blox Fruit","X") Useskills("Blox Fruit","C")
     else
-        Useskills("Melee","Z") Useskills("Melee","X")
+        Useskills("Melee","Z") Useskills("Melee","X") Useskills("Melee", "C") 
         __DIO_wait(.1) Useskills("Sword","Z") Useskills("Sword","X")
         __DIO_wait(.1) Useskills("Blox Fruit","Z") Useskills("Blox Fruit","X") Useskills("Blox Fruit","C")
         __DIO_wait(.1) Useskills("Gun","Z") Useskills("Gun","X")
@@ -11902,9 +11891,9 @@ __DIO_SafeLoop(function()
                 local targetDestination = CFrame.new(-10000000, 31, 37016.25)
                 local __seaS = __DIO_SeaScan()
                 if __seaS.fish then
-                  _tp(CFrame.new(-10000000, 150, 37016.25))
+                  _tp(CFrame.new(-10000000, 160, 37016.25))
                 else
-                  _tp(CFrame.new(-10000000, 150, 37016.25))
+                  _tp(CFrame.new(-10000000, 160, 37016.25))
                 end
               until not _G.FrozenDimension or (targetDestination.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 or workspace["_WorldOrigin"].Locations:FindFirstChild("Frozen Dimension") or plr.Character.Humanoid.Sit == false plr.Character.Humanoid.Sit = false
             end
