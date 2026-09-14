@@ -8774,6 +8774,19 @@ spawn(function()
                   end
                   return
               end
+              -- V7 SIT-ASSIST: sat ghe thi THA RA + dap xuong nhe de Seat bat (pin dung yen khong
+              -- sinh Touch event => ghe khong bao gio bat => dung mai tren thuyen). Tha khi cach ghe
+              -- <=8 VA dang o tren ghe; rot xuong nuoc thi _tp keo len lai (tu sua 2 chieu).
+              do
+                  local __hrpV7 = plr.Character.HumanoidRootPart
+                  local __spV7 = __seatV4.CFrame.Position
+                  if (__hrpV7.Position - __spV7).Magnitude <= 8 and __hrpV7.Position.Y >= __spV7.Y - 1 then
+                      __DIO_TweenTarget = nil
+                      __DIO_LastDist = nil __DIO_LastHRPPos = nil
+                      __hrpV7.AssemblyLinearVelocity = Vector3.new(0, -15, 0)
+                      return
+                  end
+              end
               local boatSeatCFrame = __seatV4.CFrame * CFrame.new(0, 1, 0)
               _tp(boatSeatCFrame)
             else
@@ -10029,6 +10042,19 @@ spawn(function()
                         end
                         return
                     end
+                    -- V7 SIT-ASSIST: sat ghe thi THA RA + dap xuong nhe de Seat bat (pin dung yen khong
+                    -- sinh Touch event => ghe khong bao gio bat => dung mai tren thuyen). Tha khi cach ghe
+                    -- <=8 VA dang o tren ghe; rot xuong nuoc thi _tp keo len lai (tu sua 2 chieu).
+                    do
+                        local __hrpV7 = plr.Character.HumanoidRootPart
+                        local __spV7 = __seatV4.CFrame.Position
+                        if (__hrpV7.Position - __spV7).Magnitude <= 8 and __hrpV7.Position.Y >= __spV7.Y - 1 then
+                            __DIO_TweenTarget = nil
+                            __DIO_LastDist = nil __DIO_LastHRPPos = nil
+                            __hrpV7.AssemblyLinearVelocity = Vector3.new(0, -15, 0)
+                            return
+                        end
+                    end
                     local seatCFrame = __seatV4.CFrame * CFrame.new(0, 1, 0)
                         _tp(seatCFrame)
                         return
@@ -10500,6 +10526,19 @@ spawn(function()
                 end
                 return
             end
+            -- V7 SIT-ASSIST: sat ghe thi THA RA + dap xuong nhe de Seat bat (pin dung yen khong
+            -- sinh Touch event => ghe khong bao gio bat => dung mai tren thuyen). Tha khi cach ghe
+            -- <=8 VA dang o tren ghe; rot xuong nuoc thi _tp keo len lai (tu sua 2 chieu).
+            do
+                local __hrpV7 = plr.Character.HumanoidRootPart
+                local __spV7 = __seatV4.CFrame.Position
+                if (__hrpV7.Position - __spV7).Magnitude <= 8 and __hrpV7.Position.Y >= __spV7.Y - 1 then
+                    __DIO_TweenTarget = nil
+                    __DIO_LastDist = nil __DIO_LastHRPPos = nil
+                    __hrpV7.AssemblyLinearVelocity = Vector3.new(0, -15, 0)
+                    return
+                end
+            end
             local boatSeatCFrame = __seatV4.CFrame * CFrame.new(0, 1, 0)
             _tp(boatSeatCFrame)
           else
@@ -10724,6 +10763,19 @@ spawn(function()
                   end
                   return
               end
+              -- V7 SIT-ASSIST: sat ghe thi THA RA + dap xuong nhe de Seat bat (pin dung yen khong
+              -- sinh Touch event => ghe khong bao gio bat => dung mai tren thuyen). Tha khi cach ghe
+              -- <=8 VA dang o tren ghe; rot xuong nuoc thi _tp keo len lai (tu sua 2 chieu).
+              do
+                  local __hrpV7 = plr.Character.HumanoidRootPart
+                  local __spV7 = __seatV4.CFrame.Position
+                  if (__hrpV7.Position - __spV7).Magnitude <= 8 and __hrpV7.Position.Y >= __spV7.Y - 1 then
+                      __DIO_TweenTarget = nil
+                      __DIO_LastDist = nil __DIO_LastHRPPos = nil
+                      __hrpV7.AssemblyLinearVelocity = Vector3.new(0, -15, 0)
+                      return
+                  end
+              end
               local boatSeatCFrame = __seatV4.CFrame * CFrame.new(0, 1, 0)
               _tp(boatSeatCFrame)
             else
@@ -10894,6 +10946,19 @@ spawn(function()
                   end
                   return
               end
+              -- V7 SIT-ASSIST: sat ghe thi THA RA + dap xuong nhe de Seat bat (pin dung yen khong
+              -- sinh Touch event => ghe khong bao gio bat => dung mai tren thuyen). Tha khi cach ghe
+              -- <=8 VA dang o tren ghe; rot xuong nuoc thi _tp keo len lai (tu sua 2 chieu).
+              do
+                  local __hrpV7 = plr.Character.HumanoidRootPart
+                  local __spV7 = __seatV4.CFrame.Position
+                  if (__hrpV7.Position - __spV7).Magnitude <= 8 and __hrpV7.Position.Y >= __spV7.Y - 1 then
+                      __DIO_TweenTarget = nil
+                      __DIO_LastDist = nil __DIO_LastHRPPos = nil
+                      __hrpV7.AssemblyLinearVelocity = Vector3.new(0, -15, 0)
+                      return
+                  end
+              end
               local boatSeatCFrame = __seatV4.CFrame * CFrame.new(0, 1, 0)
               _tp(boatSeatCFrame)
             else
@@ -11028,6 +11093,19 @@ spawn(function()
                     replicated.Remotes.CommF_:InvokeServer("BuyBoat", (_G.SelectedBoat or "Guardian"))
                 end
                 return
+            end
+            -- V7 SIT-ASSIST: sat ghe thi THA RA + dap xuong nhe de Seat bat (pin dung yen khong
+            -- sinh Touch event => ghe khong bao gio bat => dung mai tren thuyen). Tha khi cach ghe
+            -- <=8 VA dang o tren ghe; rot xuong nuoc thi _tp keo len lai (tu sua 2 chieu).
+            do
+                local __hrpV7 = plr.Character.HumanoidRootPart
+                local __spV7 = __seatV4.CFrame.Position
+                if (__hrpV7.Position - __spV7).Magnitude <= 8 and __hrpV7.Position.Y >= __spV7.Y - 1 then
+                    __DIO_TweenTarget = nil
+                    __DIO_LastDist = nil __DIO_LastHRPPos = nil
+                    __hrpV7.AssemblyLinearVelocity = Vector3.new(0, -15, 0)
+                    return
+                end
             end
             local boatSeatCFrame = __seatV4.CFrame * CFrame.new(0, 1, 0)
             _tp(boatSeatCFrame)
