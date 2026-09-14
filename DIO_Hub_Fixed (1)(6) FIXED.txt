@@ -2029,8 +2029,14 @@ if not __DIO_SmoothCtl then
                 end
                 -- Phat hien dich chuyen dot ngot tu ben ngoai (requestEntrance / plate / bi danh van...).
                 -- Buoc di cua controller moi frame toi da ~10 studs nen nhay >80/frame chac chan la tu ben ngoai.
+                -- Ngoi thuyen: CHI do XZ (snap Y dung muc tieu ~150 studs se bi hieu nham la teleport ngoai).
                 if __DIO_LastHRPPos then
-                    local jump = (cur - __DIO_LastHRPPos).Magnitude
+                    local jump
+                    if sitting then
+                        jump = Vector3.new(cur.X - __DIO_LastHRPPos.X, 0, cur.Z - __DIO_LastHRPPos.Z).Magnitude
+                    else
+                        jump = (cur - __DIO_LastHRPPos).Magnitude
+                    end
                     if jump > 80 then
                         __DIO_LastHRPPos = cur
                         __DIO_LastDist = dist
@@ -2046,7 +2052,9 @@ if not __DIO_SmoothCtl then
                 local speed = __DIO_PickTweenSpeed(dist, cur, hum)
                 local arriveR = sitting and 4 or 2.5
                 local rot = target - target.Position
-                if dist <= arriveR then
+                -- Ngoi thuyen: den noi theo XZ (Y khoa dung muc tieu, khong tinh vao arrive)
+                local __planeDist = sitting and Vector3.new(want.X - cur.X, 0, want.Z - cur.Z).Magnitude or dist
+                if __planeDist <= arriveR then
                     -- Da toi noi: chi snap VI TRI, GIU NGUYEN rotation hien tai (farm hover on dinh,
                     -- khong spin snap; ngoi thuyen khong pha weld Seat; tuong thich Look-At-Moon...).
                     local __shift = want - cur
@@ -2055,9 +2063,22 @@ if not __DIO_SmoothCtl then
                         if seat0 then
                             local boat0 = seat0:FindFirstAncestorOfClass("Model")
                             if boat0 then
+                                if getgenv().NoClipShip ~= false then
+                                    for _, __bp in ipairs(boat0:GetDescendants()) do
+                                        if __bp:IsA("BasePart") and __bp.CanCollide then __bp.CanCollide = false end
+                                    end
+                                end
                                 local bcf0 = boat0:GetPivot()
                                 boat0:PivotTo(CFrame.new(bcf0.Position + __shift) * (bcf0 - bcf0.Position))
                             end
+                        end
+                        local __bvA = hrp:FindFirstChild("BodyClip")
+                        if not __bvA then
+                            __bvA = Instance.new("BodyVelocity")
+                            __bvA.Name = "BodyClip"
+                            __bvA.MaxForce = Vector3.new(100000, 100000, 100000)
+                            __bvA.Velocity = Vector3.new(0, 0, 0)
+                            __bvA.Parent = hrp
                         end
                     end
                     hrp.CFrame = CFrame.new(want) * (hrp.CFrame - hrp.CFrame.Position)
@@ -2068,33 +2089,49 @@ if not __DIO_SmoothCtl then
                     return
                 end
                 dt = math.min(dt or 0.016, 0.1)
-                local step = math.min(dist, math.max(speed, 1) * dt)
-                local dir = delta / dist
-                local newPos = cur + dir * step
+                local newPos
                 if sitting then
-                    -- V6 GIU Y KHI NGOI THUYEN: ban cu co dong snap Y dot ngot khi ngoi (V2 xoa mat
-                    -- vi tuong gay giat) => thuyen leo Y theo ti le 120/10000 moi frame (~0.2 studs/s),
-                    -- mai mai le mat nuoc "nhu an W" thay vi boc len Y=150 bay qua mat quai.
-                    -- Bay Y doc lap voi toan bo step (leo/ha ~Boat Speed/s) => boc len trong <1s, giu cung.
-                    -- (Chi khi ngoi thuyen - farm di bo giu nguyen proportional, khong dung vao.)
-                    do
-                        local __dyV6 = want.Y - cur.Y
-                        if __dyV6 > step then __dyV6 = step elseif __dyV6 < -step then __dyV6 = -step end
-                        newPos = Vector3.new(newPos.X, cur.Y + __dyV6, newPos.Z)
+                    -- [BOAT TWEEN FIX] dung hanh vi ban cu (bay ngon):
+                    -- 1) SNAP Y dung nhu _tp dat (block.CFrame = CFrame.new(x, gg.Y, z)) - khong lerp Y
+                    --    nen khong bi vat ly nuoc keo xuong "an W".
+                    -- 2) Chi tween XZ theo BoatTweenSpeed.
+                    -- 3) BodyClip BodyVelocity(0,0,0) chong gravity giua 2 frame (ban moi da xoa -> thuyen tut Y).
+                    -- 4) Noclip part thuyen khi No Clip Ship bat.
+                    local xz = Vector3.new(want.X - cur.X, 0, want.Z - cur.Z)
+                    local xzDist = xz.Magnitude
+                    local step = math.min(xzDist, math.max(speed, 1) * dt)
+                    if xzDist > 0.05 then
+                        local dirxz = xz / xzDist
+                        newPos = Vector3.new(cur.X + dirxz.X * step, want.Y, cur.Z + dirxz.Z * step)
+                    else
+                        newPos = Vector3.new(cur.X, want.Y, cur.Z)
                     end
-                    -- V3 FIX THUYEN (nguyen nhan Sea Event dung hinh): day CA thuyen + nguoi cung 1 delta
-                    -- va GIU NGUYEN rotation 2 ben. V2 snap HRP ve rotation target (identity) => danh nhau
-                    -- voi weld Seat 60 lan/giay => văng khoi ghe / thuyen dung hinh. Ban nay weld luon relax.
+                    local __bv = hrp:FindFirstChild("BodyClip")
+                    if not __bv then
+                        __bv = Instance.new("BodyVelocity")
+                        __bv.Name = "BodyClip"
+                        __bv.MaxForce = Vector3.new(100000, 100000, 100000)
+                        __bv.Velocity = Vector3.new(0, 0, 0)
+                        __bv.Parent = hrp
+                    end
                     local seat = hum.SeatPart
                     if seat then
                         local boat = seat:FindFirstAncestorOfClass("Model")
                         if boat then
+                            if getgenv().NoClipShip ~= false then
+                                for _, __bp in ipairs(boat:GetDescendants()) do
+                                    if __bp:IsA("BasePart") and __bp.CanCollide then __bp.CanCollide = false end
+                                end
+                            end
                             local bcf = boat:GetPivot()
                             boat:PivotTo(CFrame.new(bcf.Position + (newPos - cur)) * (bcf - bcf.Position))
                         end
                     end
                     hrp.CFrame = CFrame.new(newPos) * (hrp.CFrame - hrp.CFrame.Position)
                 else
+                    local step = math.min(dist, math.max(speed, 1) * dt)
+                    local dir = delta / dist
+                    newPos = cur + dir * step
                     -- Bay thuong: xoay mui TU TU ve huong target (glide) thay vi snap dot ngot (het xoay snap).
                     -- V3 bo hoan toan ChangeState(Physics) moi frame: de yen state tu nhien thi Seat moi
                     -- bat duoc nguoi (ep Physics co the lam ghe khong bat), tween cu cung khong can no.
@@ -2104,12 +2141,17 @@ if not __DIO_SmoothCtl then
                     hrp.CFrame = CFrame.new(newPos) * (__blend - __blend.Position)
                 end
                 -- Zero van toc vat ly moi frame thay cho BodyVelocity(0,0,0) cu (het giang co vat ly)
-                hrp.AssemblyLinearVelocity = Vector3.zero
-                hrp.AssemblyAngularVelocity = Vector3.zero
-                -- V3: chi noclip HRP khi KHONG ngoi (giong stomper cu: tranh anh huong co che bat ghe Seat)
-                if not sitting then hrp.CanCollide = false end
+                -- Ngoai le: ngoi thuyen GIU BodyClip (khong zero het luc giu Y).
+                if not sitting then
+                    hrp.AssemblyLinearVelocity = Vector3.zero
+                    hrp.AssemblyAngularVelocity = Vector3.zero
+                    hrp.CanCollide = false
+                else
+                    hrp.AssemblyLinearVelocity = Vector3.zero
+                    hrp.AssemblyAngularVelocity = Vector3.zero
+                end
                 if block then block.CFrame = hrp.CFrame end
-                __DIO_LastDist = (want - newPos).Magnitude
+                __DIO_LastDist = sitting and Vector3.new(want.X - newPos.X, 0, want.Z - newPos.Z).Magnitude or (want - newPos).Magnitude
                 __DIO_LastHRPPos = newPos
             end)
         end)
@@ -10428,6 +10470,7 @@ spawn(function()
         end)
     end
 end)
+if getgenv().NoClipShip == nil then getgenv().NoClipShip = true end
 Tabs.SeaEvent:AddToggle({
     Name = "No Clip Ship",
     Default = true,
@@ -10436,17 +10479,22 @@ Tabs.SeaEvent:AddToggle({
     end
 })
 spawn(function()
-    local __ccPrev = false
+    -- [BOAT NOCLIP FIX] ban cu ap CanCollide MOI 1s cho MOI thuyen. Ban moi chi chay
+    -- 1 lan khi toggle doi (__any == __ccPrev return) => thuyen spawn sau / game reset
+    -- collide => "No Clip Ship" cam. Tra ve loop lien tuc nhu ban cu.
     while __DIO_wait(1) do
         pcall(function()
-            if #__SVC_WS.Boats:GetChildren() == 0 then return end
+            local __boatsNC = __SVC_WS:FindFirstChild("Boats")
+            if not __boatsNC then return end
             local __any = getgenv().NoClipShip or getgenv().FindPrehistoric
-            if __any == __ccPrev then return end
-            __ccPrev = __any
-            for i, boat in pairs(__SVC_WS.Boats:GetChildren()) do
+            for i, boat in pairs(__boatsNC:GetChildren()) do
                 for _, v in pairs(boat:GetDescendants()) do
-                    if v:IsA("BasePart") and (__any and v.CanCollide or (not __any and not v.CanCollide)) then
-                        v.CanCollide = not __any
+                    if v:IsA("BasePart") then
+                        if __any then
+                            if v.CanCollide then v.CanCollide = false end
+                        else
+                            if not v.CanCollide then v.CanCollide = true end
+                        end
                     end
                 end
             end
