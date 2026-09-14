@@ -2072,6 +2072,16 @@ if not __DIO_SmoothCtl then
                 local dir = delta / dist
                 local newPos = cur + dir * step
                 if sitting then
+                    -- V6 GIU Y KHI NGOI THUYEN: ban cu co dong snap Y dot ngot khi ngoi (V2 xoa mat
+                    -- vi tuong gay giat) => thuyen leo Y theo ti le 120/10000 moi frame (~0.2 studs/s),
+                    -- mai mai le mat nuoc "nhu an W" thay vi boc len Y=150 bay qua mat quai.
+                    -- Bay Y doc lap voi toan bo step (leo/ha ~Boat Speed/s) => boc len trong <1s, giu cung.
+                    -- (Chi khi ngoi thuyen - farm di bo giu nguyen proportional, khong dung vao.)
+                    do
+                        local __dyV6 = want.Y - cur.Y
+                        if __dyV6 > step then __dyV6 = step elseif __dyV6 < -step then __dyV6 = -step end
+                        newPos = Vector3.new(newPos.X, cur.Y + __dyV6, newPos.Z)
+                    end
                     -- V3 FIX THUYEN (nguyen nhan Sea Event dung hinh): day CA thuyen + nguoi cung 1 delta
                     -- va GIU NGUYEN rotation 2 ben. V2 snap HRP ve rotation target (identity) => danh nhau
                     -- voi weld Seat 60 lan/giay => văng khoi ghe / thuyen dung hinh. Ban nay weld luon relax.
