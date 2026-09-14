@@ -1847,7 +1847,12 @@ __DIO_LastDist = nil
 __DIO_LastHRPPos = nil
 __DIO_LastChar = nil
 __DIO_WasTweenActive = false
+__DIO_FalseSince = nil   -- V3: moc thoi gian bat dau thay shouldTween=false (debounce flicker)
 
+-- V3 (fix Sea Event): ngoi thuyen thi controller chi TINH TIEN (giu nguyen rotation) de khong
+-- pha weld Seat (V2 snap rotation => bi vang khoi ghe, thuyen dung hinh). Bay thuong thi xoay
+-- mui glide tu tu + khoa pin giu rotation. Them debounce shouldTween=false 0.5s + dong bo target
+-- cho moi cho set CFrame tay (plate/obsFarm/dungeon/trial/ember...) de khong bi target cu keo ve.
 -- Doi tuong tween "gia" de giu tuong thich voi code cu (StopTween, toggle-off callbacks,
 -- __DIO_DoDodge... van goi __DIO_LastTween:Cancel() binh thuong).
 __DIO_NewFakeTween = function()
@@ -1952,8 +1957,17 @@ if not __DIO_SmoothCtl then
                     __DIO_LastDist = nil __DIO_LastHRPPos = nil
                     return
                 end
-                if not shouldTween then
-                    -- Tat farm => tra lai trang thai humanoid 1 lan roi nghi han
+                -- V3: debounce shouldTween=false 0.5s (chong flicker: Safemode loop/StopTween rac co the
+                -- tat/bat lien tuc; clear target ngay lap tuc se lam thuyen/farm dung hinh oan)
+                local __st = shouldTween
+                if not __st then
+                    if __DIO_FalseSince == nil then __DIO_FalseSince = tick() end
+                    if tick() - __DIO_FalseSince < 0.5 then __st = true end
+                else
+                    __DIO_FalseSince = nil
+                end
+                if not __st then
+                    -- Tat farm THAT => tra lai trang thai humanoid 1 lan roi nghi han
                     if __DIO_WasTweenActive then
                         __DIO_WasTweenActive = false
                         local rc = plr.Character
@@ -1988,6 +2002,7 @@ if not __DIO_SmoothCtl then
                 local sitting = hum.Sit
                 local cur = hrp.Position
                 local want = target.Position
+                if cur.X ~= cur.X or cur.Y ~= cur.Y or cur.Z ~= cur.Z then return end
                 do
                     if want.X ~= want.X or want.Y ~= want.Y or want.Z ~= want.Z then
                         __DIO_TweenTarget = nil
@@ -2025,21 +2040,23 @@ if not __DIO_SmoothCtl then
                 local arriveR = sitting and 4 or 2.5
                 local rot = target - target.Position
                 if dist <= arriveR then
-                    -- Da toi noi: khoa cang dung muc tieu (farm hover dinh chat, khong dao dong len/xuong)
+                    -- Da toi noi: chi snap VI TRI, GIU NGUYEN rotation hien tai (farm hover on dinh,
+                    -- khong spin snap; ngoi thuyen khong pha weld Seat; tuong thich Look-At-Moon...).
+                    local __shift = want - cur
                     if sitting then
                         local seat0 = hum.SeatPart
                         if seat0 then
                             local boat0 = seat0:FindFirstAncestorOfClass("Model")
                             if boat0 then
                                 local bcf0 = boat0:GetPivot()
-                                boat0:PivotTo(CFrame.new(bcf0.Position + (want - cur)) * (bcf0 - bcf0.Position))
+                                boat0:PivotTo(CFrame.new(bcf0.Position + __shift) * (bcf0 - bcf0.Position))
                             end
                         end
                     end
-                    hrp.CFrame = target
+                    hrp.CFrame = CFrame.new(want) * (hrp.CFrame - hrp.CFrame.Position)
                     hrp.AssemblyLinearVelocity = Vector3.zero
                     hrp.AssemblyAngularVelocity = Vector3.zero
-                    if block then block.CFrame = target end
+                    if block then block.CFrame = hrp.CFrame end
                     __DIO_LastDist = 0 __DIO_LastHRPPos = want
                     return
                 end
@@ -2048,8 +2065,9 @@ if not __DIO_SmoothCtl then
                 local dir = delta / dist
                 local newPos = cur + dir * step
                 if sitting then
-                    -- FIX THUYEN: day CA thuyen + nguoi cung 1 delta => weld khong bi giang => het giat.
-                    -- (Cu: chi snap nguoi, thuyen bi seat keo giat lai + snap doc Y dot ngot.)
+                    -- V3 FIX THUYEN (nguyen nhan Sea Event dung hinh): day CA thuyen + nguoi cung 1 delta
+                    -- va GIU NGUYEN rotation 2 ben. V2 snap HRP ve rotation target (identity) => danh nhau
+                    -- voi weld Seat 60 lan/giay => văng khoi ghe / thuyen dung hinh. Ban nay weld luon relax.
                     local seat = hum.SeatPart
                     if seat then
                         local boat = seat:FindFirstAncestorOfClass("Model")
@@ -2058,16 +2076,21 @@ if not __DIO_SmoothCtl then
                             boat:PivotTo(CFrame.new(bcf.Position + (newPos - cur)) * (bcf - bcf.Position))
                         end
                     end
-                    hrp.CFrame = CFrame.new(newPos) * rot
+                    hrp.CFrame = CFrame.new(newPos) * (hrp.CFrame - hrp.CFrame.Position)
                 else
-                    hrp.CFrame = CFrame.new(newPos) * rot
-                    -- Trang thai Physics: humanoid khong tu di/te nga => hover sach, khong rung
-                    hum:ChangeState(Enum.HumanoidStateType.Physics)
+                    -- Bay thuong: xoay mui TU TU ve huong target (glide) thay vi snap dot ngot (het xoay snap).
+                    -- V3 bo hoan toan ChangeState(Physics) moi frame: de yen state tu nhien thi Seat moi
+                    -- bat duoc nguoi (ep Physics co the lam ghe khong bat), tween cu cung khong can no.
+                    local __curRot = hrp.CFrame - hrp.CFrame.Position
+                    local __rk = math.min(1, (dt or 0.016) * 6)
+                    local __blend = __curRot:Lerp(rot, __rk)
+                    hrp.CFrame = CFrame.new(newPos) * (__blend - __blend.Position)
                 end
                 -- Zero van toc vat ly moi frame thay cho BodyVelocity(0,0,0) cu (het giang co vat ly)
                 hrp.AssemblyLinearVelocity = Vector3.zero
                 hrp.AssemblyAngularVelocity = Vector3.zero
-                hrp.CanCollide = false
+                -- V3: chi noclip HRP khi KHONG ngoi (giong stomper cu: tranh anh huong co che bat ghe Seat)
+                if not sitting then hrp.CanCollide = false end
                 if block then block.CFrame = hrp.CFrame end
                 __DIO_LastDist = (want - newPos).Magnitude
                 __DIO_LastHRPPos = newPos
@@ -5703,7 +5726,7 @@ spawn(function()
     pcall(function()
 	  if _G.Safemode then
   	  local Calc_Health = plr.Character.Humanoid.Health / plr.Character.Humanoid.MaxHealth * 100
-  	  if Calc_Health < Num_self then shouldTween=true _tp(Root.CFrame * CFrame.new(0,500,0)) elseif not __DIO_FlyBusy then shouldTween=false end
+  	  if Calc_Health < Num_self then shouldTween=true _tp(Root.CFrame * CFrame.new(0,500,0)) end -- FIXED V3: bo 'elseif shouldTween=false' (no flicker pha tween; stomper tu quan ly flag)
       end
     end)
   end
@@ -7091,6 +7114,7 @@ spawn(function()
                      if Ex == 2 then
                        repeat __DIO_wait(0.25)
                          game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = workspace.Map.HeavenlyDimension.Exit.CFrame
+                         __DIO_TweenTarget = workspace.Map.HeavenlyDimension.Exit.CFrame __DIO_LastTpT = tick() -- FIXED V3: o yen cua exit
                        until not _G.CDK_TS or tonumber(replicated.Remotes.CommF_:InvokeServer("CDKQuest","Progress")["Good"]) == 3
                     end
                    repeat __DIO_wait(0.25)
@@ -7263,7 +7287,7 @@ spawn(function()
         if workspace.Map.Jungle.Final.Part.Transparency == 0 then
 	      if workspace.Map.Jungle.QuestPlates.Door.Transparency == 0 then
 		    if (CFrame.new(-1612.55884, 36.9774132, 148.719543, 0.37091279, 3.0717151e-09, -0.928667724, 3.97099491e-08, 1, 1.91679348e-08, 0.928667724, -4.39869794e-08, 0.37091279).Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 100 then
-		      _tp(plr.Character.HumanoidRootPart.CFrame)
+		      __DIO_TweenTarget = nil -- FIXED V3: dung tween han (thay self-pin) de chuoi plate tu do di chuyen
 		      __DIO_wait(0.5)
 		      plr.Character.HumanoidRootPart.CFrame = workspace.Map.Jungle.QuestPlates.Plate1.Button.CFrame
 		      __DIO_wait(0.5)
@@ -7979,10 +8003,12 @@ spawn(function()
             if KenTest then
               repeat __DIO_wait(0.25)
                 plr.Character.HumanoidRootPart.CFrame = workspace.Enemies:FindFirstChild("Galley Captain").HumanoidRootPart.CFrame * CFrame.new(3,0,0)
+                __DIO_TweenTarget = plr.Character.HumanoidRootPart.CFrame __DIO_LastTpT = tick() -- FIXED V3: dong bo target (tranh target cu keo giat)
               until _G.obsFarm == false or KenTest == false
             else
               repeat __DIO_wait(0.25)
                 plr.Character.HumanoidRootPart.CFrame = workspace.Enemies:FindFirstChild("Galley Captain").HumanoidRootPart.CFrame * CFrame.new(0,50,0)
+                __DIO_TweenTarget = plr.Character.HumanoidRootPart.CFrame __DIO_LastTpT = tick() -- FIXED V3: dong bo target (tranh target cu keo giat)
               until _G.obsFarm == false or KenTest
             end
           else
@@ -7993,10 +8019,12 @@ spawn(function()
             if KenTest then
               repeat __DIO_wait(0.25)
                 plr.Character.HumanoidRootPart.CFrame = workspace.Enemies:FindFirstChild("Lava Pirate").HumanoidRootPart.CFrame * CFrame.new(3,0,0)
+                __DIO_TweenTarget = plr.Character.HumanoidRootPart.CFrame __DIO_LastTpT = tick() -- FIXED V3: dong bo target (tranh target cu keo giat)
               until _G.obsFarm == false or KenTest == false
             else
               repeat __DIO_wait(0.25)
                 plr.Character.HumanoidRootPart.CFrame = workspace.Enemies:FindFirstChild("Lava Pirate").HumanoidRootPart.CFrame * CFrame.new(0,50,0)
+                __DIO_TweenTarget = plr.Character.HumanoidRootPart.CFrame __DIO_LastTpT = tick() -- FIXED V3: dong bo target (tranh target cu keo giat)
               until _G.obsFarm == false or KenTest
             end
           else
@@ -8175,6 +8203,7 @@ spawn(function()
           elseif replicated.Remotes.CommF_:InvokeServer("BartiloQuestProgress","Bartilo") == 2 then
           repeat __DIO_wait(0.25) _tp(CFrame.new(-1830.83972, 10.5578213, 1680.60229, 0.979988456, -2.02152783e-08, -0.199054286, 2.20792113e-08, 1, 7.1442483e-09, 0.199054286, -1.13962431e-08, 0.979988456))until (CFrame.new(-1830.83972, 10.5578213, 1680.60229, 0.979988456, -2.02152783e-08, -0.199054286, 2.20792113e-08, 1, 7.1442483e-09, 0.199054286, -1.13962431e-08, 0.979988456).Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 1 or _G.Bartilo_Quest == false
           __DIO_wait(0.5)
+          __DIO_TweenTarget = nil -- FIXED V3: tha tween de chuoi plate khong bi keo ve
           plr.Character.HumanoidRootPart.CFrame = workspace.Map.Dressrosa.BartiloPlates.Plate1.CFrame
           __DIO_wait(0.5)
           plr.Character.HumanoidRootPart.CFrame = workspace.Map.Dressrosa.BartiloPlates.Plate2.CFrame
@@ -9226,6 +9255,7 @@ Tabs.Race:AddButton({
         local hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
         if hrp then
             hrp.CFrame = CFrame.new(28286.35546875, 14895.3017578125, 102.62469482421875)
+            __DIO_TweenTarget = hrp.CFrame __DIO_LastTpT = tick() -- FIXED V3: o yen cho teleport
         end
 
         if not __SVC_WS.Map:FindFirstChild("Temple of Time") and World3 then
@@ -9245,6 +9275,7 @@ Callback = function()
 
         if hrp then
             hrp.CFrame = CFrame.new(28286.35546875, 14895.3017578125, 102.62469482421875)
+            __DIO_TweenTarget = hrp.CFrame __DIO_LastTpT = tick() -- FIXED V3: o yen cho teleport
         end
 
         if not __SVC_WS.Map:FindFirstChild("Temple of Time") and World3 then
@@ -9272,6 +9303,7 @@ Callback = function()
 
         if hrp then
             hrp.CFrame = pos1
+            __DIO_TweenTarget = hrp.CFrame __DIO_LastTpT = tick() -- FIXED V3: o yen cho teleport
         end
 
         task.delay(2, function()
@@ -9586,6 +9618,7 @@ spawn(function()
       pcall(function()
         if workspace.EmberTemplate:FindFirstChild("Part") then
           game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = workspace.EmberTemplate.Part.CFrame
+          __DIO_TweenTarget = workspace.EmberTemplate.Part.CFrame __DIO_LastTpT = tick() -- FIXED V3: bam theo ember
         end
       end)
     end
@@ -12381,6 +12414,7 @@ task.spawn(function()
             if root then
                 root = root.CFrame * CFrame.new(0,3,0)
                 GetHRP().CFrame = root
+                __DIO_TweenTarget = GetHRP().CFrame __DIO_LastTpT = tick() -- FIXED V3: o yen exit
                 tp1Done = true
             end
         end
@@ -12416,6 +12450,7 @@ task.spawn(function()
             if ent and ext and ent:FindFirstChild("Root") and ext:FindFirstChild("Root") then
                 if (hrp.Position - ent.Root.Position).Magnitude < 100 then
                     hrp.CFrame = ext.Root.CFrame * CFrame.new(0,3,0)
+                    __DIO_TweenTarget = hrp.CFrame __DIO_LastTpT = tick() -- FIXED V3: o yen exit
                     tp2Done = true
                     break
                 end
@@ -12459,6 +12494,7 @@ task.spawn(function()
 
                 GetHRP().CFrame =
                     floor.ExitTeleporter.Root.CFrame * CFrame.new(0,3,0)
+                __DIO_TweenTarget = GetHRP().CFrame __DIO_LastTpT = tick() -- FIXED V3: o yen exit
                 tp3Done = true
             end
         end
@@ -12505,6 +12541,7 @@ task.spawn(function()
             local root = GetNearestExit()
             if root then
                 GetHRP().CFrame = root.CFrame * CFrame.new(0,3,0)
+                __DIO_TweenTarget = GetHRP().CFrame __DIO_LastTpT = tick() -- FIXED V3: o yen exit
                 tp4Done = true
             end
         end
