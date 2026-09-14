@@ -142,7 +142,7 @@ pcall(function()
             bootLabel.Text = "DIO BOOT: " .. tostring(s)
         end)
     end
-    __DIO_BOOT("services")
+    __DIO_BOOT("Load Hub 21%")
 
     local lastTime = tick()
     local frames = 0
@@ -508,7 +508,7 @@ pcall(function()
     end
 end)
 
-__DIO_BOOT("remotes")
+__DIO_BOOT("Load Hub 36%")
 
 local Remotes = {}
 pcall(function()
@@ -1086,7 +1086,7 @@ Useskills = function(weapon, skill)
     vim1:SendKeyEvent(false, "Y", false, game);
   end
 end
-__DIO_BOOT("hooks")
+__DIO_BOOT("Load Hub 55%")
 
 local __DIO_hookOk = pcall(function()
 local gg = getrawmetatable(game)
@@ -1588,7 +1588,7 @@ task.spawn(function()
 end)
 
 local ReplicatedStorage = __SVC_RS
-__DIO_BOOT("commf")
+__DIO_BOOT("Load Hub 60%")
 
 local CommF = nil
 pcall(function()
@@ -2213,6 +2213,15 @@ function BTP(p)
         __DIO_wait(0.5)
     until (p.Position - humanoidRootPart.Position).Magnitude <= 2000
 end
+-- =====================================================================
+-- V4: stomper flag list tach ra ham dung chung (stomper + toggle wrapper).
+-- FIXED: _G.snaguine -> _G.Snaguine (toggle set _G.Snaguine, list cu check sai
+-- chu hoa/thuong => Auto SanguineArt bat ma khong nen highlight/khong tween).
+-- =====================================================================
+__DIO_FarmFlagsOn = function()
+    return (_G.SailBoat_Hydra or _G.WardenBoss or _G.AutoFactory or _G.HighestMirage or _G.HCM or _G.PGB or _G.Leviathan1 or _G.UPGDrago or _G.Complete_Trials or _G.TpDrago_Prehis or _G.BuyDrago or __DIO_BuyFlying or _G.BuyMelee_BuyBlackLeg or _G.BuyMelee_BuyElectro or _G.BuyMelee_BuyFishmanKarate or _G.BuyMelee_BuyDragonClaw or _G.AutoFireFlowers or _G.DT_Uzoth or _G.AutoBerry or _G.Prefully or _G.Prehis_Find or _G.Prehis_Skills or _G.Prehis_DB or _G.Prehis_DE or _G.FarmBlazeEM or _G.Dojoo or _G.CollectPresent or _G.AutoLawKak or _G.TpLab or _G.AutoPhoenixF or _G.AutoFarmChest or _G.AutoHytHallow or _G.LongsWord or _G.BlackSpikey or _G.AutoHolyTorch or _G.TrainDrago  or _G.AutoSaber or _G.FarmMastery_Dev or _G.CitizenQuest or _G.AutoEctoplasm or _G.KeysRen or _G.Auto_Rainbow_Haki or _G.obsFarm or _G.AutoBigmom or _G.Doughv2 or _G.AuraBoss or _G.Raiding or _G.Auto_Cavender or _G.TpPly or _G.Bartilo_Quest or _G.Level or _G.FarmEliteHunt or _G.AutoZou or _G.AutoFarm_Bone or getgenv().AutoMaterial or _G.CraftVM or _G.FrozenTP or _G.ShotHL or _G.TPDoor or _G.AcientOne or _G.AutoFarmNear or _G.AutoRaidCastle or _G.DarkBladev3 or _G.AutoFarmRaid or _G.Auto_Cake_Prince or _G.Addealer or _G.TPNpc or _G.TwinHook or _G.FindMirage or _G.FrozenDimension or _G.FarmChestM or _G.Shark or _G.TerrorShark or _G.Piranha or _G.MobCrew or _G.SeaBeast1 or _G.FishBoat or _G.AutoPole or _G.AutoPoleV2 or _G.Auto_SuperHuman or _G.AutoDeathStep or _G.Auto_SharkMan_Karate or _G.Auto_Electric_Claw or _G.AutoDragonTalon or _G.Auto_Def_DarkCoat or _G.Auto_God_Human or _G.Auto_Tushita or _G.AutoMatSoul or _G.AutoKenVTWO or _G.AutoSerpentBow or _G.AutoFMon or _G.Auto_Soul_Guitar or _G.TPGEAR or _G.AutoSaw or _G.AutoTridentW2 or _G.AutoEvoRace or _G.AutoGetQuestBounty or _G.MarinesCoat or _G.TravelDres or _G.Defeating or _G.DummyMan or _G.Auto_Yama or _G.Auto_SwanGG or _G.SwanCoat or _G.AutoEcBoss or _G.Auto_Mink or _G.Auto_Human or _G.Auto_Skypiea or _G.Auto_Fish or _G.CDK_TS or _G.CDK_YM or _G.CDK or _G.AutoFarmGodChalice or _G.AutoFistDarkness or _G.AutoMiror or _G.Teleport or _G.AutoKilo or _G.AutoGetUsoap or _G.Praying or _G.TryLucky or _G.AutoColShad or _G.AutoUnHaki or _G.Auto_DonAcces or _G.AutoRipIngay or _G.DragoV3 or _G.DragoV1 or _G.SailBoats or NextIs or _G.FarmGodChalice or _G.IceBossRen or senth or senth2 or _G.Lvthan or _G.beasthunter or _G.DangerLV or _G.Relic123 or _G.tweenKitsune or _G.Collect_Ember or _G.AutofindKitIs or _G.Snaguine or _G.TwFruits or _G.tweenKitShrine or _G.Tp_LgS or _G.Tp_MasterA or _G.tweenShrine or _G.FarmMastery_G or _G.FarmMastery_S or _G.FarmBoss or _G.AutoFarmAllBoss or _G.AutoFishSlap or _G.FarmTyrant or _G.FarmPhaBinh or _G.AutoSpawnCP or _G.AutoBerryH or _G.AutoChestBP or _G.FarmEliteHop or _G.AutoHop_Dough or _G.AutoDoughKing or _G.AutoAttackDoughKing or _G.AutoChipFruit or _G.AutoChipBeli or _G.Auto_StartRaid or _G.StartEvent or _G.AutoMysticIsland or _G.AutoPlayerHunter or _G.SafeMode or _G.AutoKillMob or _G.AutoStartPrehistoric or _G.AutoUnHaki or _G.AutoFarmIsland or _G.AutoFarmDungeon or _G.AutoFarmCandy or _G.AutoTP_Gift or _G.AutoTPGift or _G.AutoTPAndCollect or _G.MasterAutoLevel or _G.MasterAutoCandy or _G.TPFloor1 or _G.TPFloor2 or _G.TPFloor3 or _G.TPFloor4 or _G.FarmEliteH or _G.Safemode or _G.Greybeard or _G.ResetPH) and true or false
+end
+
 spawn(function()
   while true do
 
@@ -2224,7 +2233,7 @@ spawn(function()
           pcall(function() __DIO_Block.Parent = workspace end)
       end
 
-      if _G.SailBoat_Hydra or _G.WardenBoss or _G.AutoFactory or _G.HighestMirage or _G.HCM or _G.PGB or _G.Leviathan1 or _G.UPGDrago or _G.Complete_Trials or _G.TpDrago_Prehis or _G.BuyDrago or __DIO_BuyFlying or _G.BuyMelee_BuyBlackLeg or _G.BuyMelee_BuyElectro or _G.BuyMelee_BuyFishmanKarate or _G.BuyMelee_BuyDragonClaw or _G.AutoFireFlowers or _G.DT_Uzoth or _G.AutoBerry or _G.Prefully or _G.Prehis_Find or _G.Prehis_Skills or _G.Prehis_DB or _G.Prehis_DE or _G.FarmBlazeEM or _G.Dojoo or _G.CollectPresent or _G.AutoLawKak or _G.TpLab or _G.AutoPhoenixF or _G.AutoFarmChest or _G.AutoHytHallow or _G.LongsWord or _G.BlackSpikey or _G.AutoHolyTorch or _G.TrainDrago  or _G.AutoSaber or _G.FarmMastery_Dev or _G.CitizenQuest or _G.AutoEctoplasm or _G.KeysRen or _G.Auto_Rainbow_Haki or _G.obsFarm or _G.AutoBigmom or _G.Doughv2 or _G.AuraBoss or _G.Raiding or _G.Auto_Cavender or _G.TpPly or _G.Bartilo_Quest or _G.Level or _G.FarmEliteHunt or _G.AutoZou or _G.AutoFarm_Bone or getgenv().AutoMaterial or _G.CraftVM or _G.FrozenTP or _G.ShotHL or _G.TPDoor or _G.AcientOne or _G.AutoFarmNear or _G.AutoRaidCastle or _G.DarkBladev3 or _G.AutoFarmRaid or _G.Auto_Cake_Prince or _G.Addealer or _G.TPNpc or _G.TwinHook or _G.FindMirage or _G.FrozenDimension or _G.FarmChestM or _G.Shark or _G.TerrorShark or _G.Piranha or _G.MobCrew or _G.SeaBeast1 or _G.FishBoat or _G.AutoPole or _G.AutoPoleV2 or _G.Auto_SuperHuman or _G.AutoDeathStep or _G.Auto_SharkMan_Karate or _G.Auto_Electric_Claw or _G.AutoDragonTalon or _G.Auto_Def_DarkCoat or _G.Auto_God_Human or _G.Auto_Tushita or _G.AutoMatSoul or _G.AutoKenVTWO or _G.AutoSerpentBow or _G.AutoFMon or _G.Auto_Soul_Guitar or _G.TPGEAR or _G.AutoSaw or _G.AutoTridentW2 or _G.AutoEvoRace or _G.AutoGetQuestBounty or _G.MarinesCoat or _G.TravelDres or _G.Defeating or _G.DummyMan or _G.Auto_Yama or _G.Auto_SwanGG or _G.SwanCoat or _G.AutoEcBoss or _G.Auto_Mink or _G.Auto_Human or _G.Auto_Skypiea or _G.Auto_Fish or _G.CDK_TS or _G.CDK_YM or _G.CDK or _G.AutoFarmGodChalice or _G.AutoFistDarkness or _G.AutoMiror or _G.Teleport or _G.AutoKilo or _G.AutoGetUsoap or _G.Praying or _G.TryLucky or _G.AutoColShad or _G.AutoUnHaki or _G.Auto_DonAcces or _G.AutoRipIngay or _G.DragoV3 or _G.DragoV1 or _G.SailBoats or NextIs or _G.FarmGodChalice or _G.IceBossRen or senth or senth2 or _G.Lvthan or _G.beasthunter or _G.DangerLV or _G.Relic123 or _G.tweenKitsune or _G.Collect_Ember or _G.AutofindKitIs or _G.snaguine or _G.TwFruits or _G.tweenKitShrine or _G.Tp_LgS or _G.Tp_MasterA or _G.tweenShrine or _G.FarmMastery_G or _G.FarmMastery_S or _G.FarmBoss or _G.AutoFarmAllBoss or _G.AutoFishSlap or _G.FarmTyrant or _G.FarmPhaBinh or _G.AutoSpawnCP or _G.AutoBerryH or _G.AutoChestBP or _G.FarmEliteHop or _G.AutoHop_Dough or _G.AutoDoughKing or _G.AutoAttackDoughKing or _G.AutoChipFruit or _G.AutoChipBeli or _G.Auto_StartRaid or _G.StartEvent or _G.AutoMysticIsland or _G.AutoPlayerHunter or _G.SafeMode or _G.AutoKillMob or _G.AutoStartPrehistoric or _G.AutoUnHaki or _G.AutoFarmIsland or _G.AutoFarmDungeon or _G.AutoFarmCandy or _G.AutoTP_Gift or _G.AutoTPGift or _G.AutoTPAndCollect or _G.MasterAutoLevel or _G.MasterAutoCandy or _G.TPFloor1 or _G.TPFloor2 or _G.TPFloor3 or _G.TPFloor4 or _G.FarmEliteH or _G.Safemode or _G.Greybeard or _G.ResetPH then
+      if __DIO_FarmFlagsOn() then
        shouldTween = true
 
         local __stompHum = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
@@ -2233,10 +2242,13 @@ spawn(function()
         end
         -- FIXED: KHONG tao BodyVelocity(0,0,0) nua. No giu nhan vat dung yen trong khi tween
         -- keo di => vat ly giang co moi frame => "ca giat ca giat". Controller moi tu on dinh.
-        if plr.Character.HumanoidRootPart:FindFirstChild("BodyClip") then plr.Character.HumanoidRootPart:FindFirstChild("BodyClip"):Destroy() end
+        -- V4: guard nil Character/HumanoidRootPart (respawn) de khong error giua chung
+        local __chST = plr.Character
+        local __hrpST = __chST and __chST:FindFirstChild("HumanoidRootPart")
+        if __hrpST and __hrpST:FindFirstChild("BodyClip") then __hrpST:FindFirstChild("BodyClip"):Destroy() end
         if tick() - (__DIO_LastNoclipDecor or 0) < 0.25 then return end
         __DIO_LastNoclipDecor = tick()
-      if not plr.Character:FindFirstChild("highlight") then
+      if __chST and not __chST:FindFirstChild("highlight") then
     local Test = Instance.new("Highlight")
     Test.Name = "highlight"
     Test.Enabled = true
@@ -2244,14 +2256,27 @@ spawn(function()
     Test.OutlineColor = Color3.fromRGB(0,255,120)
     Test.FillTransparency = 0.5
     Test.OutlineTransparency = 0.2
-    Test.Parent = plr.Character
+    Test.Parent = __chST
 end
 
-        for _, no in pairs(plr.Character:GetDescendants()) do if no:IsA("BasePart") and no.CanCollide then no.CanCollide = false end end
+        if __chST then for _, no in pairs(__chST:GetDescendants()) do if no:IsA("BasePart") and no.CanCollide then no.CanCollide = false end end end
       elseif not __DIO_FlyBusy then
         shouldTween = false
-        if plr.Character.HumanoidRootPart:FindFirstChild("BodyClip") then plr.Character.HumanoidRootPart:FindFirstChild("BodyClip"):Destroy() end
-        if plr.Character:FindFirstChild('highlight') then plr.Character:FindFirstChild('highlight'):Destroy() end
+        -- V4 FIX (highlight stuck): guard nil Character/HumanoidRootPart va tach pcall rieng
+        -- de HUY HIGHLIGHT LUON chay du character dang respawn (code cu error o BodyClip
+        -- => highlight + shouldTween bi ket mai sau khi tat toggle).
+        pcall(function()
+            local __chOFF = plr.Character
+            local __hrpOFF = __chOFF and __chOFF:FindFirstChild("HumanoidRootPart")
+            if __hrpOFF and __hrpOFF:FindFirstChild("BodyClip") then __hrpOFF:FindFirstChild("BodyClip"):Destroy() end
+        end)
+        pcall(function()
+            local __chOFF = plr.Character
+            if __chOFF then
+                local __hl = __chOFF:FindFirstChild('highlight')
+                if __hl then __hl:Destroy() end
+            end
+        end)
       end
     end)
       end
@@ -2474,7 +2499,7 @@ QuestB = function()
 				}
 			end
 
-__DIO_BOOT("quests")
+__DIO_BOOT("Load Hub 67%")
 
 local Quests, GuideModule
 do
@@ -2582,7 +2607,7 @@ QuestNeta = function()
         [6] = GetQuestPoint()
     }
 end
-__DIO_BOOT("library")
+__DIO_BOOT("Load Hub 80%")
 
 local redzlib, __DIO_libErr
 for _, __DIO_libURL in ipairs({
@@ -2662,7 +2687,7 @@ local Tabs = {
     Combat = Window:MakeTab({ Title = "PvP", Icon = "" }),
     Misc = Window:MakeTab({ Title = "Misc", Icon = "" })
 }
-__DIO_BOOT("window")
+__DIO_BOOT("Load Hub 99%...")
 
 do
     local function __DIOKey(tabName, name)
@@ -2682,13 +2707,60 @@ do
                 end
                 local origCb = Setting and Setting.Callback
                 local __userTouched = false
+                -- =================================================================
+                -- V4 FIX (toggle tat ma van con _G flag / shouldTween / highlight):
+                -- Wrapper tu "chup anh" cac _G flag duoc bat khi callback(Value=true),
+                -- va khi tat (Value=false): chay callback roi EP TAT het flag cua
+                -- toggle nay (ke ca khi loop bi error/chet giua chung hoac callback
+                -- quen xoa). Neu khong con feature farm nao chay => StopTween +
+                -- huy highlight ngay lap tuc (khong doi stomper).
+                -- =================================================================
+                local __ownedFlags = nil
                 if Setting and origCb then
                     Setting.Callback = function(Value)
                         __userTouched = true
                         if _G.SaveData[key] ~= Value then
                             SetSetting(key, Value)
                         end
-                        pcall(origCb, Value)
+                        if Value == true then
+                            local __before = {}
+                            pcall(function()
+                                for k, v in pairs(_G) do
+                                    if type(v) == "boolean" and v == true then __before[k] = true end
+                                end
+                            end)
+                            pcall(origCb, true)
+                            __ownedFlags = {}
+                            pcall(function()
+                                for k, v in pairs(_G) do
+                                    if type(v) == "boolean" and v == true and __before[k] == nil then
+                                        __ownedFlags[k] = true
+                                    end
+                                end
+                            end)
+                        else
+                            pcall(origCb, false)
+                            if __ownedFlags then
+                                for k in pairs(__ownedFlags) do
+                                    pcall(function()
+                                        if rawget(_G, k) == true then rawset(_G, k, false) end
+                                    end)
+                                end
+                            end
+                            pcall(function()
+                                local __anyOn = (type(__DIO_FarmFlagsOn) == "function") and __DIO_FarmFlagsOn() or false
+                                if not __anyOn and not __DIO_FlyBusy then
+                                    shouldTween = false
+                                    __DIO_TweenTarget = nil
+                                    if type(StopTween) == "function" then pcall(StopTween, false) end
+                                    local __c = plr.Character
+                                    if __c then
+                                        local __hl = __c:FindFirstChild('highlight')
+                                        if __hl then __hl:Destroy() end
+                                    end
+                                end
+                            end)
+                        end
                     end
                 end
                 local ctrl = _AddToggle(self, Setting)
@@ -2696,7 +2768,9 @@ do
                 if saved ~= nil and origCb then
                     task.delay(3, function()
                         if not __userTouched then
-                            pcall(origCb, saved)
+                            -- V4: goi qua wrapped callback de flag-tracking hoat dong ca voi
+                            -- toggle duoc tu khoi phuc tu file settings (khong chi khi bam tay)
+                            pcall(Setting.Callback, saved)
                         end
                     end)
                 end
@@ -2796,11 +2870,191 @@ Tabs.Info:AddDiscordInvite({
 	Members = 3774,
 	Online = 1006,
 })
-__DIO_BOOT("discord")
+__DIO_BOOT("Load Function")
 
 Tabs.Status:AddSection("Status Server")
 
 Tabs.Hop:AddSection("Fps Booster")
+
+-- =====================================================================
+-- V4 FIX LAG: PRESET TOI UU HIEU NANG THEO TUNG LOAI MAY
+--   * Fps 30-60  : an toan cho moi may, giu nguyen hinh anh map
+--   * Fps 30-40: trung binh - bot effect/particle, giam chat luong render
+--   * Fps 40-60 : tat bong, fog, texture/decal, Compatibility rendering
+--   * Delete All (40-45 Fps)   : tat toi da + mo khoa FPS cap (neu executor ho tro)
+-- Chi doi DO HOA phia client => farm/tween/hiệu nang script GIU NGUYEN nhu cu.
+-- =====================================================================
+__DIO_PerfMode = nil
+__DIO_PerfSaved = nil
+
+__DIO_PerfSave = function()
+    if __DIO_PerfSaved then return end
+    local s = {}
+    pcall(function()
+        s.Ambient = Lighting.Ambient
+        s.Brightness = Lighting.Brightness
+        s.ColorShift_Top = Lighting.ColorShift_Top
+        s.ColorShift_Bottom = Lighting.ColorShift_Bottom
+        s.FogEnd = Lighting.FogEnd
+        s.FogStart = Lighting.FogStart
+        s.GlobalShadows = Lighting.GlobalShadows
+        s.Technology = Lighting.Technology
+        s.ClockTime = Lighting.ClockTime
+    end)
+    pcall(function()
+        s.QualityLevel = settings().Rendering.QualityLevel
+    end)
+    pcall(function()
+        local t = workspace.Terrain
+        s.WaterWaveSize = t.WaterWaveSize
+        s.WaterWaveSpeed = t.WaterWaveSpeed
+        s.WaterReflectance = t.WaterReflectance
+    end)
+    pcall(function()
+        s.Effects = {}
+        for _, e in ipairs(Lighting:GetChildren()) do
+            if e:IsA("PostEffect") then
+                s.Effects[e] = e.Enabled
+            end
+        end
+    end)
+    __DIO_PerfSaved = s
+end
+
+__DIO_PerfSetQuality = function(lvl)
+    pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel[lvl] or Enum.QualityLevel.Level10 end)
+end
+
+__DIO_PerfEffects = function(off)
+    pcall(function()
+        for _, e in ipairs(Lighting:GetChildren()) do
+            if e:IsA("PostEffect") and e.Name ~= "__DIO_RTX_CC" then
+                if off then
+                    e.Enabled = false
+                else
+                    pcall(function()
+                        local sv = __DIO_PerfSaved and __DIO_PerfSaved.Effects
+                        e.Enabled = (sv and sv[e] ~= nil) and sv[e] or true
+                    end)
+                end
+            end
+        end
+    end)
+end
+
+__DIO_PerfParticles = function()
+    pcall(function()
+        local scope = workspace.Map or workspace
+        for _, d in ipairs(scope:GetDescendants()) do
+            if d:IsA("ParticleEmitter") or d:IsA("Trail") then
+                pcall(function() d.Enabled = false end)
+            elseif d:IsA("Sparkles") or d:IsA("Smoke") or d:IsA("Fire") then
+                pcall(function() d.Enabled = false end)
+            end
+        end
+    end)
+end
+
+__DIO_PerfMaterials = function()
+    pcall(function()
+        for _, zx in next, workspace:GetDescendants() do
+            if table.find(Past, zx.ClassName) then
+                pcall(function() zx.Material = "Plastic" zx.Reflectance = 0 end)
+            end
+        end
+    end)
+end
+
+__DIO_PerfTextures = function()
+    pcall(function()
+        for _, d in ipairs(workspace:GetDescendants()) do
+            if d:IsA("Decal") or d:IsA("Texture") then
+                pcall(function() d.Transparency = 1 end)
+            end
+        end
+    end)
+end
+
+__DIO_ApplyPerf = function(mode)
+    __DIO_PerfSave()
+    __DIO_PerfMode = mode
+    if mode == "OFF" or mode == nil then
+        local s = __DIO_PerfSaved
+        pcall(function()
+            -- Full Bright dang bat (bright==true) thi giu ambient trang, khong de preset ghi de
+            if bright ~= true then
+                Lighting.Ambient = s.Ambient
+                Lighting.ColorShift_Top = s.ColorShift_Top
+                Lighting.ColorShift_Bottom = s.ColorShift_Bottom
+            end
+            Lighting.Brightness = s.Brightness
+            Lighting.FogEnd = s.FogEnd
+            Lighting.FogStart = s.FogStart
+            Lighting.GlobalShadows = s.GlobalShadows
+            Lighting.Technology = s.Technology
+        end)
+        pcall(function()
+            local t = workspace.Terrain
+            t.WaterWaveSize = s.WaterWaveSize
+            t.WaterWaveSpeed = s.WaterWaveSpeed
+            t.WaterReflectance = s.WaterReflectance
+        end)
+        pcall(function() settings().Rendering.QualityLevel = s.QualityLevel end)
+        __DIO_PerfEffects(false)
+        pcall(function() if setfpscap then setfpscap(60) end end)
+        return
+    end
+
+    -- ===== Fps 30-60 =====
+    pcall(function()
+        Lighting.GlobalShadows = false
+        Lighting.FogEnd = 9e9
+        Lighting.FogStart = 0
+    end)
+    pcall(function()
+        local t = workspace.Terrain
+        t.WaterWaveSize = 0
+        t.WaterWaveSpeed = 0
+        t.WaterReflectance = 0
+    end)
+    __DIO_PerfEffects(true)
+
+    if mode == "Fps 30-40" or mode == "Fps 40-60" or mode == "Delete All (40-45 Fps) " then
+        __DIO_PerfSetQuality("Level08")
+        task.spawn(__DIO_PerfParticles)
+        task.spawn(__DIO_PerfMaterials)
+    end
+
+    if mode == "Fps 40-60" or mode == "Delete All (40-45 Fps) " then
+        __DIO_PerfSetQuality("Level04")
+        pcall(function() Lighting.Technology = Enum.Technology.Compatibility end)
+        task.spawn(__DIO_PerfTextures)
+        pcall(function()
+            for _, d in ipairs(workspace:GetDescendants()) do
+                if d:IsA("ParticleEmitter") then
+                    pcall(function() d.Lifetime = NumberRange.new(0) end)
+                elseif d:IsA("Explosion") then
+                    pcall(function() d.BlastPressure = 1 d.BlastRadius = 1 end)
+                end
+            end
+        end)
+    end
+
+    if mode == "Delete All (40-45 Fps) " then
+        __DIO_PerfSetQuality("Level01")
+        pcall(function() if setfpscap then setfpscap(999) end end)
+    end
+end
+
+Tabs.Hop:AddDropdown({
+    Name = "FIX LAG ",
+    Description = "Note that these are fixed parameters that may change",
+    Options = {"OFF", "Fps 30-60", "Fps 30-40", "Fps 40-60", "Delete All (40-45 Fps) "},
+    Default = "OFF",
+    Callback = function(Value)
+        __DIO_ApplyPerf(Value)
+    end
+})
 
 local TimeZone = Tabs.Status:AddParagraph("Time Zone", "")
 
@@ -2839,7 +3093,7 @@ spawn(function()
     end
 end)
 
-local GameTime = Tabs.Status:AddParagraph("Game Time", "")
+local GameTime = Tabs.Status:AddParagraph("Server Time", "")
 
 function UpdateGameTime()
     local GameTimeValue = math.floor(workspace.DistributedGameTime + 0.5)
@@ -3758,51 +4012,94 @@ spawn(function()
     end
 end)
 
+-- =====================================================================
+-- V4 FARM BERRY (dung chung cho Auto Farm Berry + Auto Farm Berry + Hop)
+-- BUG CU:
+--   1) _tp(Bush.Parent:GetPivot()) => Bush.Parent = Workspace => pivot (0,0,0)
+--      => nguoi bi keo ve toa do goc (roi xuong void), khong phai bui berry.
+--   2) BerryChild.WorldPivot => WorldPivot chi co o Model; child la Part => nil
+--      => _tp(nil) error => LOOP CHET => toggle bat chi con highlight xanh, khong farm.
+--   3) fireproximityprompt(BerryChild.ProximityPrompt) => prompt nil => error => chet loop.
+--   4) Khong pcall => 1 error duy nhat giet ca loop vinh vien.
+-- BAN MOI: chon bui berry GAN NHAT con prompt -> _tp 1 muc tieu duy nhat (muot,
+-- khong spam _tp moi 0.25s), fire prompt an toan, pcall toan bo.
+-- =====================================================================
+__DIO_GetInstCF = function(inst)
+    if not inst then return nil end
+    if inst:IsA("Model") then
+        local ok, pv = pcall(function() return inst:GetPivot() end)
+        if ok then return pv end
+    end
+    if inst:IsA("BasePart") then
+        local ok, cf = pcall(function() return inst.CFrame end)
+        if ok then return cf end
+    end
+    return nil
+end
+
+__DIO_BerryBushPass = function(Bush)
+    if not BerryArray then return true end
+    for _, BerryName in pairs(Bush:GetAttributes()) do
+        if table.find(BerryArray, BerryName) then return true end
+    end
+    for _, ch in ipairs(Bush:GetChildren()) do
+        if table.find(BerryArray, ch.Name) then return true end
+    end
+    return false
+end
+
+-- tra ve so bui berry thay duoc (0 => khong co bui nao => co the hop)
+__DIO_FarmBerryStep = function()
+    local BerryBush = __SVC_CS:GetTagged("BerryBush")
+    local hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+    local myPos = hrp and hrp.Position
+    local bestCF, bestPrompt, bestDist = nil, nil, math.huge
+    for i = 1, #BerryBush do
+        local Bush = BerryBush[i]
+        if __DIO_BerryBushPass(Bush) then
+            for _, BerryChild in ipairs(Bush:GetChildren()) do
+                local pp = BerryChild:FindFirstChildOfClass("ProximityPrompt")
+                if pp then
+                    local cf = __DIO_GetInstCF(BerryChild)
+                    if cf then
+                        local d = myPos and (cf.Position - myPos).Magnitude or 0
+                        if d < bestDist then
+                            bestDist = d bestCF = cf bestPrompt = pp
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if bestCF and bestPrompt then
+        _tp(bestCF)
+        pcall(fireproximityprompt, bestPrompt, math.huge)
+    end
+    return #BerryBush
+end
+
+__DIO_BerryHopT = 0
 spawn(function()
     while __DIO_wait(Sec) do
         if _G.AutoBerryH then
-            local CollectionService = __SVC_CS
-            local Players = __SVC_PLR
-            local Player = Players.LocalPlayer
-            local BerryBush = CollectionService:GetTagged("BerryBush")
-
-            if #BerryBush == 0 then
-                local TeleportService = __SVC_TP
-                local ServerList = {}
-
-                local Success, Error = pcall(function()
-                    ServerList = __SVC_HTTP:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"))
-                end)
-
-                if Success and ServerList.data then
-                    for _, Server in pairs(ServerList.data) do
-                        if Server.playing < Server.maxPlayers and Server.id ~= game.JobId then
-                            TeleportService:TeleportToPlaceInstance(game.PlaceId, Server.id, Player)
-                            break
-                        end
-                    end
-                end
-            else
-                for i = 1, #BerryBush do
-                    local Bush = BerryBush[i]
-
-                    for AttributeName, BerryName in pairs(Bush:GetAttributes()) do
-                        if not BerryArray or table.find(BerryArray, BerryName) then
-                            _tp(Bush.Parent:GetPivot())
-
-                            for j = 1, #BerryBush do
-                                local Bush2 = BerryBush[j]
-
-                                for _, BerryChild in pairs(Bush2:GetChildren()) do
-                                    if not BerryArray or table.find(BerryArray, BerryChild.Name) then
-                                        _tp(BerryChild.WorldPivot)
-                                        fireproximityprompt(BerryChild.ProximityPrompt, math.huge)
-                                    end
-                                end
+            local __ok, __n = pcall(__DIO_FarmBerryStep)
+            if __ok and __n == 0 and tick() - __DIO_BerryHopT > 6 then
+                -- khong co bui berry nao trong server => hop (cooldown 6s chong spam hop)
+                __DIO_BerryHopT = tick()
+                pcall(function()
+                    local ServerList = {}
+                    local Success = pcall(function()
+                        ServerList = __SVC_HTTP:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"))
+                    end)
+                    if Success and ServerList.data then
+                        for _, Server in pairs(ServerList.data) do
+                            if Server.playing < Server.maxPlayers and Server.id ~= game.JobId then
+                                __SVC_TP:TeleportToPlaceInstance(game.PlaceId, Server.id, __SVC_PLR.LocalPlayer)
+                                break
                             end
                         end
                     end
-                end
+                end)
             end
         end
     end
@@ -5163,7 +5460,7 @@ task.spawn(function()
     end
 end)
 
-__DIO_BOOT("farming / mastery")
+__DIO_BOOT("Load Services")
 Tabs.Main:AddSection("Farming Mastery")
 
 Tabs.Main:AddSlider({
@@ -5954,7 +6251,7 @@ spawn(function()
   end
 end)
 
-__DIO_BOOT("fish")
+__DIO_BOOT("Load Tabs")
 Tabs.Fish:AddSection("Fishing")
 
 Tabs.Fish:AddDropdown({
@@ -7546,16 +7843,17 @@ Callback = function(Value)
   _G.IceBossRen = Value
 end})
 spawn(function()
-  pcall(function()
-    while __DIO_wait(1) do
+  while __DIO_wait(1) do
+    -- V4: pcall BEN TRONG while (code cu: error 1 lan => loop chet vinh vien => toggle chi con highlight)
+    pcall(function()
       if _G.IceBossRen then
         local v = GetConnectionEnemies("Awakened Ice Admiral")
         if v then repeat __DIO_wait(Sec) Attack.Kill(v,_G.IceBossRen)until _G.IceBossRen == false or not v.Parent or v.Humanoid.Health <= 0
         else __DIO_FlyTo(CFrame.new(5668.9780273438, 28.519989013672, -6483.3520507813), 10)
         end
       end
-    end
-  end)
+    end)
+  end
 end)
 Q = Tabs.Quests:AddToggle({
 Name = "Auto Key Rengoku",
@@ -7851,12 +8149,15 @@ Callback = function(Value)
 end})
 spawn(function()
   while __DIO_wait(Sec) do
+    -- V4: them pcall (loop tran: error 1 lan => chet vinh vien => toggle chi con highlight)
+    pcall(function()
     if _G.AutoSerpentBow then
       local v = GetConnectionEnemies("Hydra Leader")
       if v then	repeat __DIO_wait(0.25) Attack.Kill(v,_G.AutoSerpentBow)until not _G.AutoSerpentBow or not v.Parent or v.Humanoid.Health <= 0
 	  else _tp(CFrame.new(5821.89794921875, 1019.0950927734375, -73.71923065185547))
       end
     end
+    end)
   end
 end)
 Q = Tabs.Quests:AddToggle({
@@ -7887,31 +8188,11 @@ Default = false,
 Callback = function(Value)
   _G.AutoBerry = Value
 end})
+-- V4: dung __DIO_FarmBerryStep (xem phan Auto Farm Berry + Hop) + pcall chong chet loop
 spawn(function()
   while __DIO_wait(Sec) do
     if _G.AutoBerry then
-      local CollectionService= __SVC_CS
-      local Players= __SVC_PLR
-      local Player = Players.LocalPlayer
-      local BerryBush = CollectionService:GetTagged("BerryBush")
-      local Distance, Nearest = math.huge
-      for i = 1, #BerryBush do
-        local Bush = BerryBush[i]
-        for AttributeName, BerryName in pairs(Bush:GetAttributes()) do
-          if not BerryArray or table.find(BerryArray, BerryName) then
-            _tp(Bush.Parent:GetPivot())
-            for i = 1, #BerryBush do
-            local Bush = BerryBush[i]
-              for AttributeName, BerryName in pairs(Bush:GetChildren()) do
-                if not BerryArray or table.find(BerryArray, BerryName) then
-                  _tp(BerryName.WorldPivot)
-                  fireproximityprompt(BerryName.ProximityPrompt,math.huge)
-                end
-              end
-            end
-          end
-        end
-      end
+      pcall(__DIO_FarmBerryStep)
     end
   end
 end)
@@ -7956,7 +8237,10 @@ Callback = function(Value)
   _G.Auto_Rainbow_Haki = Value
 end})
 spawn(function()
-  pcall(function()
+  -- V4: loop duoc boc restart-wrapper: pcall cu nam NGOAI while => 1 error giet loop
+  -- vinh vien (toggle bat ma chi con highlight, khong lam gi). Gio chet => tu khoi dong lai.
+  while true do
+  local __okRB, __errRB = pcall(function()
     while __DIO_wait(Sec) do
       if _G.Auto_Rainbow_Haki then
         local __qH = __DIO_GetCurrentQuest()
@@ -8021,6 +8305,9 @@ spawn(function()
       end
     end
   end)
+  if not __okRB then warn("[DIO] Auto_Rainbow_Haki loop died -> restart: " .. tostring(__errRB)) end
+  task.wait(0.5)
+  end
 end)
 Q = Tabs.Quests:AddToggle({
 Name = "Accept Rainbow Quest Faster",
@@ -8954,17 +9241,21 @@ Callback = function(Value)
   _G.TPGEAR = Value
 end})
 spawn(function()
-  pcall(function()
-    while __DIO_wait(1) do
+  while __DIO_wait(1) do
+    -- V4: pcall BEN TRONG while + guard MysticIsland nil (khong co dao => error => loop chet)
+    pcall(function()
       if _G.TPGEAR then
-        for i,v in pairs(workspace.Map:FindFirstChild('MysticIsland'):GetChildren()) do
-          if v.Name == "Part" then
-            if v.ClassName == "MeshPart" then _tp(v.CFrame) end
+        local __mi = workspace.Map:FindFirstChild('MysticIsland')
+        if __mi then
+          for i,v in pairs(__mi:GetChildren()) do
+            if v.Name == "Part" then
+              if v.ClassName == "MeshPart" then _tp(v.CFrame) end
+            end
           end
         end
       end
-    end
-  end)
+    end)
+  end
 end)
 Tabs.Race:AddToggle({
 Name = "Change Transparency can see",
@@ -8974,21 +9265,25 @@ Callback = function(Value)
   _G.can = Value
 end})
 spawn(function()
-  pcall(function()
-    while __DIO_wait(Sec) do
+  while __DIO_wait(Sec) do
+    -- V4: pcall BEN TRONG while + guard MysticIsland nil (loop cu chet vinh vien khi chua co dao)
+    pcall(function()
       if _G.can then
-        for i,v in pairs(workspace.Map:FindFirstChild('MysticIsland'):GetChildren()) do
-          if v.Name == "Part" then
-            if v.ClassName == "MeshPart" then
-              v.Transparency = 0
-            else
-              v.Transparency = 1
+        local __mi = workspace.Map:FindFirstChild('MysticIsland')
+        if __mi then
+          for i,v in pairs(__mi:GetChildren()) do
+            if v.Name == "Part" then
+              if v.ClassName == "MeshPart" then
+                v.Transparency = 0
+              else
+                v.Transparency = 1
+              end
             end
           end
         end
       end
-    end
-  end)
+    end)
+  end
 end)
 Tabs.Race:AddToggle({
 Name = "Auto Tween Advanced Fruit Dealer",
@@ -9772,6 +10067,8 @@ Callback = function(Value)
 end})
 spawn(function()
   while __DIO_wait(Sec) do
+    -- V4: them pcall (loop tran: character respawn/HumanoidRootPart nil => error => loop chet)
+    pcall(function()
     if _G.AutoFireFlowers then
       local FireFlower = workspace:FindFirstChild("FireFlowers")
       local v = GetConnectionEnemies("Forest Pirate")
@@ -9793,6 +10090,7 @@ spawn(function()
         end
       end
     end
+    end)
   end
 end)
 Toggle = Tabs.Prehistoric:AddToggle({
@@ -9885,10 +10183,14 @@ Callback = function(Value)
 end})
 spawn(function()
   while __DIO_wait(Sec) do
+    -- V4: them pcall (PrehistoricIsland chua ton tai => index nil => loop chet vinh vien)
+    pcall(function()
     if _G.TpDrago_Prehis then
-      local v748 = workspace.Map.PrehistoricIsland:FindFirstChild("TrialTeleport");
+      local __pi = workspace.Map:FindFirstChild("PrehistoricIsland")
+      local v748 = __pi and __pi:FindFirstChild("TrialTeleport");
       if (v748 and v748:IsA("Part")) then _tp(CFrame.new(v748.Position)) end
     end
+    end)
   end
 end)
 bdrago = Tabs.Prehistoric:AddToggle({
@@ -12752,9 +13054,9 @@ task.spawn(function()
         end
     end
 end)
-__DIO_BOOT("tabs-2/3")
+__DIO_BOOT("Load Comples")
 
-__DIO_BOOT("pvp/combat")
+__DIO_BOOT("Now Booster")
 Tabs.Combat:AddSection("Combat / AimBot")
 
 local PlrList = {}
@@ -12931,6 +13233,8 @@ end)
 
 spawn(function()
     while __DIO_wait(1) do
+        -- V4: them pcall (target.HumanoidRootPart nil khi target chet/respawn => error => loop chet)
+        pcall(function()
         if _G.AutoPlayerHunter then
             local __qP = __DIO_GetCurrentQuest()
             if not __qP.IsActive then
@@ -12960,6 +13264,7 @@ spawn(function()
                 end
             end
         end
+        end)
     end
 end)
 
@@ -12979,9 +13284,11 @@ Tabs.Combat:AddToggle({
 
 spawn(function()
     while __DIO_wait(1) do
+        -- V4: them pcall (playerGui.Main index nil => error => loop chet vinh vien)
+        pcall(function()
         if _G.AutoPvP then
             local playerGui = game.Players.LocalPlayer.PlayerGui
-            if playerGui and playerGui.Main and playerGui.Main:FindFirstChild("PvpDisabled") then
+            if playerGui and playerGui:FindFirstChild("Main") and playerGui.Main:FindFirstChild("PvpDisabled") then
                 if playerGui.Main.PvpDisabled.Visible then
                     pcall(function()
                         __SVC_RS.Remotes.CommF_:InvokeServer("EnablePvp")
@@ -12989,6 +13296,7 @@ spawn(function()
                 end
             end
         end
+        end)
     end
 end)
 
@@ -13007,6 +13315,8 @@ Tabs.Combat:AddToggle({
 
 spawn(function()
     while __DIO_wait(1) do
+        -- V4: them pcall cho an toan (loop nay lien quan shouldTween/debounce)
+        pcall(function()
         if _G.SafeMode then
             local char = game.Players.LocalPlayer.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -13016,6 +13326,7 @@ spawn(function()
                 _tp(targetPos)
             end
         end
+        end)
     end
 end)
 
@@ -13575,21 +13886,26 @@ __DIO_FlyTo = function(targetCF, arriveDist, cancelFn)
     local __spd = math.max(tonumber(_G.TweenSpeed) or 300, 1)
     local __timeout = math.min(math.max((targetCF.Position - __h.Position).Magnitude / __spd + 25, 15), 300)
     local __ok = false
-    while tick() - __t0 < __timeout do
-        if cancelFn and cancelFn() then break end
-        local c2 = plr.Character
-        local h2 = c2 and c2:FindFirstChild("HumanoidRootPart")
-        if not h2 then break end
-        if (h2.Position - targetCF.Position).Magnitude <= arriveDist then
-            __ok = true
-            break
+    -- V4: pcall de __DIO_FlyBusy LUON duoc reset (neu error giua chung ma FlyBusy ket
+    -- true => stomper khong bao gio huy highlight/shouldTween sau khi tat toggle)
+    local __okFly, __errFly = pcall(function()
+        while tick() - __t0 < __timeout do
+            if cancelFn and cancelFn() then break end
+            local c2 = plr.Character
+            local h2 = c2 and c2:FindFirstChild("HumanoidRootPart")
+            if not h2 then break end
+            if (h2.Position - targetCF.Position).Magnitude <= arriveDist then
+                __ok = true
+                break
+            end
+            shouldTween = true
+            _tp(targetCF)
+            __DIO_wait(0.25)
         end
-        shouldTween = true
-        _tp(targetCF)
-        __DIO_wait(0.25)
-    end
+    end)
     __DIO_FlyBusy = false
     shouldTween = __old
+    if not __okFly then warn("[DIO] FlyTo error: " .. tostring(__errFly)) end
     return __ok
 end
 
@@ -14560,6 +14876,8 @@ Callback = function(Value)
 end})
 task.spawn(function()
   while __DIO_wait(1) do
+    -- V4: them pcall
+    pcall(function()
     if _G.daylightN then
       if _G.SelectDN == "Day" then
         Lighting.ClockTime = 12
@@ -14567,6 +14885,7 @@ task.spawn(function()
         Lighting.ClockTime = 0
       end
     end
+    end)
   end
 end)
 walkWater = Tabs.Misc:AddToggle({
@@ -14661,7 +14980,7 @@ task.spawn(function()
 end)
 FastAttackModule = FastAttackModule or {}
 
-__DIO_BOOT("fastattack")
+__DIO_BOOT("Fast Attack Module Last")
 
 FastAttackModule.Rate = FastAttackModule.Rate or 0.03
 FastAttackModule.Enabled = true
@@ -14835,7 +15154,7 @@ Window:Notify({
    Duration = 7
 })
 
-__DIO_BOOT("READY")
+__DIO_BOOT("DIO HUB READY NOW")
 
 end
 
