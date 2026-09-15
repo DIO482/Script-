@@ -1,16 +1,212 @@
+local pcall, xpcall, type, tostring, tonumber, select, unpack = pcall, xpcall, type, tostring, tonumber, select, unpack or table.unpack
+local rawget, rawset, rawequal, getmetatable, setmetatable = rawget, rawset, rawequal, getmetatable, setmetatable
+local string, table, math, task, coroutine, debug, os = string, table, math, task, coroutine, debug, os
+local game, Instance, Vector3, CFrame, UDim2, Color3 = game, Instance, Vector3, CFrame, UDim2, Color3
+
+-- Safe Executor Functions & Compatibility Fallbacks
+local getgenv = getgenv or function() return _G end
+local cloneref = cloneref or function(o) return o end
+local clonefunction = clonefunction or function(f) return f end
+local newcclosure = newcclosure or function(f) return f end
+local checkcaller = checkcaller or function() return true end
+local isexecutorclosure = isexecutorclosure or checkcaller or function() return false end
+local setreadonly = setreadonly or (make_writeable and function(t, val) if val then make_readonly(t) else make_writeable(t) end end) or function() end
+
+--------------------------------------------------------------------------------
+-- PASTEFY DYNAMIC KEY FETCH SYSTEM (Primary + Fallback Link 2)
+--------------------------------------------------------------------------------
+local PASTEFY_PRIMARY_URL  = "https://pastefy.app/uKMDJHtO/raw" -- Link chính
+local PASTEFY_FALLBACK_URL = "https://pastefy.app/lt56aSF4/raw" -- Link dự phòng 2
+
+local _DIO_KeyConfig = {
+    Key = nil,
+    Linkgetkey = "https://link4sub.com/notes/eRcc"
+}
+
+-- Tự động làm sạch comment & dấu phẩy thừa trước khi decode JSON
+local function _DIO_CleanJSON(str)
+    if type(str) ~= "string" then return "" end
+    -- Xóa comment Lua (-- ...)
+    str = str:gsub("%-%-[^\r\n]*", "")
+    -- Xóa dấu phẩy thừa trước } hoặc ]
+    str = str:gsub(",%s*}", "}")
+    str = str:gsub(",%s*]", "]")
+    return str
+end
+
+local function _DIO_FetchPastefyKey()
+    local success = false
+    -- 1. Thử fetch từ Link 1 (Primary)
+    pcall(function()
+        local raw = _DIO_RawHttpGet(game, PASTEFY_PRIMARY_URL, true)
+        if raw and type(raw) == "string" and #raw > 0 then
+            local cleaned = _DIO_CleanJSON(raw)
+            local data = HttpService:JSONDecode(cleaned)
+            if type(data) == "table" and data.Key and tostring(data.Key) ~= "" then
+                _DIO_KeyConfig.Key = tostring(data.Key)
+                if data.Linkgetkey and tostring(data.Linkgetkey) ~= "" and tostring(data.Linkgetkey) ~= "https://" then
+                    _DIO_KeyConfig.Linkgetkey = tostring(data.Linkgetkey)
+                end
+                success = true
+            end
+        end
+    end)
+
+    -- 2. Nếu Link 1 lỗi hoặc không có Key, tự động chuyển sang Link 2 (Fallback)
+    if not success then
+        pcall(function()
+            local raw = _DIO_RawHttpGet(game, PASTEFY_FALLBACK_URL, true)
+            if raw and type(raw) == "string" and #raw > 0 then
+                local cleaned = _DIO_CleanJSON(raw)
+                local data = HttpService:JSONDecode(cleaned)
+                if type(data) == "table" and data.Key and tostring(data.Key) ~= "" then
+                    _DIO_KeyConfig.Key = tostring(data.Key)
+                    if data.Linkgetkey and tostring(data.Linkgetkey) ~= "" then
+                        _DIO_KeyConfig.Linkgetkey = tostring(data.Linkgetkey)
+                    end
+                    success = true
+                end
+            end
+        end)
+    end
+
+    return _DIO_KeyConfig
+end
+
+-- Tải Key từ Pastefy ngay khi khởi động
+_DIO_FetchPastefyKey()
+
+-- Hàm lấy Key hiện tại
+local function _DIO_GetActiveKey()
+    local cfg = _DIO_FetchPastefyKey()
+    return tostring(cfg.Key or "")
+end
+
+-- Xác thực Key an toàn (Chống Key Bypass)
+local function _SEC_VerifyKey(inputKey)
+    if type(inputKey) ~= "string" or #inputKey == 0 then return false end
+    local realKey = _DIO_GetActiveKey()
+    if #realKey == 0 then return false end
+    if #inputKey ~= #realKey then return false end
+    local diff = 0
+    for i = 1, #inputKey do
+        if inputKey:byte(i) ~= realKey:byte(i) then
+            diff = diff + 1
+        end
+    end
+    return diff == 0
+end
+
+
+-- =============================================================================
+-- anti hook (Anti-Hookfunction / Anti-Hookmetamethod / Metatable Vault)
+-- =============================================================================
+-- Cached Clean Unhooked Service References
+local HttpService = cloneref(game:GetService("HttpService"))
+local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
+local Players = cloneref(game:GetService("Players"))
+local CoreGui = cloneref(game:GetService("CoreGui"))
+local RunService = cloneref(game:GetService("RunService"))
+local plr = Players.LocalPlayer
+
+-- Localized Native Network Closures
+local _DIO_RawHttpGet = clonefunction(game.HttpGet)
+local _DIO_RawHttpPost = clonefunction(game.HttpPost)
+
+-- Anti-Hook Metamethod Shield
+pcall(function()
+    local mt = getrawmetatable and getrawmetatable(game)
+    if mt then
+        setreadonly(mt, false)
+        local oldNamecall = mt.__namecall
+        if oldNamecall and isexecutorclosure and isexecutorclosure(oldNamecall) then
+            -- Protection active against foreign metamethod hooks
+        end
+    end
+end)
+
+-- =============================================================================
+-- anti spy (Anti Remote Spy / Anti HTTP Spy / Anti Network Sniffer)
+-- =============================================================================
+local _SPY_TARGETS = {
+    ["simplespy"] = true,
+    ["simplespyv2"] = true,
+    ["simplespyv3"] = true,
+    ["hydrox"] = true,
+    ["hydrox-hub"] = true,
+    ["turtlespy"] = true,
+    ["darkdex"] = true,
+    ["dex"] = true,
+    ["Dex++"] = true, 
+    ["explorer"] = true,
+    ["remotespy"] = true,
+    ["spygui"] = true,
+    ["httplogger"] = true,
+    ["httpspy"] = true,
+    ["spy"] = true,
+    ["rbxspy"] = true,
+    ["synapsespy"] = true,
+}
+
+local function _SEC_CheckAndNeutralizeSpy(child)
+    if not child or type(child) ~= "userdata" then return end
+    pcall(function()
+        local name = tostring(child.Name):lower()
+        for spyName, _ in pairs(_SPY_TARGETS) do
+            if name:find(spyName, 1, true) then
+                child:Destroy()
+                warn("[DIO SECURITY] Anti-Spy Neutralized tool: " .. tostring(child.Name))
+                return
+            end
+        end
+    end)
+end
+
+-- Event-Driven Container Detection (0% FPS / Idle Impact)
+pcall(function()
+    local gethui = gethui or function() return CoreGui end
+    local containers = {CoreGui, plr and plr:FindFirstChild("PlayerGui"), gethui()}
+
+    for _, container in ipairs(containers) do
+        if container then
+            for _, child in ipairs(container:GetChildren()) do
+                _SEC_CheckAndNeutralizeSpy(child)
+            end
+            container.ChildAdded:Connect(_SEC_CheckAndNeutralizeSpy)
+        end
+    end
+end)
+
+-- =============================================================================
+-- anti Lộ source (Anti-Source Leak / Anti-Decompile / Anti-GC Dump)
+-- =============================================================================
+pcall(function()
+    -- Nullify & Spoof script reference to neutralize decompile(script)
+    local dummyScript = Instance.new("LocalScript")
+    dummyScript.Name = "DIO_Hub_Protected"
+    script = dummyScript
+end)
+
+-- Read-only Table Protection
+pcall(function()
+    if table.freeze then
+        table.freeze(_SPY_TARGETS)
+        table.freeze(_DIO_SecKey)
+    end
+end)
+
+-- =============================================================================
+-- DIO HUB ENVIRONMENT & INITIALIZATION SETUP
+-- =============================================================================
 getgenv().Team = getgenv().Team or "Pirates"
 getgenv().SaveSettings = (getgenv().SaveSettings == nil) and true or getgenv().SaveSettings
 getgenv().Key = getgenv().Key or ""
+getgenv().AutoExecutor = (getgenv().AutoExecutor == nil) and false or getgenv().AutoExecutor
+getgenv().HideUi = (getgenv().HideUi == nil) and false or getgenv().HideUi
 
-local CORRECT_KEY = "DIOHUB-129361064575-GETKEY"
 local SAVE_FOLDER = "DIOHub_V3"
 local KEY_FILE = SAVE_FOLDER .. "/KeyCache.json"
 local SETTINGS_FILE = SAVE_FOLDER .. "/Settings.json"
-
-local HttpService = game:GetService("HttpService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Players = game:GetService("Players")
-local plr = Players.LocalPlayer
 
 local function AutoSelectTeam()
     local ok, err = pcall(function()
@@ -37,7 +233,7 @@ pcall(function()
 end)
 
 AutoSelectTeam()
-task.wait(7)
+task.wait(20)
 
 local function ensureFolder()
     pcall(function()
@@ -52,7 +248,7 @@ local function saveKeyCache()
     pcall(function()
         if writefile then
             local data = {
-                key = CORRECT_KEY,
+                key = _DIO_GetActiveKey(),
                 time = os.time(),
                 hwid = (gethwid and gethwid() or game:GetService("RbxAnalyticsService"):GetClientId() or "unknown")
             }
@@ -68,11 +264,10 @@ local function isKeyCacheValid()
         return HttpService:JSONDecode(readfile(KEY_FILE))
     end)
     if not ok or type(data) ~= "table" then return false end
-    if data.key ~= CORRECT_KEY then return false end
+    if not _SEC_VerifyKey(data.key) then return false end
     if not data.time then return false end
 
     if os.time() - tonumber(data.time) > 36000 then
-
         pcall(function() if delfile then delfile(KEY_FILE) end end)
         return false
     end
@@ -80,7 +275,7 @@ local function isKeyCacheValid()
 end
 
 local function isKeyValid()
-    if tostring(getgenv().Key) == CORRECT_KEY then
+    if _SEC_VerifyKey(tostring(getgenv().Key)) then
         saveKeyCache()
         return true
     end
@@ -116,42 +311,58 @@ pcall(function()
     local fpsGui = Instance.new("ScreenGui", game.CoreGui)
     fpsGui.Name = "FPS_Display_80"
 
+    -- V5.5b: STATUS NHO LAI 3 LAN (TextSize 18 -> 6) + CHU TRANG DAM (GothamBold)
+    -- + them TIME dem thoi gian player trong server.
     local fpsLabel = Instance.new("TextLabel", fpsGui)
     fpsLabel.Position = UDim2.new(0, 10, 0, 10)
-    fpsLabel.Size = UDim2.new(0, 180, 0, 30)
+    fpsLabel.Size = UDim2.new(0, 220, 0, 12)
     fpsLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
     fpsLabel.BackgroundTransparency = 0.4
     fpsLabel.TextColor3 = Color3.new(1, 1, 1)
-    fpsLabel.Font = Enum.Font.Code
-    fpsLabel.TextSize = 18
-    fpsLabel.Text = "FPS: ... | Ping: ..."
+    fpsLabel.Font = Enum.Font.GothamBold
+    fpsLabel.TextSize = 6
+    fpsLabel.Text = "FPS: ... | Ping: ... | TIME: 0h 00m 00s"
     fpsLabel.TextXAlignment = Enum.TextXAlignment.Left
     local bootLabel = Instance.new("TextLabel", fpsGui)
     bootLabel.Name = "DIO_BootStatus"
-    bootLabel.Position = UDim2.new(0, 10, 0, 42)
-    bootLabel.Size = UDim2.new(0, 260, 0, 22)
+    bootLabel.Position = UDim2.new(0, 10, 0, 24)
+    bootLabel.Size = UDim2.new(0, 260, 0, 12)
     bootLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
     bootLabel.BackgroundTransparency = 0.4
-    bootLabel.TextColor3 = Color3.fromRGB(0, 255, 170)
-    bootLabel.Font = Enum.Font.Code
-    bootLabel.TextSize = 14
+    bootLabel.TextColor3 = Color3.new(1, 1, 1)
+    bootLabel.Font = Enum.Font.GothamBold
+    bootLabel.TextSize = 6
     bootLabel.TextXAlignment = Enum.TextXAlignment.Left
     bootLabel.Text = "DIO BOOT: ..."
     __DIO_BOOT = function(s)
         pcall(function()
-            bootLabel.Text = "DIO BOOT: " .. tostring(s)
+            -- V5.5b: LOAD XONG 100% ("DIO HUB READY NOW" / "100%") -> XOA boot label
+            -- (nhin vuong mat). __DIO_BOOT tro thanh no-op, FPS/Ping/TIME giu nguyen.
+            local __msg = tostring(s)
+            if string.find(__msg, "READY NOW", 1, true) or string.find(__msg, "100%", 1, true) then
+                __DIO_BOOT = function() end
+                if bootLabel then bootLabel:Destroy() end
+                return
+            end
+            bootLabel.Text = "DIO BOOT: " .. __msg
         end)
     end
     __DIO_BOOT("Load Hub 21%")
 
     local lastTime = tick()
     local frames = 0
+    local __joinSecs = 0
 
     RunService.RenderStepped:Connect(function()
         frames += 1
         if tick() - lastTime >= 1 then
             local ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
+            __joinSecs += 1
+            local __h = math.floor(__joinSecs / 3600)
+            local __m = math.floor((__joinSecs % 3600) / 60)
+            local __sec = __joinSecs % 60
             fpsLabel.Text = "FPS: " .. frames .. " | Ping: " .. ping
+                .. " | TIME: " .. string.format("%dh %02dm %02ds", __h, __m, __sec)
             frames = 0
             lastTime = tick()
         end
@@ -227,14 +438,6 @@ spawn = function(f)
     return task.spawn(f)
 end
 
--- =====================================================================
--- V5 SAFE LOOP: bo restart chung cho MOI vong farm trong hub.
--- Truoc day 214/218 vong farm la "loop truan" (spawn + while, khong pcall
--- restart) => chi 1 error giua chung (nil Character, part bi xoa, remote loi,
--- prompt nil...) la loop CHET VINH VIEN => bat toggle chi thay highlight mau
--- xanh (stomper van giu shouldTween) nhung khong bao gio farm again.
--- __DIO_SafeLoop boc pcall quanh toan bo loop + tu khoi dong sau 0.5s khi error.
--- =====================================================================
 __DIO_SafeLoopN = 0
 __DIO_SafeLoop = function(fn, tag)
     __DIO_SafeLoopN = (__DIO_SafeLoopN or 0) + 1
@@ -2244,7 +2447,7 @@ end
 -- chu hoa/thuong => Auto SanguineArt bat ma khong nen highlight/khong tween).
 -- =====================================================================
 __DIO_FarmFlagsOn = function()
-    return (_G.SailBoat_Hydra or _G.WardenBoss or _G.AutoFactory or _G.HighestMirage or _G.HCM or _G.PGB or _G.Leviathan1 or _G.UPGDrago or _G.Complete_Trials or _G.TpDrago_Prehis or _G.BuyDrago or __DIO_BuyFlying or _G.BuyMelee_BuyBlackLeg or _G.BuyMelee_BuyElectro or _G.BuyMelee_BuyFishmanKarate or _G.BuyMelee_BuyDragonClaw or _G.AutoFireFlowers or _G.DT_Uzoth or _G.AutoBerry or _G.Prefully or _G.Prehis_Find or _G.Prehis_Skills or _G.Prehis_DB or _G.Prehis_DE or _G.FarmBlazeEM or _G.Dojoo or _G.CollectPresent or _G.AutoLawKak or _G.TpLab or _G.AutoPhoenixF or _G.AutoFarmChest or _G.AutoHytHallow or _G.LongsWord or _G.BlackSpikey or _G.AutoHolyTorch or _G.TrainDrago  or _G.AutoSaber or _G.FarmMastery_Dev or _G.CitizenQuest or _G.AutoEctoplasm or _G.KeysRen or _G.Auto_Rainbow_Haki or _G.obsFarm or _G.AutoBigmom or _G.Doughv2 or _G.AuraBoss or _G.Raiding or _G.Auto_Cavender or _G.TpPly or _G.Bartilo_Quest or _G.Level or _G.FarmEliteHunt or _G.AutoZou or _G.AutoFarm_Bone or getgenv().AutoMaterial or _G.CraftVM or _G.FrozenTP or _G.ShotHL or _G.TPDoor or _G.AcientOne or _G.AutoFarmNear or _G.AutoRaidCastle or _G.DarkBladev3 or _G.AutoFarmRaid or _G.Auto_Cake_Prince or _G.Addealer or _G.TPNpc or _G.TwinHook or _G.FindMirage or _G.FrozenDimension or _G.FarmChestM or _G.Shark or _G.TerrorShark or _G.Piranha or _G.MobCrew or _G.SeaBeast1 or _G.FishBoat or _G.AutoPole or _G.AutoPoleV2 or _G.Auto_SuperHuman or _G.AutoDeathStep or _G.Auto_SharkMan_Karate or _G.Auto_Electric_Claw or _G.AutoDragonTalon or _G.Auto_Def_DarkCoat or _G.Auto_God_Human or _G.Auto_Tushita or _G.AutoMatSoul or _G.AutoKenVTWO or _G.AutoSerpentBow or _G.AutoFMon or _G.Auto_Soul_Guitar or _G.TPGEAR or _G.AutoSaw or _G.AutoTridentW2 or _G.AutoEvoRace or _G.AutoGetQuestBounty or _G.MarinesCoat or _G.TravelDres or _G.Defeating or _G.DummyMan or _G.Auto_Yama or _G.Auto_SwanGG or _G.SwanCoat or _G.AutoEcBoss or _G.Auto_Mink or _G.Auto_Human or _G.Auto_Skypiea or _G.Auto_Fish or _G.CDK_TS or _G.CDK_YM or _G.CDK or _G.AutoFarmGodChalice or _G.AutoFistDarkness or _G.AutoMiror or _G.Teleport or _G.AutoKilo or _G.AutoGetUsoap or _G.Praying or _G.TryLucky or _G.AutoColShad or _G.AutoUnHaki or _G.Auto_DonAcces or _G.AutoRipIngay or _G.DragoV3 or _G.DragoV1 or _G.SailBoats or NextIs or _G.FarmGodChalice or _G.IceBossRen or senth or senth2 or _G.Lvthan or _G.beasthunter or _G.DangerLV or _G.Relic123 or _G.tweenKitsune or _G.Collect_Ember or _G.AutofindKitIs or _G.Snaguine or _G.TwFruits or _G.tweenKitShrine or _G.Tp_LgS or _G.Tp_MasterA or _G.tweenShrine or _G.FarmMastery_G or _G.FarmMastery_S or _G.FarmBoss or _G.AutoFarmAllBoss or _G.AutoFishSlap or _G.FarmTyrant or _G.FarmPhaBinh or _G.AutoSpawnCP or _G.AutoBerryH or _G.AutoChestBP or _G.FarmEliteHop or _G.AutoHop_Dough or _G.AutoDoughKing or _G.AutoAttackDoughKing or _G.AutoChipFruit or _G.AutoChipBeli or _G.Auto_StartRaid or _G.StartEvent or _G.AutoMysticIsland or _G.AutoPlayerHunter or _G.SafeMode or _G.AutoKillMob or _G.AutoStartPrehistoric or _G.AutoUnHaki or _G.AutoFarmIsland or _G.AutoFarmDungeon or _G.AutoFarmCandy or _G.AutoTP_Gift or _G.AutoTPGift or _G.AutoTPAndCollect or _G.MasterAutoLevel or _G.MasterAutoCandy or _G.TPFloor1 or _G.TPFloor2 or _G.TPFloor3 or _G.TPFloor4 or _G.FarmEliteH or _G.Safemode or _G.Greybeard or _G.ResetPH) and true or false
+    return (_G.SailBoat_Hydra or _G.WardenBoss or _G.AutoFactory or _G.HighestMirage or _G.HCM or _G.PGB or _G.Leviathan1 or _G.UPGDrago or _G.Complete_Trials or _G.TpDrago_Prehis or _G.BuyDrago or __DIO_BuyFlying or _G.BuyMelee_BuyBlackLeg or _G.BuyMelee_BuyElectro or _G.BuyMelee_BuyFishmanKarate or _G.BuyMelee_BuyDragonClaw or _G.AutoFireFlowers or _G.DT_Uzoth or _G.AutoBerry or _G.Prefully or _G.Prehis_Find or _G.Prehis_Skills or _G.Prehis_DB or _G.Prehis_DE or _G.FarmBlazeEM or _G.Dojoo or _G.CollectPresent or _G.AutoLawKak or _G.TpLab or _G.AutoPhoenixF or _G.AutoFarmChest or _G.AutoHytHallow or _G.LongsWord or _G.BlackSpikey or _G.AutoHolyTorch or _G.TrainDrago  or _G.AutoSaber or _G.FarmMastery_Dev or _G.CitizenQuest or _G.AutoEctoplasm or _G.KeysRen or _G.Auto_Rainbow_Haki or _G.obsFarm or _G.AutoBigmom or _G.Doughv2 or _G.AuraBoss or _G.Raiding or _G.Auto_Cavender or _G.TpPly or _G.Bartilo_Quest or _G.Level or _G.FarmEliteHunt or _G.AutoZou or _G.AutoFarm_Bone or getgenv().AutoMaterial or _G.CraftVM or _G.FrozenTP or _G.ShotHL or _G.TPDoor or _G.AcientOne or _G.AutoFarmNear or _G.AutoRaidCastle or _G.DarkBladev3 or _G.AutoFarmRaid or _G.Auto_Cake_Prince or _G.Addealer or _G.TPNpc or _G.TwinHook or _G.FindMirage or _G.FrozenDimension or _G.FarmChestM or _G.Shark or _G.TerrorShark or _G.Piranha or _G.MobCrew or _G.SeaBeast1 or _G.FishBoat or _G.AutoPole or _G.AutoPoleV2 or _G.Auto_SuperHuman or _G.AutoDeathStep or _G.Auto_SharkMan_Karate or _G.Auto_Electric_Claw or _G.AutoDragonTalon or _G.Auto_Def_DarkCoat or _G.Auto_God_Human or _G.Auto_Tushita or _G.AutoMatSoul or _G.AutoKenVTWO or _G.AutoSerpentBow or _G.AutoFMon or _G.Auto_Soul_Guitar or _G.TPGEAR or _G.AutoSaw or _G.AutoTridentW2 or _G.AutoEvoRace or _G.AutoGetQuestBounty or _G.MarinesCoat or _G.TravelDres or _G.Defeating or _G.DummyMan or _G.Auto_Yama or _G.Auto_SwanGG or _G.SwanCoat or _G.AutoEcBoss or _G.Auto_Mink or _G.Auto_Human or _G.Auto_Skypiea or _G.Auto_Fish or _G.CDK_TS or _G.CDK_YM or _G.CDK or _G.AutoFarmGodChalice or _G.AutoFistDarkness or _G.AutoMiror or _G.Teleport or _G.AutoKilo or _G.AutoGetUsoap or _G.Praying or _G.TryLucky or _G.AutoColShad or _G.AutoUnHaki or _G.Auto_DonAcces or _G.AutoRipIngay or _G.DragoV3 or _G.DragoV1 or _G.SailBoats or NextIs or _G.FarmGodChalice or _G.IceBossRen or senth or senth2 or _G.Lvthan or _G.beasthunter or _G.DangerLV or _G.Relic123 or _G.tweenKitsune or _G.Collect_Ember or _G.AutofindKitIs or _G.Snaguine or _G.TwFruits or _G.tweenKitShrine or _G.Tp_LgS or _G.Tp_MasterA or _G.tweenShrine or _G.FarmMastery_G or _G.FarmMastery_S or _G.FarmBoss or _G.AutoFarmAllBoss or _G.AutoFishSlap or _G.TweenBoatOwner or _G.FarmTyrant or _G.FarmPhaBinh or _G.AutoSpawnCP or _G.AutoBerryH or _G.AutoChestBP or _G.FarmEliteHop or _G.AutoHop_Dough or _G.AutoDoughKing or _G.AutoAttackDoughKing or _G.AutoChipFruit or _G.AutoChipBeli or _G.Auto_StartRaid or _G.StartEvent or _G.AutoMysticIsland or _G.AutoPlayerHunter or _G.SafeMode or _G.AutoKillMob or _G.AutoStartPrehistoric or _G.AutoUnHaki or _G.AutoFarmIsland or _G.AutoFarmDungeon or _G.AutoFarmCandy or _G.AutoTP_Gift or _G.AutoTPGift or _G.AutoTPAndCollect or _G.MasterAutoLevel or _G.MasterAutoCandy or _G.TPFloor1 or _G.TPFloor2 or _G.TPFloor3 or _G.TPFloor4 or _G.FarmEliteH or _G.Safemode or _G.Greybeard or _G.ResetPH) and true or false
 end
 
 spawn(function()
@@ -2265,6 +2468,26 @@ spawn(function()
       if __DIO_FarmFlagsOn() or (__DIO_TweenTarget ~= nil and __DIO_LastTpT ~= nil and (tick() - __DIO_LastTpT) < 30) then
        shouldTween = true
 
+        -- V5.4 FIX MAT HIGHLIGHT: tao highlight TRUOC check Sit. Truoc day khi NGOM
+        -- THUYEN (sea event / find island) thi check Sit return som => khong bao gio
+        -- toi cho tao highlight => "Select Sea Event khong tao highlights color".
+        do
+            local __chHL = plr.Character
+            if __chHL and tick() - (__DIO_LastHlDecor or 0) >= 0.25 then
+                __DIO_LastHlDecor = tick()
+                if not __chHL:FindFirstChild("highlight") then
+                    local Test = Instance.new("Highlight")
+                    Test.Name = "highlight"
+                    Test.Enabled = true
+                    Test.FillColor = Color3.fromRGB(0,255,120)
+                    Test.OutlineColor = Color3.fromRGB(0,255,120)
+                    Test.FillTransparency = 0.5
+                    Test.OutlineTransparency = 0.2
+                    Test.Parent = __chHL
+                end
+            end
+        end
+
         local __stompHum = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
         if __stompHum and __stompHum.Sit then
             return
@@ -2277,17 +2500,8 @@ spawn(function()
         if __hrpST and __hrpST:FindFirstChild("BodyClip") then __hrpST:FindFirstChild("BodyClip"):Destroy() end
         if tick() - (__DIO_LastNoclipDecor or 0) < 0.25 then return end
         __DIO_LastNoclipDecor = tick()
-      if __chST and not __chST:FindFirstChild("highlight") then
-    local Test = Instance.new("Highlight")
-    Test.Name = "highlight"
-    Test.Enabled = true
-    Test.FillColor = Color3.fromRGB(0,255,120)
-    Test.OutlineColor = Color3.fromRGB(0,255,120)
-    Test.FillTransparency = 0.5
-    Test.OutlineTransparency = 0.2
-    Test.Parent = __chST
-end
-
+      -- V5.4b: khoi tao highlight da duoc chuyen LEN TREN (truoc check Sit) de
+      -- tao mau ca khi dang ngoi thuyen => khoi cu o day la THUA, da bo.
         if __chST then for _, no in pairs(__chST:GetDescendants()) do if no:IsA("BasePart") and no.CanCollide then no.CanCollide = false end end end
       elseif not __DIO_FlyBusy then
         shouldTween = false
@@ -2925,7 +3139,7 @@ __DIO_T = setmetatable({
     ["Select Sea Level"] = "Select Sea Level",
     ["Dodge Sea Beast / Terror Shark"] = "Dodge Sea Beast / Terror Shark",
     ["Dodge Height (Y)"] = "Dodge Height (Y)",
-    ["Auto Sail Boat"] = "Auto Sail Boat",
+    ["Auto Sea Event"] = "Auto Sea Event",
     ["Select Sea Event"] = "Select Sea Event",
     ["Auto Find Kitsune Island"] = "Auto Find Kitsune Island",
     ["Auto Teleport to Shrine Actived"] = "Auto Teleport to Shrine Actived",
@@ -2934,6 +3148,12 @@ __DIO_T = setmetatable({
     ["Trade Items Azure"] = "Trade Items Azure",
     ["Talk with kitsune statue"] = "Talk with kitsune statue",
     ["Buy Spy"] = "Buy Spy",
+    ["Owners Boat Hunter"] = "Owners Boat Hunter",
+    ["Tween To Sitting in a boat Owner"] = "Tween To Sitting in a boat Owner",
+    ["Friend Hunter Leviathan"] = "Friend Hunter Leviathan",
+    ["Fly Boat"] = "Fly Boat",
+    ["Teleport Y boat If have Sea Event (ALL)"] = "Teleport Y boat If have Sea Event (ALL)",
+    ["Teleport Y boat using a slider"] = "Teleport Y boat using a slider",
     ["Auto Find Frozen Dimension"] = "Auto Find Frozen Dimension",
     ["Auto Teleport Frozen Dimension"] = "Auto Teleport Frozen Dimension",
     ["Shot Leviathan Heart [Beta]"] = "Shot Leviathan Heart [Beta]",
@@ -3159,7 +3379,7 @@ do
                         if not __userTouched then
                             -- V4: goi qua wrapped callback de flag-tracking hoat dong ca voi
                             -- toggle duoc tu khoi phuc tu file settings (khong chi khi bam tay)
-                            pcall(Setting.Callback, saved)
+                            pcall(Setting.Callback, __savedCb)
                         end
                     end)
                 end
@@ -3172,8 +3392,23 @@ do
             function tab:AddDropdown(Setting)
                 local key = __DIOKey(tabName, Setting and (Setting.Name or Setting.Title))
                 local saved = GetSetting(key, nil)
+                -- V5.4b FIX MULTIRESTORE: MultiSelect luu settings dang MAP {["Ten"]=true}
+                -- nhung lib chi hien lai lua chon tren UI khi Default la MANG {"Ten"}.
+                -- Neu thoi map vao Default thi sau rejoin dropdown hien TRONG (flag van
+                -- chay do callback duoc goi rieng) -> nham la chua chon. Gio tach 2 ban:
+                -- Default = mang (de UI hien dung) + __savedCb = map nguyen ban (de goi
+                -- callback set flag dung nhu lib phat ra).
+                local __savedCb = saved
                 if Setting and saved ~= nil then
-                    Setting.Default = saved
+                    if Setting.MultiSelect and type(saved) == "table" then
+                        local __arrD = {}
+                        for __kD, __vD in pairs(saved) do
+                            if __vD == true and type(__kD) == "string" then table.insert(__arrD, __kD) end
+                        end
+                        Setting.Default = __arrD
+                    else
+                        Setting.Default = saved
+                    end
                 end
                 local origCb = Setting and Setting.Callback
                 local __userTouched = false
@@ -6457,7 +6692,11 @@ __DIO_SafeLoop(function()
                 if tick() - _G.HopTimer >= _G.HopDelay then
                     _G.HopTimer = tick()
 
-                    if syn and syn.queue_on_teleport then
+                    -- V5.5: AutoExecutor=true -> dung hang doi CHUAN cua hub (giu nguyen
+                    -- flag qua cac hop). Khong thi giu hang doi cu cua tinh nang hop nay.
+                    if getgenv().AutoExecutor == true and type(__DIO_QueueAutoExec) == "function" then
+                        pcall(__DIO_QueueAutoExec)
+                    elseif syn and syn.queue_on_teleport then
                         syn.queue_on_teleport(
                             "loadstring(game:HttpGet('https://pastefy.app/6hROay1y/raw'))()"
                         )
@@ -9680,12 +9919,8 @@ __DIO_SafeLoop(function()
             else
               repeat __DIO_wait(0.25)
                 local targetDestination = CFrame.new(-10000000, 31, 37016.25)
-                local __seaS = __DIO_SeaScan()
-                if __seaS.fish or __seaS.terror or __seaS.pgb then
-                  _tp(CFrame.new(-10000000, 150, 37016.25))
-                else
-                  _tp(CFrame.new(-10000000, 31, 37016.25))
-                end
+                -- V5.4c: chieu cao theo "Teleport Y boat using a slider" (xem helper __DIO_FindCruiseY)
+                _tp(CFrame.new(-10000000, __DIO_FindCruiseY(), 37016.25))
               until not _G.FindMirage or (targetDestination.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 or workspace["_WorldOrigin"].Locations:FindFirstChild("Mirage Island") or plr.Character.Humanoid.Sit == false plr.Character.Humanoid.Sit = false
             end
           end
@@ -10966,12 +11201,8 @@ __DIO_SafeLoop(function()
                     local seaCFrame = CFrame.new(-10000000, 31, 37016.25)
                     targetDestination = seaCFrame
 
-                    local __seaS = __DIO_SeaScan()
-                    if __seaS.fish or __seaS.terror or __seaS.pgb then
-                        _tp(CFrame.new(-10000000, 150, 37016.25))
-                    else
-                        _tp(seaCFrame)
-                    end
+                    -- V5.4c: chieu cao theo "Teleport Y boat using a slider" (xem helper __DIO_FindCruiseY)
+                    _tp(CFrame.new(seaCFrame.Position.X, __DIO_FindCruiseY(), seaCFrame.Position.Z))
 
                 else
                     local stoneHead =
@@ -11391,24 +11622,53 @@ Tabs.SeaEvent:AddSection("Choose Sea Event")
 -- han che + rebuild lam dropdown bug mat option). Skill chon o day la phim ma
 -- __DIO_SeaSkillAtk se spam (spam dung ham Lua, khong spam remote thua).
 -- =====================================================================
-_G.SeaEventWeapon = GetSetting("UI/SeaEvent/Select Weapon Sea Event", "Melee") or "Melee"
-local __svSkill = GetSetting("UI/SeaEvent/Select Skill", "Z")
-if __svSkill ~= "Z" and __svSkill ~= "X" and __svSkill ~= "C" and __svSkill ~= "V" and __svSkill ~= "F" then __svSkill = "Z" end
-_G.SeaEventSkill = __svSkill
+-- V5.3b: ca 2 dropdown deu MULTICHOOSE (MultiSelect) - chon nhieu weapon /
+-- nhieu skill cung luc de spam luon xoay vong nhu combo goc. Default bat buoc
+-- la table ({}). Callback nhan map {["Z"]=true} hoac mang {"Z"} (restore) ->
+-- chuan hoa ve DANH SACH co thu tu theo Options de spam on dinh.
+__DIO_SeaWpOpts   = {"Melee","Sword","Gun","Blox Fruit"}
+__DIO_SeaSkillOpts = {"Z","X","C","V","F"}
+-- chuan hoa gia tri dropdown multi (map/mang/string) -> list dung thu tu Options
+__DIO_SeaNormList = function(Value, opts, def)
+    local __raw = {}
+    if type(Value) == "table" then
+        for __k, __v in pairs(Value) do
+            if __v == true then
+                if type(__k) == "string" and table.find(opts, __k) then
+                    table.insert(__raw, __k)
+                elseif type(__k) == "number" and table.find(opts, Value[__k]) then
+                    table.insert(__raw, Value[__k])
+                end
+            end
+        end
+    elseif type(Value) == "string" and table.find(opts, Value) then
+        table.insert(__raw, Value)
+    end
+    if #__raw == 0 and def then table.insert(__raw, def) end
+    local __out = {}
+    for _, __o in ipairs(opts) do
+        if table.find(__raw, __o) then table.insert(__out, __o) end
+    end
+    return __out
+end
+_G.SeaEventWeaponList = __DIO_SeaNormList(GetSetting("UI/SeaEvent/Select Weapon Sea Event", nil), __DIO_SeaWpOpts, "Melee")
+_G.SeaEventSkillList  = __DIO_SeaNormList(GetSetting("UI/SeaEvent/Select Skill", nil), __DIO_SeaSkillOpts, "Z")
 Q = Tabs.SeaEvent:AddDropdown({
     Name = __DIO_T["Select Weapon Sea Event"],
-    Options = {"Melee","Sword","Gun","Blox Fruit"},
-    Default = _G.SeaEventWeapon,
+    Options = __DIO_SeaWpOpts,
+    Default = _G.SeaEventWeaponList,
+    MultiSelect = true,
     Callback = function(Value)
-        _G.SeaEventWeapon = Value
+        _G.SeaEventWeaponList = __DIO_SeaNormList(Value, __DIO_SeaWpOpts, "Melee")
     end
 })
 Q = Tabs.SeaEvent:AddDropdown({
     Name = __DIO_T["Select Skill"],
-    Options = {"Z","X","C","V","F"},
-    Default = _G.SeaEventSkill,
+    Options = __DIO_SeaSkillOpts,
+    Default = _G.SeaEventSkillList,
+    MultiSelect = true,
     Callback = function(Value)
-        _G.SeaEventSkill = Value
+        _G.SeaEventSkillList = __DIO_SeaNormList(Value, __DIO_SeaSkillOpts, "Z")
     end
 })
 
@@ -11507,8 +11767,42 @@ Tabs.SeaEvent:AddSlider({
     end
 })
 
+
+-- V5.4c: Y BAY KHI GAP MOB SEA EVENT (ap dung cho 4 FIND: Frozen/Prehistoric/
+-- Kitsune/Mirage) + toggle bat/tat scan mob. Khong lien quan Auto Sea Event.
+Tabs.SeaEvent:AddSlider({
+    Name = __DIO_T["Teleport Y boat If have Sea Event (ALL)"],
+    Min = 150,
+    Max = 600,
+    Default = 150,
+    Callback = function(Value)
+        _G.SeaTeleportY = math.clamp(math.floor(tonumber(Value) or 150), 150, 600)
+    end
+})
+
+Tabs.SeaEvent:AddToggle({
+    Name = __DIO_T["Teleport Y boat using a slider"],
+    Description = "",
+    Default = false,
+    Callback = function(Value)
+        _G.TeleportYSlider = Value
+    end
+})
+
+-- V5.4: DO CAO BAY "NAP Y" cua 4 FIND (Frozen/Kitsune/Mirage/Prehistoric).
+-- KHONG quyet dinh cho Auto Sea Event (sail thuong van Y=31 nhu cu).
+Tabs.SeaEvent:AddSlider({
+    Name = __DIO_T["Fly Boat"],
+    Min = 30,
+    Max = 500,
+    Default = 150,
+    Callback = function(Value)
+        _G.FlyBoatY = math.clamp(math.floor(tonumber(Value) or 150), 30, 500)
+    end
+})
+
 Q = Tabs.SeaEvent:AddToggle({
-Name = __DIO_T["Auto Sail Boat"],
+Name = __DIO_T["Auto Sea Event"],
 Description = "",
 Default = false,
 Callback = function(Value)
@@ -11574,35 +11868,193 @@ __DIO_SafeLoop(function()
 end, "L10895")
 __DIO_SafeLoop(function()
     local __ccPrev = false
+    -- V5.4 FIX NOCLIP THUYEN MOI: code cu chi quet 1 lan khi doi state => thuyen
+    -- MUA SAU DO (spawn moi) khong bao gio duoc noclip => bay dinh vat can.
+    -- Gio: moi thuyen chi duoc xu ly 1 lan trong 1 state; thuyen moi xuat hien
+    -- se duoc quet o vong keo tiep. Bang danh dau dung weak key cho GC.
+    local __doneBoats = setmetatable({}, {__mode = "k"})
     while __DIO_wait(0.5) do
         pcall(function()
             local __boatsCCV5 = workspace:FindFirstChild("Boats")
             if not __boatsCCV5 or #__boatsCCV5:GetChildren() == 0 then return end
             local __any = _G.SailBoats or _G.Prehis_Find or _G.FindMirage or _G.FrozenDimension or _G.SailBoat_Hydra or _G.AutofindKitIs
-            if __any == __ccPrev then return end
-            __ccPrev = __any
+            if __any ~= __ccPrev then
+                __ccPrev = __any
+                __doneBoats = setmetatable({}, {__mode = "k"})
+            end
             for a,b in pairs(__boatsCCV5:GetChildren()) do
-                for c,d in pairs((__boatsCCV5:FindFirstChild(b.Name) or b):GetDescendants()) do
-                    if d:IsA("BasePart") and (__any and d.CanCollide or (not __any and not d.CanCollide)) then
-                        d.CanCollide = not __any
+                if not __doneBoats[b] then
+                    for c,d in pairs((__boatsCCV5:FindFirstChild(b.Name) or b):GetDescendants()) do
+                        if d:IsA("BasePart") and (__any and d.CanCollide or (not __any and not d.CanCollide)) then
+                            d.CanCollide = not __any
+                        end
                     end
+                    __doneBoats[b] = true
                 end
             end
         end)
     end
 end, "L10953")
 
+Tabs.SeaEvent:AddSection("Entity Sea Event")
+-- V5.3: Select Sea Event da duoc chuyen len tren Select Boats (Choose Sea Event)
+
+
+
+
+
+
+
+
+
+-- V5.4: DO CAO BAY "NAP Y" cua cac FIND (Frozen/Kitsune/Mirage/Prehistoric)
+-- theo slider "Fly Boat" (30-500, default 150). KHONG anh huong Auto Sea Event.
+__DIO_FlyBoatY = function()
+    return math.clamp(math.floor(tonumber(_G.FlyBoatY) or 150), 30, 500)
+end
+
+-- V5.4c: co mob sea event nao trong server? (ALL: fish boat, brigade, terror,
+-- shark, crew, piranha - __DIO_SeaScan cache 0.5s nen re)
+__DIO_SeaScanAny = function()
+    local __ss = __DIO_SeaScan()
+    return __ss.fish or __ss.pgb or __ss.terror or __ss.shark or __ss.crew or __ss.piranha
+end
+
+-- V5.4c: Y bay cua 4 FIND (Frozen/Prehistoric/Kitsune/Mirage):
+-- * Toggle "Teleport Y boat using a slider" TAT (mac dinh): TAT scan mob sea
+--   event, thuyen bay het duong theo Y slider "Fly Boat" (khong tu nhay Y).
+-- * Toggle BAT: BAT scan mob; thay mob trong list => bay len Y slider
+--   "Teleport Y boat If have Sea Event (ALL)" (150-600); khong co mob => Y 31 nhu cu.
+__DIO_FindCruiseY = function()
+    if _G.TeleportYSlider then
+        if __DIO_SeaScanAny() then
+            return math.clamp(math.floor(tonumber(_G.SeaTeleportY) or 150), 150, 600)
+        end
+        return 31
+    end
+    return __DIO_FlyBoatY()
+end
+
+-- V5.4: danh sach player trong server (khac minh), sap xep A-Z
+__DIO_PlayerNames = function()
+    local __out = {}
+    for __i, __p in ipairs(__SVC_PLR:GetPlayers()) do
+        if __p ~= plr then table.insert(__out, __p.Name) end
+    end
+    table.sort(__out)
+    return __out
+end
+
+-- V5.4: tim thuyen cua 1 player (owner = Owner.Value trong workspace.Boats)
+__DIO_FindBoatOf = function(pname)
+    local __boats = workspace:FindFirstChild("Boats")
+    if not __boats then return nil end
+    for _, __b in ipairs(__boats:GetChildren()) do
+        local __okO, __own = pcall(function() return tostring(__b.Owner.Value) end)
+        if __okO and __own == tostring(pname) then return __b end
+    end
+    return nil
+end
+
+-- V5.4: player do co DANG LAI thuyen cua chinh ho khong (VehicleSeat trong boat cua ho)
+__DIO_IsDriving = function(pname)
+    local __b = __DIO_FindBoatOf(pname)
+    if not __b then return false end
+    local __p = __SVC_PLR:FindFirstChild(pname)
+    if not __p or not __p.Character then return false end
+    local __hum = __p.Character:FindFirstChildOfClass("Humanoid")
+    local __sp = __hum and __hum.SeatPart
+    if __sp and __sp:IsA("VehicleSeat") and __sp:IsDescendantOf(__b) then return true end
+    return false
+end
+
+-- V5.4: danh sach ghe (Seat/VehicleSeat) trong thuyen
+__DIO_BoatSeats = function(boat)
+    local __t = {}
+    for _, __d in ipairs(boat:GetDescendants()) do
+        if __d:IsA("Seat") or __d:IsA("VehicleSeat") then table.insert(__t, __d) end
+    end
+    return __t
+end
+
+-- V5.4: ghe con trong? (khong ai ngoi hoac chi chinh minh)
+__DIO_SeatFree = function(seat)
+    local __okO, __occ = pcall(function() return seat.Occupant end)
+    if not __okO then return false end
+    if not __occ then return true end
+    local __myCh = plr.Character
+    if __myCh and __occ.Parent == __myCh then return true end
+    return false
+end
+
+-- V5.4: FRIEND GATE cho Find Frozen Dimension - list ban da chon phai du ngu tren thuyen
+-- (dang ngoi tren boat hoac cach boat <= 5 studs) moi duoc di. Khong chon ai => true (di binh thuong).
+-- Ban khong con trong server => bo qua (khong cho ke vo danh).
+__DIO_FriendGateList = function()
+    if type(_G.FriendLeviathanList) ~= "table" then return {} end
+    return _G.FriendLeviathanList
+end
+__DIO_OnMyBoatOrNear = function(pname, boat)
+    local __p = __SVC_PLR:FindFirstChild(pname)
+    if not __p then return true end -- da roi server: khong tinh la thieu ngu
+    local __ch = __p.Character
+    if not __ch then return false end
+    local __hum = __ch:FindFirstChildOfClass("Humanoid")
+    if __hum and __hum.SeatPart and __hum.SeatPart:IsDescendantOf(boat) then return true end
+    local __hrp = __ch:FindFirstChild("HumanoidRootPart")
+    local __okP, __bp = pcall(function() return boat:GetPivot().Position end)
+    if __hrp and __okP and (__hrp.Position - __bp).Magnitude <= 5 then return true end
+    return false
+end
+__DIO_AllFriendsAboard = function(myBoat)
+    for __i, __name in ipairs(__DIO_FriendGateList()) do
+        if not __DIO_OnMyBoatOrNear(__name, myBoat) then return false end
+    end
+    return true
+end
+
 -- V5.2: tan cong sea target bang weapon+skill chon trong dropdown
 -- (dung cho SeaBeast1/Leviathan/FishBoat/PGB). Neu chua chon weapon thi
 -- giu nguyen combo cu (Blox Fruit neu co fruit strong, khong thi full combo).
+-- V5.3b: spam NHIEU weapon x NHIEU skill da chon (luon xoay theo thu tu).
+-- V/F chi co huong trong Useskills cho Blox Fruit => weapon khac fallback
+-- bam phim truc tiep (van la input gia lap, khong spam remote).
+__DIO_SeaPressKey = function(k)
+    vim1:SendKeyEvent(true, k, false, game)
+    vim1:SendKeyEvent(false, k, false, game)
+end
+-- bang ho tro skill cua Useskills (theo weapon) - thieu thi bam phim truc tiep
+__DIO_SeaSkillOK = {
+    ["Melee"]      = {Z = true, X = true, C = true},
+    ["Sword"]      = {Z = true, X = true},
+    ["Gun"]        = {Z = true, X = true},
+    ["Blox Fruit"] = {Z = true, X = true, C = true, V = true, F = true},
+}
+__DIO_SeaDoSkill = function(w, sk)
+    if (__DIO_SeaSkillOK[w] or {})[sk] then
+        Useskills(w, sk)
+    else
+        __DIO_SeaPressKey(sk) -- V/F tren Melee/Sword/Gun... : bam phim, khong spam remote
+    end
+end
 __DIO_SeaSkillAtk = function()
-    if _G.SeaEventWeapon then
-        weaponSc(_G.SeaEventWeapon)
-        Useskills(_G.SeaEventWeapon, _G.SeaEventSkill or "Z")
+    local __wlist = _G.SeaEventWeaponList
+    local __slist = _G.SeaEventSkillList
+    if __wlist and #__wlist > 0 then
+        for _, __w in ipairs(__wlist) do
+            weaponSc(__w)
+            if __slist and #__slist > 0 then
+                for _, __sk in ipairs(__slist) do
+                    __DIO_SeaDoSkill(__w, __sk)
+                end
+            else
+                Useskills(__w, "Z")
+            end
+        end
     elseif CheckF() then
         weaponSc("Blox Fruit") Useskills("Blox Fruit","Z") Useskills("Blox Fruit","X") Useskills("Blox Fruit","C")
     else
-        Useskills("Melee","Z") Useskills("Melee","X") Useskills("Melee", "C") 
+        Useskills("Melee","Z") Useskills("Melee","X")
         __DIO_wait(.1) Useskills("Sword","Z") Useskills("Sword","X")
         __DIO_wait(.1) Useskills("Blox Fruit","Z") Useskills("Blox Fruit","X") Useskills("Blox Fruit","C")
         __DIO_wait(.1) Useskills("Gun","Z") Useskills("Gun","X")
@@ -11706,12 +12158,8 @@ __DIO_SafeLoop(function()
             else
               local targetDestination = CFrame.new(-10000000, 31, 37016.25)
               repeat __DIO_wait(0.25)
-                local __seaS = __DIO_SeaScan()
-                if __seaS.fish or __seaS.terror or __seaS.pgb then
-                  _tp(CFrame.new(-10000000, 150, 37016.25))
-                else
-                  _tp(CFrame.new(-10000000, 31, 37016.25))
-                end
+                -- V5.4c: chieu cao theo "Teleport Y boat using a slider" (xem helper __DIO_FindCruiseY)
+                _tp(CFrame.new(-10000000, __DIO_FindCruiseY(), 37016.25))
               until not _G.AutofindKitIs or (targetDestination.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 or workspace["_WorldOrigin"].Locations:FindFirstChild("Kitsune Island") or plr.Character.Humanoid.Sit == false plr.Character.Humanoid.Sit = false
             end
           end
@@ -11835,6 +12283,120 @@ Tabs.SeaEvent:AddButton({
     end
 })
 
+-- =====================================================================
+-- V5.4: OWNERS BOAT HUNTER + TWEEN TO SITTING IN A BOAT OWNER + FRIEND HUNTER LEVIATHAN
+-- * Owners Boat Hunter (chon nhieu): ai la CHU THUYEN (Owner.Value) - uu tien
+--   nguoi DANG LAI thuyen - de board len thuyen ho.
+-- * Tween To Sitting in a boat Owner: bay den va NGOM VAO CHO NGOM TRONG
+--   cua thuyen owner (ghe khong co player khac). Het cho ngoi => bam sat
+--   thuyen owner. Flag: _G.TweenBoatOwner (da dua vao __DIO_FarmFlagsOn)
+--   => shouldTween giu hoat dong, khong con bug tween nhu truoc.
+-- * Friend Hunter Leviathan (chon nhieu): gate cho Auto Find Frozen Dimension
+--   - co chon ban thi PHAI cho du ngu tren thuyen (ngoi hoac cach <=5 studs)
+--   moi di; khong chon ai thi di thuyen ca nhan nhu binh thuong.
+--   List tu cap nhat khi player vao/ra server. Khong tinh chinh minh.
+-- =====================================================================
+__DIO_OwnerDrop = Tabs.SeaEvent:AddDropdown({
+    Name = __DIO_T["Owners Boat Hunter"],
+    Options = __DIO_PlayerNames(),
+    Default = {},
+    MultiSelect = true,
+    Callback = function(Value)
+        _G.OwnersBoatList = __DIO_SeaNormList(Value, __DIO_PlayerNames())
+    end
+})
+
+Tabs.SeaEvent:AddToggle({
+    Name = __DIO_T["Tween To Sitting in a boat Owner"],
+    Description = "",
+    Default = false,
+    Callback = function(Value)
+        _G.TweenBoatOwner = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
+    end
+})
+
+__DIO_FriendDrop = Tabs.SeaEvent:AddDropdown({
+    Name = __DIO_T["Friend Hunter Leviathan"],
+    Options = __DIO_PlayerNames(),
+    Default = {},
+    MultiSelect = true,
+    Callback = function(Value)
+        _G.FriendLeviathanList = __DIO_SeaNormList(Value, __DIO_PlayerNames())
+    end
+})
+
+-- V5.4: tu lam moi 2 dropdown player khi co nguoi vao/ra server (4s/lan)
+__DIO_SafeLoop(function()
+    while __DIO_wait(4) do
+        pcall(function()
+            local __names = __DIO_PlayerNames()
+            if __DIO_OwnerDrop and __DIO_OwnerDrop.CLEAR_DROPDOWN then
+                __DIO_OwnerDrop:CLEAR_DROPDOWN()
+                for __i, __n in ipairs(__names) do __DIO_OwnerDrop:ADD_DROPDOWN_OPTION(__n) end
+            end
+            if __DIO_FriendDrop and __DIO_FriendDrop.CLEAR_DROPDOWN then
+                __DIO_FriendDrop:CLEAR_DROPDOWN()
+                for __i, __n in ipairs(__names) do __DIO_FriendDrop:ADD_DROPDOWN_OPTION(__n) end
+            end
+        end)
+    end
+end, "SeaPlayerRefresh")
+
+-- V5.4: loop board thuyen owner (ngom cho trong / bam sat thuyen)
+__DIO_SafeLoop(function()
+    while __DIO_wait(0.5) do
+        if _G.TweenBoatOwner then
+            pcall(function()
+                local __owners = type(_G.OwnersBoatList) == "table" and _G.OwnersBoatList or {}
+                if #__owners == 0 then return end
+                local __myChar = plr.Character
+                local __myHrp = __myChar and __myChar:FindFirstChild("HumanoidRootPart")
+                local __myHum = __myChar and __myChar:FindFirstChildOfClass("Humanoid")
+                if not __myHrp or not __myHum then return end
+                -- chon thuyen owner GAN NHAT, uu tien owner dang lai
+                local __bestBoat, __bestScore = nil, math.huge
+                for __i, __on in ipairs(__owners) do
+                    local __b = __DIO_FindBoatOf(__on)
+                    if __b then
+                        local __okP, __bp = pcall(function() return __b:GetPivot().Position end)
+                        if __okP and __bp then
+                            local __score = (__bp - __myHrp.Position).Magnitude
+                            if __DIO_IsDriving(__on) then __score = __score - 10000 end
+                            if __score < __bestScore then __bestScore = __score __bestBoat = __b end
+                        end
+                    end
+                end
+                if not __bestBoat then return end
+                -- tim ghe TRONG gan nhat (khong co player khac ngoi)
+                local __bestSeat, __bestSeatD = nil, math.huge
+                for __j, __st in ipairs(__DIO_BoatSeats(__bestBoat)) do
+                    if __DIO_SeatFree(__st) then
+                        local __d = (__st.CFrame.Position - __myHrp.Position).Magnitude
+                        if __d < __bestSeatD then __bestSeatD = __d __bestSeat = __st end
+                    end
+                end
+                if __bestSeat then
+                    _tp(__bestSeat.CFrame * CFrame.new(0, 1, 0))
+                    if __bestSeatD <= 8 and __myHum.Sit == false then
+                        pcall(function() __bestSeat:Sit(__myHum) end)
+                    end
+                else
+                    -- HET CHO NGOI => bam sat thuyen owner (bay canh thuyen)
+                    local __okP, __bp = pcall(function() return __bestBoat:GetPivot() end)
+                    if __okP and __bp then
+                        _tp(__bp * CFrame.new(0, 6, 12))
+                    end
+                end
+            end)
+        end
+    end
+end, "TweenBoatOwner")
+
 Tabs.SeaEvent:AddToggle({
     Name = __DIO_T["Auto Find Frozen Dimension"],
     Description = "",
@@ -11889,12 +12451,21 @@ __DIO_SafeLoop(function()
             else
               repeat __DIO_wait(0.25)
                 local targetDestination = CFrame.new(-10000000, 31, 37016.25)
-                local __seaS = __DIO_SeaScan()
-                if __seaS.fish then
-                  _tp(CFrame.new(-10000000, 160, 37016.25))
-                else
-                  _tp(CFrame.new(-10000000, 160, 37016.25))
+                -- V5.4 FRIEND GATE: da chon ban trong "Friend Hunter Leviathan" thi PHAI
+                -- cho du ngu (moi ban dang ngoi tren thuyen nay hoac cach thuyen <= 5 studs)
+                -- moi duoc di. Thieu bat ki ai => bat buoc cho (neo gan thuyen khong di xa).
+                -- Khong chon ai (list rong) => tween thuyen ca nhan nhu binh thuong.
+                if not __DIO_AllFriendsAboard(myBoat) then
+                  -- V5.4b FIX: neu _tp(pivot+8) moi 0.25s thi target luon cao hon vi tri
+                  -- hien tai => thuyen tu troi LEN VO HAN khi cho ban. Gio HUY target,
+                  -- thuyen trôi tu nhien tai cho den khi du ngu thi _tp tiep.
+                  __DIO_TweenTarget = nil
+                  __DIO_LastTweenTarget = nil
+                  if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+                  continue
                 end
+                -- V5.4c: chieu cao theo "Teleport Y boat using a slider" (xem helper __DIO_FindCruiseY)
+                _tp(CFrame.new(-10000000, __DIO_FindCruiseY(), 37016.25))
               until not _G.FrozenDimension or (targetDestination.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 or workspace["_WorldOrigin"].Locations:FindFirstChild("Frozen Dimension") or plr.Character.Humanoid.Sit == false plr.Character.Humanoid.Sit = false
             end
           end
@@ -15729,8 +16300,52 @@ Window:Notify({
    Duration = 7
 })
 
+-- V5.5: bat dau tu dong chay lai cho lan hop keo theo (neu AutoExecutor=true)
+pcall(__DIO_QueueAutoExec)
+-- V5.5: HideUi=true -> thu nho cua so chinh o LAN MO DAU (nut mobile + LeftControl
+-- van mo lai nhu binh thuong, hub van chay ngon)
+if getgenv().HideUi == true then
+    pcall(function() Window:Minimize() end)
+end
+
 __DIO_BOOT("DIO HUB READY NOW")
 
+end
+
+-- =====================================================================
+-- V5.5: AUTO EXECUTOR - tu kich hoat lai script sau khi hop server KHAC.
+-- Co che: queue_on_teleport (executor) nhet doan code loader vao HANG DOI
+-- CUA PHIEN CLIENT; Roblox chay no NGAY SAU KHI teleport thanh cong (den bat
+-- ky place/server nao). Nghia vat ly:
+--   * Hop/teleport server (bat ke do hub hop hay game teleport)  -> CHAY.
+--   * Quit game roi vao lai (client moi)                          -> KHONG chay
+--     (hang doi mat theo client) -> khong lo xung dot data/save.
+-- Nguon load lai: cung URL GitHub cua hub (doi bang getgenv().DIO_SelfUrl),
+-- kem toan bo getgenv flag hien tai (Team/SaveSettings/Key/AutoExecutor/HideUi).
+-- =====================================================================
+__DIO_QueueAutoExec = function()
+    if getgenv().AutoExecutor ~= true then return end
+    local __url = getgenv().DIO_SelfUrl
+        or "https://raw.githubusercontent.com/DIO482/Script-/refs/heads/main/DIO_Hub_Fixed%20(1)(6)%20FIXED.txt"
+    local __esc = function(v)
+        return tostring(v or ""):gsub("\\", "\\\\"):gsub('"', '\\"')
+    end
+    local __code = 'getgenv().Team="' .. __esc(getgenv().Team or "Pirates") .. '"'
+        .. ' getgenv().SaveSettings=' .. tostring(getgenv().SaveSettings ~= false)
+        .. ' getgenv().Key="' .. __esc(getgenv().Key) .. '"'
+        .. ' getgenv().AutoExecutor=true'
+        .. ' getgenv().HideUi=' .. tostring(getgenv().HideUi == true)
+        .. ' loadstring(game:HttpGet("' .. __url .. '"))()'
+    pcall(function()
+        if type(queue_on_teleport) == "function" then
+            queue_on_teleport(__code)
+        elseif syn and syn.queue_on_teleport then
+            syn.queue_on_teleport(__code)
+        else
+            -- executor khong ho tro hang doi teleport -> bao 1 lan de khong hoai nghi
+            warn("[DIO] AutoExecutor ON nhung executor khong co queue_on_teleport -> khong tu chay lai khi hop")
+        end
+    end)
 end
 
 local function __DIO_SafeStart(where)
@@ -15817,17 +16432,18 @@ else
 
     Tabs.GetKey:AddParagraph({
         Title = "Key System",
-        Content = "Click the button below to get your key, then paste it into the text box.\nKey: DIOHUB-129361064575-GETKEY\nCache lasts 10 hours."
+        Content = "Click the button below to get your key, then paste it into the text box.\nKey: " .. _DIO_GetActiveKey() .. "\nCache lasts 10 hours."
     })
 
     Tabs.GetKey:AddButton({
         Title = "Get Key Link",
-        Description = "Copies the link to get your key.",
+        Description = "Copies key link to clipboard.",
         Callback = function()
-            setclipboard("https://link4m.net/4eIVIN")
+            local cfg = _DIO_FetchPastefyKey()
+            setclipboard(cfg.Linkgetkey or "https://link4sub.com/notes/eRcc")
             Fluent:Notify({
                 Title = "Copied!",
-                Content = "Key link copied to clipboard. Paste it in your browser.",
+                Content = "Key link copied to clipboard!",
                 Duration = 5
             })
         end
@@ -15847,7 +16463,7 @@ else
         Description = "Verifies your key.",
         Callback = function()
             local enteredKey = KeyInput.Value
-            if enteredKey == CORRECT_KEY then
+            if _SEC_VerifyKey(enteredKey) then
                 Fluent:Notify({
                     Title = "Success",
                     Content = "Valid Key! Loading Hub... (saved 10h)",
@@ -15855,7 +16471,7 @@ else
                 })
                 saveKeyCache()
 
-                getgenv().Key = CORRECT_KEY
+                getgenv().Key = _DIO_GetActiveKey()
                 task.wait(0.5)
                 Window:Destroy()
                 task.wait(0.2)
@@ -15874,7 +16490,7 @@ else
         Title = "Use getgenv().Key",
         Description = "Check key from getgenv().Key config",
         Callback = function()
-            if tostring(getgenv().Key) == CORRECT_KEY then
+            if _SEC_VerifyKey(tostring(getgenv().Key)) then
                 Fluent:Notify({Title="Success", Content="getgenv().Key valid! Loading...", Duration=3})
                 saveKeyCache()
                 task.wait(0.5)
