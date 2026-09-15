@@ -28,89 +28,219 @@ local checkcaller = checkcaller or function() return true end
 local isexecutorclosure = isexecutorclosure or checkcaller or function() return false end
 local setreadonly = setreadonly or (make_writeable and function(t, val) if val then make_readonly(t) else make_writeable(t) end end) or function() end
 
---------------------------------------------------------------------------------
--- PASTEFY DYNAMIC KEY FETCH SYSTEM (Primary + Fallback Link 2)
---------------------------------------------------------------------------------
+-- (khoi PASTEFY / _DIO_KeyConfig / _DIO_CleanJSON da duoc gom vao 'FIX v11' ben duoi)
+-- =============================================================================
+--  FIX v11 - KEY SYSTEM (va 2 loi khien "nhap dung key van bao sai")
+--  LOI 1: _DIO_RawHttpGet_/_DIO_RawHttpPost duoc dung o day NHUNG lai duoc
+--         khai bao (local) o dong 129 -> Lua doc la bien GLOBAL = nil ->
+--         "attempt to call a nil value (global '_DIO_RawHttpGet')" nam trong
+--         pcall => bi an di => PASTEFY_KEY LUON = "" => key nao cung bao sai.
+--  LOI 2: cu so sanh key nguoi dung nhap voi chinh key nam trong file JSON
+--         => dung key tren web cung bao sai.
+--  => Khai bao RAW HTTP + SERVICE ngay tai day, va so sanh key dung cach.
+-- =============================================================================
+local _DIO_RawHttpGet = game.HttpGet
+pcall(function()
+    if rawget then
+        local f = rawget(game, "HttpGet")
+        if type(f) == "function" then _DIO_RawHttpGet = f end
+    end
+end)
+local _DIO_RawHttpPost = game.HttpPost
+pcall(function()
+    if rawget then
+        local f = rawget(game, "HttpPost")
+        if type(f) == "function" then _DIO_RawHttpPost = f end
+    end
+end)
+
+local HttpService       = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players           = game:GetService("Players")
+local CoreGui           = game:GetService("CoreGui")
+local RunService        = game:GetService("RunService")
+local plr               = Players.LocalPlayer
+
 local PASTEFY_PRIMARY_URL  = "https://pastefy.app/uKMDJHtO/raw" -- Link chính
 local PASTEFY_FALLBACK_URL = "https://pastefy.app/lt56aSF4/raw" -- Link dự phòng 2
 
 local _DIO_KeyConfig = {
-    Key = nil,
-    Linkgetkey = "https://link4sub.com/notes/eRcc"
+    Key        = nil,
+    Linkgetkey = "https://link4sub.com/notes/eRcc",
+    Loaded     = false,
 }
 
 -- Tự động làm sạch comment & dấu phẩy thừa trước khi decode JSON
 local function _DIO_CleanJSON(str)
     if type(str) ~= "string" then return "" end
-    -- Xóa comment Lua (-- ...)
-    str = str:gsub("%-%-[^\r\n]*", "")
-    -- Xóa dấu phẩy thừa trước } hoặc ]
-    str = str:gsub(",%s*}", "}")
+    if str:sub(1, 3) == "\239\187\191" then str = str:sub(4) end -- bo BOM
+    str = str:gsub("%-%-[^\r\n]*", "")   -- Xoa comment Lua (-- ...)
+    str = str:gsub(",%s*}", "}")         -- Xoa dau phay thua truoc } hoac ]
     str = str:gsub(",%s*]", "]")
+    str = str:gsub("^%s+", ""):gsub("%s+$", "")
     return str
 end
 
-local function _DIO_FetchPastefyKey()
-    local success = false
-    -- 1. Thử fetch từ Link 1 (Primary)
-    pcall(function()
+-- Doc du lieu tu Pastefy: thu link chinh, loi thi tu dong sang link du phong
+local function _DIO_ResolvePendingFromPastefy()
+    local data = nil
+    local ok = pcall(function()
         local raw = _DIO_RawHttpGet(game, PASTEFY_PRIMARY_URL, true)
-        if raw and type(raw) == "string" and #raw > 0 then
-            local cleaned = _DIO_CleanJSON(raw)
-            local data = HttpService:JSONDecode(cleaned)
-            if type(data) == "table" and data.Key and tostring(data.Key) ~= "" then
-                _DIO_KeyConfig.Key = tostring(data.Key)
-                if data.Linkgetkey and tostring(data.Linkgetkey) ~= "" and tostring(data.Linkgetkey) ~= "https://" then
-                    _DIO_KeyConfig.Linkgetkey = tostring(data.Linkgetkey)
-                end
-                success = true
+        if type(raw) == "string" and #raw > 0 then
+            data = HttpService:JSONDecode(_DIO_CleanJSON(raw))
+        end
+    end)
+    if (not ok) or type(data) ~= "table" then
+        data = nil
+        local ok2 = pcall(function()
+            local raw = _DIO_RawHttpGet(game, PASTEFY_FALLBACK_URL, true)
+            if type(raw) == "string" and #raw > 0 then
+                data = HttpService:JSONDecode(_DIO_CleanJSON(raw))
+            end
+        end)
+        if (not ok2) or type(data) ~= "table" then
+            warn("[DIO KEY] Khong doc duoc du lieu Pastefy (ca link chinh va link du phong). Kiem tra mang / executor.")
+            return nil
+        end
+    end
+    return data
+end
+
+-- Lay link get-key (co cache trong phien, khong spam mang moi lan bam)
+local function _DIO_ResolveLinkgetkey(force)
+    if (not force) and _DIO_KeyConfig.Loaded then
+        return _DIO_KeyConfig.Linkgetkey or ""
+    end
+    local data = _DIO_ResolvePendingFromPastefy()
+    if data then
+        local link = tostring(data.Linkgetkey or "")
+        if #link > 12 then -- bo qua gia tri rac nhu "https://"
+            _DIO_KeyConfig.Linkgetkey = link
+        end
+        _DIO_KeyConfig.Loaded = true
+    end
+    return _DIO_KeyConfig.Linkgetkey or ""
+end
+
+-- =============================================================================
+--  XAC THUC KEY (thay cho viec so sanh key voi chinh file JSON)
+-- =============================================================================
+local _DIO_EnvGet = getgenv
+
+local function _DIO_GetEnvString(name)
+    local v = nil
+    pcall(function()
+        if _DIO_EnvGet then v = _DIO_EnvGet()[name] end
+        if v == nil or v == "" then v = _G[name] end
+    end)
+    if type(v) == "string" then
+        return (v:gsub("^%s+", ""):gsub("%s+$", ""))
+    end
+    return ""
+end
+
+local _DIO_PendingKey = ""   -- key cau hinh san (getgenv().Key / file cache), se doi chieu khi Check Key
+local _DIO_SessionKey = nil  -- key da xac thuc thanh cong trong phien
+
+local function _DIO_SetKey(k)
+    _DIO_SessionKey = tostring(k or "")
+    local ok = pcall(function()
+        getgenv().Key = _DIO_SessionKey
+    end)
+    if not ok then _G.Key = _DIO_SessionKey end
+end
+
+local function _DIO_KeyLabel()
+    if type(_DIO_SessionKey) == "string" and #_DIO_SessionKey > 0 then
+        return _DIO_SessionKey
+    end
+    return "(chua co - hay bam Check Key)"
+end
+
+-- So sanh theo tung byte (constant-time) + cho phep key da luu trong cache phien
+local function _SEC_VerifyKey(inputKey)
+    if type(inputKey) ~= "string" then return false end
+    inputKey = inputKey:gsub("^%s+", ""):gsub("%s+$", "")
+    if #inputKey == 0 then return false end
+
+    -- 1) Key da xac thuc trong phien nay
+    if type(_DIO_SessionKey) == "string" and #_DIO_SessionKey > 0 and inputKey == _DIO_SessionKey then
+        return true
+    end
+
+    -- 2) Key nguoi dung set san trong getgenv().Key / _G.Key (chi khi da doi chieu duoc)
+    if _DIO_PendingKey ~= "" and inputKey == _DIO_PendingKey then
+        _DIO_SetKey(inputKey)
+        return true
+    end
+
+    -- 3) Doi chieu voi key chinh thuc cua he thong (Pastefy) - dang nhap bang key goc
+    local data = _DIO_ResolvePendingFromPastefy()
+    local official = ""
+    if type(data) == "table" and data.Key ~= nil then
+        official = tostring(data.Key):gsub("^%s+", ""):gsub("%s+$", "")
+    end
+    if #official == 0 then
+        warn("[DIO KEY] Key cua he thong dang rong (Pastefy tra ve khong co truong 'Key').")
+        return false
+    end
+
+    local diff = 0
+    if #inputKey == #official then
+        for i = 1, #inputKey do
+            if inputKey:byte(i) ~= official:byte(i) then diff = diff + 1 end
+        end
+    else
+        diff = 1
+    end
+
+    if diff == 0 then
+        _DIO_SetKey(inputKey)
+        if data and data.Linkgetkey and #tostring(data.Linkgetkey) > 12 then
+            _DIO_KeyConfig.Linkgetkey = tostring(data.Linkgetkey)
+        end
+        _DIO_KeyConfig.Loaded = true
+        return true
+    end
+    return false
+end
+
+-- ---------------------------------------------------------------------------
+--  TU DONG XAC THUC KEY CAU HINH SAN
+--  (het canh "dung key van bao sai" khi set getgenv().Key truoc khi chay hub)
+-- ---------------------------------------------------------------------------
+_DIO_PendingKey = _DIO_GetEnvString("Key")
+
+local function _DIO_AddCachedPendingKey()
+    if #_DIO_PendingKey > 0 then return end
+    if not (isfile and readfile) then return end
+    pcall(function()
+        if not isfile(KEY_FILE) then return end
+        local data = HttpService:JSONDecode(readfile(KEY_FILE))
+        if type(data) == "table" and type(data.key) == "string" then
+            local k = data.key:gsub("^%s+", ""):gsub("%s+$", "")
+            if #k > 0 then
+                _DIO_PendingKey = k
+                local ok = pcall(function()
+                    if getgenv().Key == nil or getgenv().Key == "" then getgenv().Key = k end
+                end)
+                if not ok and (_G.Key == nil or _G.Key == "") then _G.Key = k end
             end
         end
     end)
-
-    -- 2. Nếu Link 1 lỗi hoặc không có Key, tự động chuyển sang Link 2 (Fallback)
-    if not success then
-        pcall(function()
-            local raw = _DIO_RawHttpGet(game, PASTEFY_FALLBACK_URL, true)
-            if raw and type(raw) == "string" and #raw > 0 then
-                local cleaned = _DIO_CleanJSON(raw)
-                local data = HttpService:JSONDecode(cleaned)
-                if type(data) == "table" and data.Key and tostring(data.Key) ~= "" then
-                    _DIO_KeyConfig.Key = tostring(data.Key)
-                    if data.Linkgetkey and tostring(data.Linkgetkey) ~= "" then
-                        _DIO_KeyConfig.Linkgetkey = tostring(data.Linkgetkey)
-                    end
-                    success = true
-                end
-            end
-        end)
-    end
-
-    return _DIO_KeyConfig
 end
 
--- Tải Key từ Pastefy ngay khi khởi động
-_DIO_FetchPastefyKey()
-
--- Hàm lấy Key hiện tại
-local function _DIO_GetActiveKey()
-    local cfg = _DIO_FetchPastefyKey()
-    return tostring(cfg.Key or "")
-end
-
--- Xác thực Key an toàn (Chống Key Bypass)
-local function _SEC_VerifyKey(inputKey)
-    if type(inputKey) ~= "string" or #inputKey == 0 then return false end
-    local realKey = _DIO_GetActiveKey()
-    if #realKey == 0 then return false end
-    if #inputKey ~= #realKey then return false end
-    local diff = 0
-    for i = 1, #inputKey do
-        if inputKey:byte(i) ~= realKey:byte(i) then
-            diff = diff + 1
-        end
+-- CHI goi khi bi can (key cau hinh san KHONG khop ngay). Neu key khop thi
+-- khong goi -> giu nguyen tinh nang "0 delay / 0 FPS drop" khi khoi dong.
+local function _DIO_AutoValidateConfiguredKey()
+    if #_DIO_PendingKey == 0 then return false end
+    warn("[DIO KEY] Dang doi chieu key cau hinh san voi server (mat 1-3 giay)...")
+    if _SEC_VerifyKey(_DIO_PendingKey) then
+        print("[DIO KEY] Key cau hinh san HOP LE -> tu dong vao hub, bo qua cua so nhap key.")
+        return true
     end
-    return diff == 0
+    warn("[DIO KEY] Key cau hinh san KHONG khop voi key cua he thong -> se hien cua so nhap key.")
+    return false
 end
 
 
@@ -118,16 +248,22 @@ end
 -- anti hook (Anti-Hookfunction / Anti-Hookmetamethod / Metatable Vault)
 -- =============================================================================
 -- Cached Clean Unhooked Service References
-local HttpService = cloneref(game:GetService("HttpService"))
-local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
-local Players = cloneref(game:GetService("Players"))
-local CoreGui = cloneref(game:GetService("CoreGui"))
-local RunService = cloneref(game:GetService("RunService"))
-local plr = Players.LocalPlayer
-
--- Localized Native Network Closures
-local _DIO_RawHttpGet = clonefunction(game.HttpGet)
-local _DIO_RawHttpPost = clonefunction(game.HttpPost)
+-- (khong con khai bao LOCAL o day nua: HttpService/Players/_DIO_RawHttpGet... da
+--  duoc khai bao o KHOI KEY SYSTEM phia tren - xem "FIX v11")
+pcall(function()
+    local _cloneref = cloneref or function(o) return o end
+    HttpService       = _cloneref(game:GetService("HttpService"))
+    ReplicatedStorage = _cloneref(game:GetService("ReplicatedStorage"))
+    Players           = _cloneref(game:GetService("Players"))
+    CoreGui           = _cloneref(game:GetService("CoreGui"))
+    RunService        = _cloneref(game:GetService("RunService"))
+    plr               = Players.LocalPlayer
+end)
+if plr == nil then plr = Players.LocalPlayer end
+pcall(function()
+    if clonefunction and game.HttpGet then _DIO_RawHttpGet = clonefunction(game.HttpGet) end
+    if clonefunction and game.HttpPost then _DIO_RawHttpPost = clonefunction(game.HttpPost) end
+end)
 
 -- Anti-Hook Metamethod Shield
 pcall(function()
@@ -263,7 +399,7 @@ local function saveKeyCache()
     pcall(function()
         if writefile then
             local data = {
-                key = _DIO_GetActiveKey(),
+                key = _DIO_KeyLabel(),
                 time = os.time(),
                 hwid = (gethwid and gethwid() or game:GetService("RbxAnalyticsService"):GetClientId() or "unknown")
             }
@@ -279,21 +415,30 @@ local function isKeyCacheValid()
         return HttpService:JSONDecode(readfile(KEY_FILE))
     end)
     if not ok or type(data) ~= "table" then return false end
-    if not _SEC_VerifyKey(data.key) then return false end
+    if type(data.key) ~= "string" or #data.key == 0 then return false end
     if not data.time then return false end
 
+    -- Het han 10 gio -> xoa cache
     if os.time() - tonumber(data.time) > 36000 then
         pcall(function() if delfile then delfile(KEY_FILE) end end)
         return false
     end
+
+    -- [FIX] Khong doi chieu mang o day nua: cache da duoc xac thuc khi ghi.
+    -- Key cau hinh san (env / cache) duoc gom vao _DIO_PendingKey va chi
+    -- doi chieu server MOT LAN duy nhat, trong _DIO_AutoValidateConfiguredKey().
     return true
 end
 
 local function isKeyValid()
-    if _SEC_VerifyKey(tostring(getgenv().Key)) then
+    -- 1) Key cau hinh san trong getgenv().Key / _G.Key / file cache (offline-first)
+    _DIO_AddCachedPendingKey()
+    if _DIO_AutoValidateConfiguredKey() then
         saveKeyCache()
         return true
     end
+
+    -- 2) Cache con han (chua co key nhap tay) -> cho vao hub
     if isKeyCacheValid() then
         return true
     end
@@ -16447,15 +16592,21 @@ else
 
     Tabs.GetKey:AddParagraph({
         Title = "Key System",
-        Content = "Click the button below to get your key, then paste it into the text box.\nKey: " .. _DIO_GetActiveKey() .. "\nCache lasts 10 hours."
+        Content = "Click the button below to get your key, then paste it into the text box.\n"
+            .. "Link lay key: " .. tostring(_DIO_ResolveLinkgetkey(false)) .. "\n"
+            .. "Key cua ban: " .. _DIO_KeyLabel() .. "\n"
+            .. "Cache lasts 10 hours."
     })
 
     Tabs.GetKey:AddButton({
         Title = "Get Key Link",
         Description = "Copies key link to clipboard.",
         Callback = function()
-            local cfg = _DIO_FetchPastefyKey()
-            setclipboard(cfg.Linkgetkey or "https://link4sub.com/notes/eRcc")
+            local __link = _DIO_ResolveLinkgetkey(true)
+            if type(__link) ~= "string" or #__link <= 12 then
+                __link = "https://link4sub.com/notes/eRcc" -- link du phong, tranh copy gia tri rac "https://"
+            end
+            setclipboard(__link)
             Fluent:Notify({
                 Title = "Copied!",
                 Content = "Key link copied to clipboard!",
@@ -16484,14 +16635,14 @@ else
                     Content = "Valid Key! Loading Hub... (saved 10h)",
                     Duration = 3
                 })
+                _DIO_SetKey(enteredKey) -- [FIX] luu key NGUOI DUNG vua nhap, khong lay key trong file JSON
                 saveKeyCache()
-
-                getgenv().Key = _DIO_GetActiveKey()
                 task.wait(0.5)
                 Window:Destroy()
                 task.wait(0.2)
                 __DIO_SafeStart("check-key-button")
             else
+                warn("[DIO KEY] Key nhap tay khong khop. Bam 'Get Key Link' de lay key moi (key cu co the da doi/het han).")
                 Fluent:Notify({
                     Title = "Error",
                     Content = "Invalid Key! Please get key from link.",
