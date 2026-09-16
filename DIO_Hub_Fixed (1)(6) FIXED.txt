@@ -12611,14 +12611,103 @@ end, "L10725")
 Tabs.SeaEvent:AddSection("Sea Event / Setting Sail")
 local ListSeaBoat={"Guardian","PirateGrandBrigade","MarineGrandBrigade","PirateBrigade","MarineBrigade","PirateSloop","MarineSloop","Beast Hunter"}
 local ListSeaZone={"Lv 1","Lv 2","Lv 3","Lv 4","Lv 5","Lv 6","Lv Infinite"}
-
-Tabs.SeaEvent:AddButton({
-    Name = __DIO_T["Remove Lighting Effect"],
-    Callback = function()
-        __SVC_LIGHT.BaseAtmosphere:Destroy()
+Q = Tabs.SeaEvent:AddDropdown({
+    Name = __DIO_T["Select Weapon Sea Event"],
+    Options = __DIO_SeaWpOpts,
+    Default = _G.SeaEventWeaponList,
+    MultiSelect = true,
+    Callback = function(Value)
+        _G.SeaEventWeaponList = __DIO_SeaNormList(Value, __DIO_SeaWpOpts, "Melee")
+    end
+})
+Q = Tabs.SeaEvent:AddDropdown({
+    Name = __DIO_T["Select Skill"],
+    Options = __DIO_SeaSkillOpts,
+    Default = _G.SeaEventSkillList,
+    MultiSelect = true,
+    Callback = function(Value)
+        _G.SeaEventSkillList = __DIO_SeaNormList(Value, __DIO_SeaSkillOpts, "Z")
     end
 })
 
+-- V5.1: dropdown CHON NHIEU sea event cung luc (MultiSelect cua Library-Redz).
+-- Callback nhan table map {["Terror Shark"]=true, ...} => lien ket sang cac flag _G
+-- ma cac loop farm bien dang dung (TerrorShark/Piranha/Shark/SeaBeast1/FishBoat/HCM/PGB).
+-- Cach thuong (single) chi chon duoc 1 roi phai chuyen lai -> gio chon nhieu bay song song.
+__DIO_SeaSelPrev = {}
+__DIO_SeaEntityMap = {
+    ["Terror Shark"]        = "TerrorShark",
+    ["Piranha"]             = "Piranha",
+    ["Shark"]               = "Shark",
+    ["Sea Beast"]           = "SeaBeast1",
+    ["Fish Boat"]           = "FishBoat",
+    ["Fish Crew Member"]    = "MobCrew",
+    ["Haunted Crew Member"] = "HCM",
+    ["PirateGrandBrigade"]  = "PGB",
+}
+Q = Tabs.SeaEvent:AddDropdown({
+    Name = __DIO_T["Select Sea Event"],
+    Options = {"Terror Shark","Piranha","Shark","Sea Beast","Fish Boat","Fish Crew Member","Haunted Crew Member","PirateGrandBrigade"},
+    Default = {}, -- luu y: MultiSelect phai de table ({}) chu khong phai false nhu ban cu
+    MultiSelect = true,
+    Callback = function(Value)
+        -- chuan hoa: chap nhan ca dang map {["Ten"]=true} lan dang mang {"Ten",...}
+        -- (khi restore tu file settings gia tri co the la 1 trong 2 dang nay)
+        local __sel = {}
+        if type(Value) == "table" then
+            for __k, __v in pairs(Value) do
+                if __v == true then
+                    if type(__k) == "string" and __DIO_SeaEntityMap[__k] then
+                        __sel[__k] = true
+                    elseif type(__k) == "number" and __DIO_SeaEntityMap[Value[__k]] then
+                        __sel[Value[__k]] = true
+                    end
+                end
+            end
+        end
+        -- V7: dung __DIO_SetFlag voi owner "SeaEventDrop" + __DIO_UISetOn de watchdog
+        -- biet chinh xac entity nao DANG duoc chon. Ban cu ghi thang _G[flag] nen khi
+        -- Auto Dojo Trainer / Auto Draco V3 cung ghi chen cac flag nay => trung tween.
+        for __name, __flag in pairs(__DIO_SeaEntityMap) do
+            if __sel[__name] then
+                __DIO_SetFlag(__flag, "SeaEventDrop:" .. __name, true)
+                __DIO_SeaSelPrev[__name] = true
+            elseif __DIO_SeaSelPrev[__name] then
+                -- truoc do la chon o dropdown nay, gio bo chon => tat flag tuong ung
+                __DIO_SetFlag(__flag, "SeaEventDrop:" .. __name, false)
+                __DIO_SeaSelPrev[__name] = nil
+            end
+        end
+    end
+})
+
+Q = Tabs.SeaEvent:AddDropdown({
+Name = __DIO_T["Select Sea Level"],
+Options = ListSeaZone,
+Default = "Lv 6",
+Callback = function(Value)
+  _G.DangerSc = Value
+end})
+Q = Tabs.SeaEvent:AddDropdown({
+    Name = __DIO_T["Select Boats"],
+	Options = ListSeaBoat,
+	Default = "Guardian",
+	Callback = function(Value)
+        _G.SelectedBoat = Value
+        if not Value then
+            StopTween(false)
+            __DIO_CurTarget = nil
+            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        end
+    end
+})
+Tabs.SeaEvent:AddButton({
+Name = __DIO_T["Buy Boats"],
+Description = "",
+Default = true,
+Callback = function()
+  replicated.Remotes.CommF_:InvokeServer("BuyBoat",(_G.SelectedBoat or "Guardian"))
+end})
 Tabs.SeaEvent:AddToggle({
     Name = __DIO_T["Ship Speed Modifier"],
     Default = false,
@@ -12711,8 +12800,8 @@ end, "L10818")
 Tabs.SeaEvent:AddSlider({
     Name = __DIO_T["Boat Speed Tween"],
     Min = 1,
-    Max = 300,
-    Default = 165,
+    Max = 500,
+    Default = 225,
     Increment = 1,
     Callback = function(Value)
 
@@ -12721,26 +12810,10 @@ Tabs.SeaEvent:AddSlider({
 })
 
 _G.BoatTweenSpeed = math.clamp(math.floor((tonumber(GetSetting("UI/SeaEvent/Boat Speed Tween", 165)) or 165) + 0.5), 1, 300)
--- FIXED V4 (ket o shop thuyen): dropdown khong auto-fire callback => neu user chua bao gio cham
--- vao Select Boats / Select Sea Level thi _G.SelectedBoat/_G.DangerSc = nil => BuyBoat(nil) bi server
--- tu choi => dung ghim o shop mai mai. Dat default ngay tu luc load (user chon se ghi de).
 _G.SelectedBoat = _G.SelectedBoat or GetSetting("UI/SeaEvent/Select Boats", "Guardian") or "Guardian"
 _G.DangerSc = _G.DangerSc or GetSetting("UI/SeaEvent/Select Sea Level", "Lv 6") or "Lv 6"
 Tabs.SeaEvent:AddSection("Choose Sea Event")
 
--- =====================================================================
--- V5.3: CHON WEAPON + SKILL DE SAN SEA EVENT (dat ngay tren Select Boats)
--- CHI ap dung cho: Leviathan, Sea Beast, PirateGrandBrigade, Fish Boat.
--- Cac entity khac (Shark, Piranha, Terror Shark, Crew...) van dung weapon
--- mac dinh player chon o "Select Weapon" (Tabs.Main) nhu cu.
--- Skill: LUA BANG Z, X, C, V, F co dinh (khong han che theo weapon - ban V5.2
--- han che + rebuild lam dropdown bug mat option). Skill chon o day la phim ma
--- __DIO_SeaSkillAtk se spam (spam dung ham Lua, khong spam remote thua).
--- =====================================================================
--- V5.3b: ca 2 dropdown deu MULTICHOOSE (MultiSelect) - chon nhieu weapon /
--- nhieu skill cung luc de spam luon xoay vong nhu combo goc. Default bat buoc
--- la table ({}). Callback nhan map {["Z"]=true} hoac mang {"Z"} (restore) ->
--- chuan hoa ve DANH SACH co thu tu theo Options de spam on dinh.
 __DIO_SeaWpOpts   = {"Melee","Sword","Gun","Blox Fruit"}
 __DIO_SeaSkillOpts = {"Z","X","C","V","F"}
 -- chuan hoa gia tri dropdown multi (map/mang/string) -> list dung thu tu Options
@@ -12768,103 +12841,7 @@ __DIO_SeaNormList = function(Value, opts, def)
 end
 _G.SeaEventWeaponList = __DIO_SeaNormList(GetSetting("UI/SeaEvent/Select Weapon Sea Event", nil), __DIO_SeaWpOpts, "Melee")
 _G.SeaEventSkillList  = __DIO_SeaNormList(GetSetting("UI/SeaEvent/Select Skill", nil), __DIO_SeaSkillOpts, "Z")
-Q = Tabs.SeaEvent:AddDropdown({
-    Name = __DIO_T["Select Weapon Sea Event"],
-    Options = __DIO_SeaWpOpts,
-    Default = _G.SeaEventWeaponList,
-    MultiSelect = true,
-    Callback = function(Value)
-        _G.SeaEventWeaponList = __DIO_SeaNormList(Value, __DIO_SeaWpOpts, "Melee")
-    end
-})
-Q = Tabs.SeaEvent:AddDropdown({
-    Name = __DIO_T["Select Skill"],
-    Options = __DIO_SeaSkillOpts,
-    Default = _G.SeaEventSkillList,
-    MultiSelect = true,
-    Callback = function(Value)
-        _G.SeaEventSkillList = __DIO_SeaNormList(Value, __DIO_SeaSkillOpts, "Z")
-    end
-})
 
--- V5.1: dropdown CHON NHIEU sea event cung luc (MultiSelect cua Library-Redz).
--- Callback nhan table map {["Terror Shark"]=true, ...} => lien ket sang cac flag _G
--- ma cac loop farm bien dang dung (TerrorShark/Piranha/Shark/SeaBeast1/FishBoat/HCM/PGB).
--- Cach thuong (single) chi chon duoc 1 roi phai chuyen lai -> gio chon nhieu bay song song.
-__DIO_SeaSelPrev = {}
-__DIO_SeaEntityMap = {
-    ["Terror Shark"]        = "TerrorShark",
-    ["Piranha"]             = "Piranha",
-    ["Shark"]               = "Shark",
-    ["Sea Beast"]           = "SeaBeast1",
-    ["Fish Boat"]           = "FishBoat",
-    ["Fish Crew Member"]    = "MobCrew",
-    ["Haunted Crew Member"] = "HCM",
-    ["PirateGrandBrigade"]  = "PGB",
-}
-Q = Tabs.SeaEvent:AddDropdown({
-    Name = __DIO_T["Select Sea Event"],
-    Options = {"Terror Shark","Piranha","Shark","Sea Beast","Fish Boat","Fish Crew Member","Haunted Crew Member","PirateGrandBrigade"},
-    Default = {}, -- luu y: MultiSelect phai de table ({}) chu khong phai false nhu ban cu
-    MultiSelect = true,
-    Callback = function(Value)
-        -- chuan hoa: chap nhan ca dang map {["Ten"]=true} lan dang mang {"Ten",...}
-        -- (khi restore tu file settings gia tri co the la 1 trong 2 dang nay)
-        local __sel = {}
-        if type(Value) == "table" then
-            for __k, __v in pairs(Value) do
-                if __v == true then
-                    if type(__k) == "string" and __DIO_SeaEntityMap[__k] then
-                        __sel[__k] = true
-                    elseif type(__k) == "number" and __DIO_SeaEntityMap[Value[__k]] then
-                        __sel[Value[__k]] = true
-                    end
-                end
-            end
-        end
-        -- V7: dung __DIO_SetFlag voi owner "SeaEventDrop" + __DIO_UISetOn de watchdog
-        -- biet chinh xac entity nao DANG duoc chon. Ban cu ghi thang _G[flag] nen khi
-        -- Auto Dojo Trainer / Auto Draco V3 cung ghi chen cac flag nay => trung tween.
-        for __name, __flag in pairs(__DIO_SeaEntityMap) do
-            if __sel[__name] then
-                __DIO_SetFlag(__flag, "SeaEventDrop:" .. __name, true)
-                __DIO_SeaSelPrev[__name] = true
-            elseif __DIO_SeaSelPrev[__name] then
-                -- truoc do la chon o dropdown nay, gio bo chon => tat flag tuong ung
-                __DIO_SetFlag(__flag, "SeaEventDrop:" .. __name, false)
-                __DIO_SeaSelPrev[__name] = nil
-            end
-        end
-    end
-})
-
-Q = Tabs.SeaEvent:AddDropdown({
-    Name = __DIO_T["Select Boats"],
-	Options = ListSeaBoat,
-	Default = "Guardian",
-	Callback = function(Value)
-        _G.SelectedBoat = Value
-        if not Value then
-            StopTween(false)
-            __DIO_CurTarget = nil
-            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
-        end
-    end
-})
-Tabs.SeaEvent:AddButton({
-Name = __DIO_T["Buy Boats"],
-Description = "",
-Default = true,
-Callback = function()
-  replicated.Remotes.CommF_:InvokeServer("BuyBoat",(_G.SelectedBoat or "Guardian"))
-end})
-Q = Tabs.SeaEvent:AddDropdown({
-Name = __DIO_T["Select Sea Level"],
-Options = ListSeaZone,
-Default = "Lv 6",
-Callback = function(Value)
-  _G.DangerSc = Value
-end})
 -- V5.2: Dodge + Dodge Height da duoc doi len day (ngay tren Auto Sail Boat)
 Tabs.SeaEvent:AddToggle({
 Name = __DIO_T["Dodge Sea Beast / Terror Shark"],
@@ -13023,19 +13000,6 @@ __DIO_SafeLoop(function()
     end
 end, "L10953")
 
-Tabs.SeaEvent:AddSection("Entity Sea Event")
--- V5.3: Select Sea Event da duoc chuyen len tren Select Boats (Choose Sea Event)
-
-
-
-
-
-
-
-
-
--- V5.4: DO CAO BAY "NAP Y" cua cac FIND (Frozen/Kitsune/Mirage/Prehistoric)
--- theo slider "Fly Boat" (30-500, default 150). KHONG anh huong Auto Sea Event.
 __DIO_FlyBoatY = function()
     return math.clamp(math.floor(tonumber(_G.FlyBoatY) or 150), 30, 500)
 end
@@ -17088,6 +17052,12 @@ Callback = function()
     replicated.Remotes.CommF_:InvokeServer("ChangeBusoStage",5)
   end
 end})
+Tabs.SeaEvent:AddButton({
+    Name = __DIO_T["Remove Lighting Effect"],
+    Callback = function()
+        __SVC_LIGHT.BaseAtmosphere:Destroy()
+    end
+})
 rtxM = Tabs.Hop:AddToggle({
 Name = __DIO_T["Turn on RTX Mode"],
 Description = "",
