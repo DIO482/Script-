@@ -1,19 +1,3 @@
---------------------------------------------------------------------------------
--- DIO HUB SECURITY & PROTECTION SYSTEM (v10.0 Matrix Core)
--- Official Protection Matrix for Blox Fruits DIO Hub
--- 
--- Features Implemented:
---  [x] -- anti hook      : Metamethod shielding, closure localization & unhooked service caching.
---  [x] -- anti spy       : Real-time event-driven Remote/HTTP Spy detection & neutralization.
---  [x] -- anti Lộ source : Script reference spoofing, anti-decompiler traps, anti-getgc dump protection.
---  [x] -- anti Decrret    : XOR string obfuscation, constant-time key validation & key bypass shield.
--- 
--- Performance: 100% Preserved (0 FPS drop, 0 idle overhead, upfront Luau localizations).
---------------------------------------------------------------------------------
-
--- =============================================================================
--- BASE FUNCTION LOCALIZATION & VAULT (Fast Local Execution & Anti-Tamper)
--- =============================================================================
 local pcall, xpcall, type, tostring, tonumber, select, unpack = pcall, xpcall, type, tostring, tonumber, select, unpack or table.unpack
 local rawget, rawset, rawequal, getmetatable, setmetatable = rawget, rawset, rawequal, getmetatable, setmetatable
 local string, table, math, task, coroutine, debug, os = string, table, math, task, coroutine, debug, os
@@ -28,17 +12,6 @@ local checkcaller = checkcaller or function() return true end
 local isexecutorclosure = isexecutorclosure or checkcaller or function() return false end
 local setreadonly = setreadonly or (make_writeable and function(t, val) if val then make_readonly(t) else make_writeable(t) end end) or function() end
 
--- (khoi PASTEFY / _DIO_KeyConfig / _DIO_CleanJSON da duoc gom vao 'FIX v11' ben duoi)
--- =============================================================================
---  FIX v11 - KEY SYSTEM (va 2 loi khien "nhap dung key van bao sai")
---  LOI 1: _DIO_RawHttpGet_/_DIO_RawHttpPost duoc dung o day NHUNG lai duoc
---         khai bao (local) o dong 129 -> Lua doc la bien GLOBAL = nil ->
---         "attempt to call a nil value (global '_DIO_RawHttpGet')" nam trong
---         pcall => bi an di => PASTEFY_KEY LUON = "" => key nao cung bao sai.
---  LOI 2: cu so sanh key nguoi dung nhap voi chinh key nam trong file JSON
---         => dung key tren web cung bao sai.
---  => Khai bao RAW HTTP + SERVICE ngay tai day, va so sanh key dung cach.
--- =============================================================================
 local _DIO_RawHttpGet = game.HttpGet
 pcall(function()
     if rawget then
@@ -99,7 +72,7 @@ local function _DIO_ResolvePendingFromPastefy()
             end
         end)
         if (not ok2) or type(data) ~= "table" then
-            warn("[DIO KEY] Khong doc duoc du lieu Pastefy (ca link chinh va link du phong). Kiem tra mang / executor.")
+            warn("[DIO KEY] Khong doc duoc du lieu Api (ca link chinh va link du phong). Kiem tra mang / executor.")
             return nil
         end
     end
@@ -205,10 +178,6 @@ local function _SEC_VerifyKey(inputKey)
     return false
 end
 
--- ---------------------------------------------------------------------------
---  TU DONG XAC THUC KEY CAU HINH SAN
---  (het canh "dung key van bao sai" khi set getgenv().Key truoc khi chay hub)
--- ---------------------------------------------------------------------------
 _DIO_PendingKey = _DIO_GetEnvString("Key")
 
 local function _DIO_AddCachedPendingKey()
@@ -243,13 +212,6 @@ local function _DIO_AutoValidateConfiguredKey()
     return false
 end
 
-
--- =============================================================================
--- anti hook (Anti-Hookfunction / Anti-Hookmetamethod / Metatable Vault)
--- =============================================================================
--- Cached Clean Unhooked Service References
--- (khong con khai bao LOCAL o day nua: HttpService/Players/_DIO_RawHttpGet... da
---  duoc khai bao o KHOI KEY SYSTEM phia tren - xem "FIX v11")
 pcall(function()
     local _cloneref = cloneref or function(o) return o end
     HttpService       = _cloneref(game:GetService("HttpService"))
@@ -277,9 +239,6 @@ pcall(function()
     end
 end)
 
--- =============================================================================
--- anti spy (Anti Remote Spy / Anti HTTP Spy / Anti Network Sniffer)
--- =============================================================================
 local _SPY_TARGETS = {
     ["simplespy"] = true,
     ["simplespyv2"] = true,
@@ -328,11 +287,7 @@ pcall(function()
     end
 end)
 
--- =============================================================================
--- anti Lộ source (Anti-Source Leak / Anti-Decompile / Anti-GC Dump)
--- =============================================================================
 pcall(function()
-    -- Nullify & Spoof script reference to neutralize decompile(script)
     local dummyScript = Instance.new("LocalScript")
     dummyScript.Name = "DIO_Hub_Protected"
     script = dummyScript
@@ -346,9 +301,6 @@ pcall(function()
     end
 end)
 
--- =============================================================================
--- DIO HUB ENVIRONMENT & INITIALIZATION SETUP
--- =============================================================================
 getgenv().Team = getgenv().Team or "Pirates"
 getgenv().SaveSettings = (getgenv().SaveSettings == nil) and true or getgenv().SaveSettings
 getgenv().Key = getgenv().Key or ""
@@ -424,21 +376,16 @@ local function isKeyCacheValid()
         return false
     end
 
-    -- [FIX] Khong doi chieu mang o day nua: cache da duoc xac thuc khi ghi.
-    -- Key cau hinh san (env / cache) duoc gom vao _DIO_PendingKey va chi
-    -- doi chieu server MOT LAN duy nhat, trong _DIO_AutoValidateConfiguredKey().
     return true
 end
 
 local function isKeyValid()
-    -- 1) Key cau hinh san trong getgenv().Key / _G.Key / file cache (offline-first)
     _DIO_AddCachedPendingKey()
     if _DIO_AutoValidateConfiguredKey() then
         saveKeyCache()
         return true
     end
 
-    -- 2) Cache con han (chua co key nhap tay) -> cho vao hub
     if isKeyCacheValid() then
         return true
     end
@@ -471,11 +418,9 @@ pcall(function()
     local fpsGui = Instance.new("ScreenGui", game.CoreGui)
     fpsGui.Name = "FPS_Display_80"
 
-    -- V5.5b: STATUS NHO LAI 3 LAN (TextSize 18 -> 6) + CHU TRANG DAM (GothamBold)
-    -- + them TIME dem thoi gian player trong server.
     local fpsLabel = Instance.new("TextLabel", fpsGui)
     fpsLabel.Position = UDim2.new(0, 10, 0, 10)
-    fpsLabel.Size = UDim2.new(0, 220, 0, 12)
+    fpsLabel.Size = UDim2.new(0, 200, 0, 15)
     fpsLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
     fpsLabel.BackgroundTransparency = 0.4
     fpsLabel.TextColor3 = Color3.new(1, 1, 1)
@@ -496,8 +441,6 @@ pcall(function()
     bootLabel.Text = "DIO BOOT: ..."
     __DIO_BOOT = function(s)
         pcall(function()
-            -- V5.5b: LOAD XONG 100% ("DIO HUB READY NOW" / "100%") -> XOA boot label
-            -- (nhin vuong mat). __DIO_BOOT tro thanh no-op, FPS/Ping/TIME giu nguyen.
             local __msg = tostring(s)
             if string.find(__msg, "READY NOW", 1, true) or string.find(__msg, "100%", 1, true) then
                 __DIO_BOOT = function() end
@@ -818,6 +761,23 @@ local Human_v3_Mob = {
     "Diamond"
 }
 
+local DungeonCards = {
+		"Hyper",
+		"Overflow",
+		"Fortress",
+		"Shadow",
+		"Sniper",
+		"Lifesteal",
+		"Unbreakable",
+		"Health",
+		"Defense",
+		"Armor",
+		"Melee",
+		"Sword",
+		"Fruit",
+		"Gun"
+}
+
 local AllBoats = {
     "Beast Hunter",
     "Lantern",
@@ -1117,10 +1077,16 @@ local Attack = {}
 		return (Root.Position - model.Position).Magnitude <= dist
 	end
 	Attack.Dist = function(model, dist)
-		return (Root.Position - model:FindFirstChild("HumanoidRootPart").Position).Magnitude <= dist
+		-- V6b: guard nil (mob chua spawn xong / da bi xoa) - truoc day index thang => error
+		local __rp = model and model:FindFirstChild("HumanoidRootPart")
+		if not __rp then return false end
+		return (Root.Position - __rp.Position).Magnitude <= dist
 	end
 	Attack.DistH = function(model, dist)
-		return (Root.Position - model:FindFirstChild("HumanoidRootPart").Position).Magnitude > dist
+		-- V6b: guard nil nhu tren
+		local __rp = model and model:FindFirstChild("HumanoidRootPart")
+		if not __rp then return false end
+		return (Root.Position - __rp.Position).Magnitude > dist
 	end
 	Attack.Kill = function(model, Succes)
 		if model and Succes then
@@ -1565,24 +1531,52 @@ end;
   end;
   return false
 end;
+-- =====================================================================
+-- V6b HELPERS (nil-safety cho cac track Sea Event)
+-- workspace.Enemies / workspace.SeaBeasts / Map["WaterBase-Plane"] khong phai
+-- luc nao cung ton tai (doi sea / map chua load) => cac ham check cu index
+-- thang => error moi vong lap => tinh nang "bat ma khong lam gi".
+-- =====================================================================
+__DIO_EnFolder = function()
+    return workspace:FindFirstChild("Enemies")
+end
+__DIO_SeaBeastFolder = function()
+    return workspace:FindFirstChild("SeaBeasts")
+end
+-- Y mat nuoc (dung cho farm Sea Beast / Leviathan). Thieu map => 31 nhu cu.
+__DIO_WaterY = function()
+    local __m = __SVC_WS:FindFirstChild("Map")
+    local __w = __m and __m:FindFirstChild("WaterBase-Plane")
+    if __w then return __w.Position.Y end
+    return 31
+end
+
 CheckEnemiesBoat = function()
-  for _,v in pairs(workspace.Enemies:GetChildren()) do
-    if (v.Name == "FishBoat") and v:FindFirstChild("Health").Value > 0 then
+  local __en = __DIO_EnFolder()
+  if not __en then return false end
+  for _,v in pairs(__en:GetChildren()) do
+    local __hp = v:FindFirstChild("Health")
+    if (v.Name == "FishBoat") and __hp and __hp.Value > 0 then
       return true
 end;
   end;
   return false
 end;
 CheckPirateGrandBrigade = function()
-  for _,v in pairs(workspace.Enemies:GetChildren()) do
-    if (v.Name == "PirateGrandBrigade" or v.Name == "PirateBrigade") and v:FindFirstChild("Health").Value > 0 then
+  local __en = __DIO_EnFolder()
+  if not __en then return false end
+  for _,v in pairs(__en:GetChildren()) do
+    local __hp = v:FindFirstChild("Health")
+    if (v.Name == "PirateGrandBrigade" or v.Name == "PirateBrigade") and __hp and __hp.Value > 0 then
       return true
     end
   end
   return false
 end
 CheckShark = function()
-  for _,v in pairs(workspace.Enemies:GetChildren()) do
+  local __en = __DIO_EnFolder()
+  if not __en then return false end
+  for _,v in pairs(__en:GetChildren()) do
     if v.Name == "Shark" and Attack.Alive(v) then
       return true
 end;
@@ -1590,7 +1584,9 @@ end;
   return false
 end;
 CheckTerrorShark = function()
-  for _,v in pairs(workspace.Enemies:GetChildren()) do
+  local __en = __DIO_EnFolder()
+  if not __en then return false end
+  for _,v in pairs(__en:GetChildren()) do
     if v.Name == "Terrorshark" and Attack.Alive(v) then
       return true
 end;
@@ -1598,7 +1594,9 @@ end;
   return false
 end;
 CheckPiranha = function()
-  for _,v in pairs(workspace.Enemies:GetChildren()) do
+  local __en = __DIO_EnFolder()
+  if not __en then return false end
+  for _,v in pairs(__en:GetChildren()) do
     if v.Name == "Piranha" and Attack.Alive(v) then
       return true
 end;
@@ -1606,7 +1604,9 @@ end;
   return false
 end;
 CheckFishCrew = function()
-  for _,v in pairs(workspace.Enemies:GetChildren()) do
+  local __en = __DIO_EnFolder()
+  if not __en then return false end
+  for _,v in pairs(__en:GetChildren()) do
     if (v.Name == "Fish Crew Member" or v.Name == "Haunted Crew Member") and Attack.Alive(v) then
       return true
 end;
@@ -1614,7 +1614,9 @@ end;
   return false
 end;
 CheckHauntedCrew = function()
-  for _,v in pairs(workspace.Enemies:GetChildren()) do
+  local __en = __DIO_EnFolder()
+  if not __en then return false end
+  for _,v in pairs(__en:GetChildren()) do
     if (v.Name == "Haunted Crew Member") and Attack.Alive(v) then
       return true
 end;
@@ -1622,13 +1624,15 @@ end;
   return false
 end;
 CheckSeaBeast = function()
-  if workspace.SeaBeasts:FindFirstChild("SeaBeast1") then
+  local __sb = __DIO_SeaBeastFolder()
+  if __sb and __sb:FindFirstChild("SeaBeast1") then
     return true
 end;
   return false
 end;
 CheckLeviathan = function()
-  if workspace.SeaBeasts:FindFirstChild("Leviathan") then
+  local __sb = __DIO_SeaBeastFolder()
+  if __sb and __sb:FindFirstChild("Leviathan") then
     return true
 end;
   return false
@@ -2575,7 +2579,14 @@ AutoHaki = function()
     end
 end
 
-TeleportToTarget = function(targetCFrame) if (targetCFrame.Position - plr.Character.HumanoidRootPart.Position).Magnitude > 1000 then _tp(targetCFrame)else _tp(targetCFrame)end end
+-- V6b: guard nhan vat (truoc day index thang plr.Character.HumanoidRootPart =>
+-- error khi respawn; ham nay duoc nhieu toggle/feature goi nen guard cho an toan)
+TeleportToTarget = function(targetCFrame)
+    local __chTT = plr.Character
+    local __hrpTT = __chTT and __chTT:FindFirstChild("HumanoidRootPart")
+    if not __hrpTT or not targetCFrame then return end
+    if (targetCFrame.Position - __hrpTT.Position).Magnitude > 1000 then _tp(targetCFrame) else _tp(targetCFrame) end
+end
 
 notween = function(p)
     if __DIO_Dodging then return end
@@ -2610,6 +2621,185 @@ __DIO_FarmFlagsOn = function()
     return (_G.SailBoat_Hydra or _G.WardenBoss or _G.AutoFactory or _G.HighestMirage or _G.HCM or _G.PGB or _G.Leviathan1 or _G.UPGDrago or _G.Complete_Trials or _G.TpDrago_Prehis or _G.BuyDrago or __DIO_BuyFlying or _G.BuyMelee_BuyBlackLeg or _G.BuyMelee_BuyElectro or _G.BuyMelee_BuyFishmanKarate or _G.BuyMelee_BuyDragonClaw or _G.AutoFireFlowers or _G.DT_Uzoth or _G.AutoBerry or _G.Prefully or _G.Prehis_Find or _G.Prehis_Skills or _G.Prehis_DB or _G.Prehis_DE or _G.FarmBlazeEM or _G.Dojoo or _G.CollectPresent or _G.AutoLawKak or _G.TpLab or _G.AutoPhoenixF or _G.AutoFarmChest or _G.AutoHytHallow or _G.LongsWord or _G.BlackSpikey or _G.AutoHolyTorch or _G.TrainDrago  or _G.AutoSaber or _G.FarmMastery_Dev or _G.CitizenQuest or _G.AutoEctoplasm or _G.KeysRen or _G.Auto_Rainbow_Haki or _G.obsFarm or _G.AutoBigmom or _G.Doughv2 or _G.AuraBoss or _G.Raiding or _G.Auto_Cavender or _G.TpPly or _G.Bartilo_Quest or _G.Level or _G.FarmEliteHunt or _G.AutoZou or _G.AutoFarm_Bone or getgenv().AutoMaterial or _G.CraftVM or _G.FrozenTP or _G.ShotHL or _G.TPDoor or _G.AcientOne or _G.AutoFarmNear or _G.AutoRaidCastle or _G.DarkBladev3 or _G.AutoFarmRaid or _G.Auto_Cake_Prince or _G.Addealer or _G.TPNpc or _G.TwinHook or _G.FindMirage or _G.FrozenDimension or _G.FarmChestM or _G.Shark or _G.TerrorShark or _G.Piranha or _G.MobCrew or _G.SeaBeast1 or _G.FishBoat or _G.AutoPole or _G.AutoPoleV2 or _G.Auto_SuperHuman or _G.AutoDeathStep or _G.Auto_SharkMan_Karate or _G.Auto_Electric_Claw or _G.AutoDragonTalon or _G.Auto_Def_DarkCoat or _G.Auto_God_Human or _G.Auto_Tushita or _G.AutoMatSoul or _G.AutoKenVTWO or _G.AutoSerpentBow or _G.AutoFMon or _G.Auto_Soul_Guitar or _G.TPGEAR or _G.AutoSaw or _G.AutoTridentW2 or _G.AutoEvoRace or _G.AutoGetQuestBounty or _G.MarinesCoat or _G.TravelDres or _G.Defeating or _G.DummyMan or _G.Auto_Yama or _G.Auto_SwanGG or _G.SwanCoat or _G.AutoEcBoss or _G.Auto_Mink or _G.Auto_Human or _G.Auto_Skypiea or _G.Auto_Fish or _G.CDK_TS or _G.CDK_YM or _G.CDK or _G.AutoFarmGodChalice or _G.AutoFistDarkness or _G.AutoMiror or _G.Teleport or _G.AutoKilo or _G.AutoGetUsoap or _G.Praying or _G.TryLucky or _G.AutoColShad or _G.AutoUnHaki or _G.Auto_DonAcces or _G.AutoRipIngay or _G.DragoV3 or _G.DragoV1 or _G.SailBoats or NextIs or _G.FarmGodChalice or _G.IceBossRen or senth or senth2 or _G.Lvthan or _G.beasthunter or _G.DangerLV or _G.Relic123 or _G.tweenKitsune or _G.Collect_Ember or _G.AutofindKitIs or _G.Snaguine or _G.TwFruits or _G.tweenKitShrine or _G.Tp_LgS or _G.Tp_MasterA or _G.tweenShrine or _G.FarmMastery_G or _G.FarmMastery_S or _G.FarmBoss or _G.AutoFarmAllBoss or _G.AutoFishSlap or _G.TweenBoatOwner or _G.FarmTyrant or _G.FarmPhaBinh or _G.AutoSpawnCP or _G.AutoBerryH or _G.AutoChestBP or _G.FarmEliteHop or _G.AutoHop_Dough or _G.AutoDoughKing or _G.AutoAttackDoughKing or _G.AutoChipFruit or _G.AutoChipBeli or _G.Auto_StartRaid or _G.StartEvent or _G.AutoMysticIsland or _G.AutoPlayerHunter or _G.SafeMode or _G.AutoKillMob or _G.AutoStartPrehistoric or _G.AutoUnHaki or _G.AutoFarmIsland or _G.AutoFarmDungeon or _G.AutoFarmCandy or _G.AutoTP_Gift or _G.AutoTPGift or _G.AutoTPAndCollect or _G.MasterAutoLevel or _G.MasterAutoCandy or _G.TPFloor1 or _G.TPFloor2 or _G.TPFloor3 or _G.TPFloor4 or _G.FarmEliteH or _G.Safemode or _G.Greybeard or _G.ResetPH) and true or false
 end
 
+-- =====================================================================
+-- V6 HELPERS: TWEEN / HIGHLIGHT + BOAT ASSIST + NO CLIP SHIP
+-- (dat truoc moi vong farm/Find nen moi loop deu dung duoc)
+-- =====================================================================
+-- [1] HIGHLIGHT + TWEEN STATE -----------------------------------------
+-- Tao/huy highlight nhan vat (mau xanh nhu cu) o 1 cho duy nhat => stomper,
+-- toggle wrapper va cac tinh nang deu dung chung, khong con lech trang thai.
+__DIO_HlOn = function()
+    local __ch = plr.Character
+    if not __ch then return end
+    if __ch:FindFirstChild("highlight") then return end
+    pcall(function()
+        local Test = Instance.new("Highlight")
+        Test.Name = "highlight"
+        Test.Enabled = true
+        Test.FillColor = Color3.fromRGB(0,255,120)
+        Test.OutlineColor = Color3.fromRGB(0,255,120)
+        Test.FillTransparency = 0.5
+        Test.OutlineTransparency = 0.2
+        Test.Parent = __ch
+    end)
+end
+
+__DIO_HlOff = function()
+    local __ch = plr.Character
+    local __hl = __ch and __ch:FindFirstChild("highlight")
+    if __hl then pcall(function() __hl:Destroy() end) end
+end
+
+-- Co farm nao dang bat (hoac dang co target tween "tuoi") => bat shouldTween + highlight
+-- NGAY LAP TUC. Tra ve true/false.
+__DIO_TweenOnIfAnyFlag = function()
+    local __on = false
+    pcall(function() __on = __DIO_FarmFlagsOn() and true or false end)
+    if not __on and __DIO_TweenTarget ~= nil and __DIO_LastTpT ~= nil and (tick() - __DIO_LastTpT) < 30 then
+        __on = true
+    end
+    if __on then
+        shouldTween = true
+        pcall(__DIO_HlOn)
+    end
+    return __on
+end
+
+-- [2] BOAT ASSIST + NO CLIP SHIP (dung chung cho 4 vong FIND) ----------
+-- Fix 3 bug Fly Boat:
+--   * Server lag / remote loi / CheckBoat fail => ban cu tuong "chua co thuyen" nen bay
+--     ra shop (Y~9) roi lat nua lai thay thuyen => bay len Y=150 => THUYEN GIAT LEN
+--     GIAT XUONG, khong tween. Gio: dang ngoi => lay thuyen tu GHE DANG NGOI (khong phu
+--     thuoc CheckBoat / folder Boats) va cache lai.
+--   * "Co spawn function" lien tuc: BuyBoat co cooldown, chi goi khi that su khong co
+--     thuyen / thuyen chua co ghe; dang cho thuyen spawn => KHONG ghi de target bay.
+--   * Find FROZEN Dimension khong co No Clip Ship: noclip ap dung cho thuyen lay tu ghe
+--     dang ngoi (thuyen trong Frozen khong nam trong workspace.Boats).
+__DIO_BoatCache = nil
+__DIO_NoClipT = 0
+
+__DIO_NoClipShipNow = function(boat)
+    if getgenv().NoClipShip == false then return end
+    if tick() - (__DIO_NoClipT or 0) < 0.15 then return end
+    __DIO_NoClipT = tick()
+    local __b = boat
+    if not __b then
+        local __ch0 = plr.Character
+        local __hum0 = __ch0 and __ch0:FindFirstChildOfClass("Humanoid")
+        local __seat0 = __hum0 and __hum0.SeatPart
+        __b = (__seat0 and __seat0:FindFirstAncestorOfClass("Model")) or __DIO_BoatCache
+    end
+    if not __b or not __b.Parent then return end
+    __DIO_BoatCache = __b
+    pcall(function()
+        for _, __p in ipairs(__b:GetDescendants()) do
+            if __p:IsA("BasePart") and __p.CanCollide then __p.CanCollide = false end
+        end
+    end)
+    pcall(function()
+        local __chN = plr.Character
+        if __chN then
+            for _, __p in ipairs(__chN:GetDescendants()) do
+                if __p:IsA("BasePart") and __p.CanCollide then __p.CanCollide = false end
+            end
+        end
+    end)
+end
+
+-- Thuyen cua minh: uu tien GHE DANG NGOI (chinh xac 100%), sau do cache, cuoi cung CheckBoat
+__DIO_MyBoat = function()
+    local __ch = plr.Character
+    local __hum = __ch and __ch:FindFirstChildOfClass("Humanoid")
+    local __seat = __hum and __hum.SeatPart
+    if __seat then
+        local __b = __seat:FindFirstAncestorOfClass("Model")
+        -- V6b: chi nhan la THUYEN khi model co ghe thuyen hoac thuoc tinh Owner
+        -- (tranh nham ghe/ghe doi thuong tren dao thanh thuyen => loop tuong "chua co thuyen")
+        if __b and (__b:FindFirstChild("VehicleSeat") or __b:FindFirstChild("Owner") or __b == __DIO_BoatCache) then
+            __DIO_BoatCache = __b
+            return __b
+        end
+    end
+    local __c = __DIO_BoatCache
+    if __c and __c.Parent then
+        local __okO, __own = pcall(function() return tostring(__c.Owner.Value) end)
+        if (not __okO) or __own == tostring(plr.Name) then return __c end
+    end
+    local __okB, __b2 = pcall(CheckBoat)
+    if __okB and __b2 then __DIO_BoatCache = __b2 return __b2 end
+    return nil
+end
+
+__DIO_BoatSeatOf = function(boat)
+    if not boat then return nil end
+    local __s = boat:FindFirstChild("VehicleSeat")
+    if __s then return __s end
+    for _, __d in ipairs(boat:GetDescendants()) do
+        if __d:IsA("VehicleSeat") or __d:IsA("Seat") then return __d end
+    end
+    return nil
+end
+
+-- Tra ve:
+--   "sitting" = dang ngoi thuyen (loop duoc phep chay cruise bay Y)
+--   "busy"    = loop phai NHUONG (dang bay ra shop / cho thuyen spawn / dang tha de ngoi ghe)
+--   "goSeat"  = dang bay toi ghe
+__DIO_BoatAssist = function()
+    local __ch = plr.Character
+    local __hum = __ch and __ch:FindFirstChildOfClass("Humanoid")
+    local __hrp = __ch and __ch:FindFirstChild("HumanoidRootPart")
+    if not __hum or not __hrp or __hum.Health <= 0 then return "busy" end
+
+    -- 1) Dang ngoi: thuyen = model chua ghe (khong phu thuoc workspace.Boats / CheckBoat)
+    if __hum.Sit then
+        local __seat = __hum.SeatPart
+        local __b = __seat and __seat:FindFirstAncestorOfClass("Model")
+        if __b then
+            __DIO_BoatCache = __b
+            __DIO_NoClipShipNow(__b)
+        end
+        return "sitting"
+    end
+
+    local __boat = __DIO_MyBoat()
+
+    -- 2) Chua co thuyen => bay ra shop mua (cooldown 4s, khong spam remote)
+    if not __boat then
+        local __now = tick()
+        if __now - (__DIO_LastBuyTry or 0) < 4 then return "busy" end
+        __DIO_LastBuyTry = __now
+        local __buyCF = CFrame.new(-16927.451, 9.086, 433.864)
+        if (__buyCF.Position - __hrp.Position).Magnitude <= 12 then
+            pcall(function() replicated.Remotes.CommF_:InvokeServer("BuyBoat", (_G.SelectedBoat or "Guardian")) end)
+        else
+            _tp(__buyCF)
+        end
+        return "busy"   -- dang lo mua thuyen: KHONG ghi de target bang lenh bay Y (chong giat len xuong)
+    end
+
+    -- 3) Da co thuyen nhung chua vao ghe
+    local __seat = __DIO_BoatSeatOf(__boat)
+    if not __seat then
+        -- thuyen cu / chua spawn xong ghe: CHO, mua lai throttle 15s, khong teleport lung tung
+        if tick() - (__DIO_LastRebuy or 0) > 15 then
+            __DIO_LastRebuy = tick()
+            pcall(function() replicated.Remotes.CommF_:InvokeServer("BuyBoat", (_G.SelectedBoat or "Guardian")) end)
+        end
+        return "busy"
+    end
+
+    -- V7 SIT-ASSIST (giu nguyen ban cu): sat ghe thi THA RA + dap xuong nhe de Seat bat
+    local __sp = __seat.CFrame.Position
+    if (__hrp.Position - __sp).Magnitude <= 8 and __hrp.Position.Y >= __sp.Y - 1 then
+        __DIO_TweenTarget = nil
+        __DIO_LastDist = nil __DIO_LastHRPPos = nil
+        __hrp.AssemblyLinearVelocity = Vector3.new(0, -15, 0)
+        return "busy"
+    end
+    _tp(__seat.CFrame * CFrame.new(0, 1, 0))
+    return "goSeat"
+end
+
 spawn(function()
   while true do
 
@@ -2635,16 +2825,8 @@ spawn(function()
             local __chHL = plr.Character
             if __chHL and tick() - (__DIO_LastHlDecor or 0) >= 0.25 then
                 __DIO_LastHlDecor = tick()
-                if not __chHL:FindFirstChild("highlight") then
-                    local Test = Instance.new("Highlight")
-                    Test.Name = "highlight"
-                    Test.Enabled = true
-                    Test.FillColor = Color3.fromRGB(0,255,120)
-                    Test.OutlineColor = Color3.fromRGB(0,255,120)
-                    Test.FillTransparency = 0.5
-                    Test.OutlineTransparency = 0.2
-                    Test.Parent = __chHL
-                end
+                -- V6: dung chung helper (1 cho duy nhat tao highlight) => khong lech trang thai
+                pcall(__DIO_HlOn)
             end
         end
 
@@ -2673,6 +2855,7 @@ spawn(function()
             local __hrpOFF = __chOFF and __chOFF:FindFirstChild("HumanoidRootPart")
             if __hrpOFF and __hrpOFF:FindFirstChild("BodyClip") then __hrpOFF:FindFirstChild("BodyClip"):Destroy() end
         end)
+        pcall(__DIO_HlOff)
         pcall(function()
             local __chOFF = plr.Character
             if __chOFF then
@@ -3374,8 +3557,6 @@ __DIO_T = setmetatable({
     ["Travel Zou (World 3)"] = "Travel Zou (World 3)",
     ["Select Travelling"] = "Select Travelling",
     ["Auto Travel"] = "Auto Travel",
-    ["Select Portal"] = "Select Portal",
-    ["requestEntrance"] = "requestEntrance",
     ["Select NPCs"] = "Select NPCs",
     ["Auto Tween to NPC"] = "Auto Tween to NPC",
     ["Buy Buso"] = "Buy Buso",
@@ -3455,6 +3636,21 @@ do
         return "UI/" .. tostring(tabName) .. "/" .. tostring(name or "")
     end
 
+    -- V6b: so sanh sau cho bang (MultiSelect) => khong ghi file Settings.json moi lan click
+    local function __DIO_DeepEq(a, b)
+        if a == b then return true end
+        if type(a) ~= "table" or type(b) ~= "table" then return false end
+        for k, v in pairs(a) do
+            if type(v) == "table" then
+                if not __DIO_DeepEq(v, b[k]) then return false end
+            elseif b[k] ~= v then
+                return false
+            end
+        end
+        for k in pairs(b) do if a[k] == nil then return false end end
+        return true
+    end
+
     local function __WrapTab(tabName, tab)
         if type(tab) ~= "table" then return end
 
@@ -3499,6 +3695,25 @@ do
                                     end
                                 end
                             end)
+                            -- =============================================================
+                            -- V6 FIX "bat toggle ma khong co shouldTween / chi hien highlight":
+                            -- vua bam BAT => bat shouldTween + highlight NGAY (khong doi stomper chay
+                            -- 0.1s), nen khong con khoang "toggle da bat ma chua tween".
+                            -- Neu callback khong tao _G. flag nao VA cung khong co farm flag nao dang
+                            -- bat => ghi canh bao de biet toggle nao bi loi (_G. / shouldTween).
+                            -- Bat getgenv().DIOAuditToggles = true truoc khi chay script de xem danh
+                            -- sach cac toggle "khong tao _G." in ra console.
+                            -- =============================================================
+                            local __newFlag = false
+                            for __k in pairs(__ownedFlags or {}) do __newFlag = true break end
+                            -- Bat shouldTween + highlight NGAY neu co flag farm/tween dang bat
+                            -- (__DIO_TweenOnIfAnyFlag tu kiem __DIO_FarmFlagsOn + target tween con tuoi,
+                            -- nen toggle khong lien quan tween se khong bi nhay highlight).
+                            local __onNow = __DIO_TweenOnIfAnyFlag()
+                            if not __onNow and not __newFlag and getgenv().DIOAuditToggles == true then
+                                warn("[DIO AUDIT] Toggle '" .. tostring(Setting and Setting.Name)
+                                    .. "' BAT nhung KHONG tao _G. flag nao -> kiem tra _G. / shouldTween cua toggle nay.")
+                            end
                         else
                             pcall(origCb, false)
                             if __ownedFlags then
@@ -3539,7 +3754,11 @@ do
                         if not __userTouched then
                             -- V4: goi qua wrapped callback de flag-tracking hoat dong ca voi
                             -- toggle duoc tu khoi phuc tu file settings (khong chi khi bam tay)
-                            pcall(Setting.Callback, __savedCb)
+                            -- V6 FIX BUG _G.: bien __savedCb KHONG ton tai o ham AddToggle (chi co
+                            -- trong AddDropdown) => luon la nil => toggle hien ON sau khi rejoin
+                            -- nhung _G.flag bi dat nil/false => "bat toggle ma khong tween, chi co
+                            -- highlight". Gio truyen dung gia tri da luu.
+                            pcall(Setting.Callback, saved)
                         end
                     end)
                 end
@@ -3575,7 +3794,9 @@ do
                 if Setting and origCb then
                     Setting.Callback = function(Value)
                         __userTouched = true
-                        if _G.SaveData[key] ~= Value then
+                        -- V6b: MultiSelect tra ve TABLE moi lan click => so sanh truc tiep luon
+                        -- khac nhau => ghi file moi click (lag khi chon nhieu player). Dung so sanh sau.
+                        if not __DIO_DeepEq(_G.SaveData[key], Value) then
                             SetSetting(key, Value)
                         end
                         pcall(origCb, Value)
@@ -3957,7 +4178,9 @@ end
 
 spawn(function()
     while true do
-        UpdateOS()
+        -- V6b: pcall (TimeZone chua tao xong / LocalizationService loi => loop chet han,
+        -- dong ho server dung mai)
+        pcall(UpdateOS)
         __DIO_wait(5)
     end
 end)
@@ -4833,13 +5056,21 @@ ChestBP = Tabs.Main:AddToggle({
                 __DIO_ChestBPBusy = true
 
                 task.spawn(function()
+                    -- V6b: pcall tung vong + LUON reset __DIO_ChestBPBusy khi thoat.
+                    -- Ban cu: getCharacter() nil / getChestsSorted loi 1 lan => thread chet
+                    -- nhung __DIO_ChestBPBusy ket = true => vong mo chest KHONG BAO GIO chay lai.
                     while _G.AutoChestBP and LocalPlayer.Character and LocalPlayer.Character.Parent do
-                        local Chests = getChestsSorted()
-                        if #Chests > 0 then
-                            local RootPart = getCharacter().HumanoidRootPart
-                            RootPart.CFrame = Chests[1].CFrame
-                            __DIO_TweenTarget = Chests[1].CFrame __DIO_LastTpT = tick()
-                        end
+                        pcall(function()
+                            local Chests = getChestsSorted()
+                            if #Chests > 0 then
+                                local __chCB = getCharacter()
+                                local RootPart = __chCB and __chCB:FindFirstChild("HumanoidRootPart")
+                                if RootPart then
+                                    RootPart.CFrame = Chests[1].CFrame
+                                    __DIO_TweenTarget = Chests[1].CFrame __DIO_LastTpT = tick()
+                                end
+                            end
+                        end)
                         __DIO_wait(0.3)
                     end
                     __DIO_ChestBPBusy = false
@@ -5712,8 +5943,14 @@ Tabs.Main:AddToggle({
     Name = __DIO_T["Auto Dough King [Fully]"],
     Default = false,
     Callback = function(Value)
-        _G.AutoDoughKing = Value
-        if not Value then
+        -- V6 FIX: ep boolean (truoc day nhan truc tiep Value -> neu callback bi goi voi nil/table
+        -- thi _G.AutoDoughKing la gia tri "khong phai true" => Attack.Kill(boss, nil) khong tween,
+        -- chi con highlight). Dong thoi bat shouldTween + highlight ngay khi BAT toggle.
+        _G.AutoDoughKing = (Value == true)
+        if _G.AutoDoughKing then
+            shouldTween = true
+            pcall(__DIO_HlOn)
+        else
             StopTween(false)
             __DIO_CurTarget = nil
             if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
@@ -5731,12 +5968,21 @@ __DIO_SafeLoop(function()
                     repeat
                         __DIO_wait(0.25)
                         if not _G.AutoDoughKing then break end
-                        Attack.Kill(__bossDK, _G.AutoDoughKing)
+                        -- V6 FIX: Attack.Kill chi tween khi tham so 2 la true. Ep true de chac chan
+                        -- co tween + target (khong con "chi co highlight, khong bay").
+                        Attack.Kill(__bossDK, true)
                     until not _G.AutoDoughKing or not __bossDK.Parent or __bossDK.Humanoid.Health <= 0
                     return
                 end
 
-                if not workspace.Map.CakeLoaf:FindFirstChild("RedDoor") then
+                -- V6 FIX: guard workspace.Map / CakeLoaf. Truoc day workspace.Map.CakeLoaf index
+                -- thang => neu server chua load map / khong o Sea 3 thi pcall fail moi vong 1s
+                -- => toggle bat ma khong lam gi (chi co highlight).
+                local __mapDK = workspace:FindFirstChild("Map")
+                local __cakeLoaf = __mapDK and __mapDK:FindFirstChild("CakeLoaf")
+                if not __cakeLoaf then return end
+
+                if not __cakeLoaf:FindFirstChild("RedDoor") then
                     if GetBP("Red Key") then
                         replicated.Remotes.CommF_:InvokeServer("CakeScientist", "Check")
                         replicated.Remotes.CommF_:InvokeServer("RaidsNpc", "Check")
@@ -5771,7 +6017,8 @@ __DIO_SafeLoop(function()
                     if v then
                         repeat
                             __DIO_wait(0.25)
-                            Attack.Kill(v, _G.AutoDoughKing)
+                            if not _G.AutoDoughKing then break end
+                            Attack.Kill(v, true)
                         until _G.AutoDoughKing == false or not v.Parent or v.Humanoid.Health <= 0
                     else
                         _tp(CFrame.new(402.7189025878906, 81.06050109863281, -12259.54296875))
@@ -6713,18 +6960,8 @@ Name = __DIO_T["Tween speed 600 if near"],
 Description = "",
 Default = true,
 Callback = function(Value)
-
+  -- V6: XOA NOTIFY khi bat/tat toggle (theo yeu cau) - chi giu logic flag
   _G.Neartween = (Value == true)
-
-  pcall(function()
-    Window:Notify({
-      Title = "Tween speed 600 if near",
-      Content = _G.Neartween
-        and ("Can rist bug tween of reset")
-        or  ("Ok(" .. tostring(math.floor(tonumber(_G.TweenSpeed) or 300)) .. ")."),
-      Duration = 4,
-    })
-  end)
 end})
 
 _G.Neartween = (GetSetting("UI/Settings/Tween speed 600 if near", true) == true)
@@ -10039,53 +10276,48 @@ Default = false,
 Callback = function(Value)
   _G.FindMirage = Value
 end})
+-- =====================================================================
+-- V6 AUTO FIND MIRAGE ISLAND
+-- * Thuyen: dung __DIO_BoatAssist (lay thuyen tu GHE DANG NGOI => khong con hieu
+--   nham "chua co thuyen" khi server lag / CheckBoat loi => het giat len xuong).
+-- * No Clip Ship: ap moi 0.25s tren thuyen => xuyen da / vat the.
+-- * Y bay: __DIO_FindCruiseY (khong con tut xuong 31 khi bat toggle Y).
+-- =====================================================================
 __DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.FindMirage then
       pcall(function()
-        if not workspace["_WorldOrigin"].Locations:FindFirstChild("Mirage Island", true) then
-          local myBoat = (function() local __oB5, __rB5 = pcall(CheckBoat) return (__oB5 and __rB5) or false end)() -- FIXED V5: CheckBoat loi => coi nhu chua co thuyen, loop khong bao gio chet o day
-          if not myBoat then
-            local buyBoatCFrame = CFrame.new(-16927.451, 9.086, 433.864)
-            TeleportToTarget(buyBoatCFrame)
-            if (buyBoatCFrame.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 then replicated.Remotes.CommF_:InvokeServer("BuyBoat", (_G.SelectedBoat or "Guardian")) end
-          else
-            if plr.Character.Humanoid.Sit == false then
-              local __seatV4 = myBoat:FindFirstChild("VehicleSeat")
-              if not __seatV4 then
-                  -- FIXED V4: thuyen hong/chua spawn xong ghe => mua lai (throttle 10s, tranh tru Beli lien tuc)
-                  -- thay vi index nil -> error loop -> ket cung mai mai.
-                  if tick() - (__DIO_LastRebuy or 0) > 10 then
-                      __DIO_LastRebuy = tick()
-                      replicated.Remotes.CommF_:InvokeServer("BuyBoat", (_G.SelectedBoat or "Guardian"))
-                  end
-                  return
-              end
-              -- V7 SIT-ASSIST: sat ghe thi THA RA + dap xuong nhe de Seat bat (pin dung yen khong
-              -- sinh Touch event => ghe khong bao gio bat => dung mai tren thuyen). Tha khi cach ghe
-              -- <=8 VA dang o tren ghe; rot xuong nuoc thi _tp keo len lai (tu sua 2 chieu).
-              do
-                  local __hrpV7 = plr.Character.HumanoidRootPart
-                  local __spV7 = __seatV4.CFrame.Position
-                  if (__hrpV7.Position - __spV7).Magnitude <= 8 and __hrpV7.Position.Y >= __spV7.Y - 1 then
-                      __DIO_TweenTarget = nil
-                      __DIO_LastDist = nil __DIO_LastHRPPos = nil
-                      __hrpV7.AssemblyLinearVelocity = Vector3.new(0, -15, 0)
-                      return
-                  end
-              end
-              local boatSeatCFrame = __seatV4.CFrame * CFrame.new(0, 1, 0)
-              _tp(boatSeatCFrame)
-            else
-              repeat __DIO_wait(0.25)
-                local targetDestination = CFrame.new(-10000000, 31, 37016.25)
-                -- V5.4c: chieu cao theo "Teleport Y boat using a slider" (xem helper __DIO_FindCruiseY)
-                _tp(CFrame.new(-10000000, __DIO_FindCruiseY(), 37016.25))
-              until not _G.FindMirage or (targetDestination.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 or workspace["_WorldOrigin"].Locations:FindFirstChild("Mirage Island") or plr.Character.Humanoid.Sit == false plr.Character.Humanoid.Sit = false
-            end
-          end
+        local __wo = workspace:FindFirstChild("_WorldOrigin")
+        local __loc = __wo and __wo:FindFirstChild("Locations")
+        local __found = __loc and __loc:FindFirstChild("Mirage Island", true)
+        if not __found then
+          -- "busy" = dang bay ra shop mua thuyen / cho thuyen spawn / dang tha de ngoi ghe
+          -- => NHUONG, khong ghi de target bay (chong giat len xuong, chong mua lien tuc)
+          if __DIO_BoatAssist() ~= "sitting" then return end
+          local __dest = CFrame.new(-10000000, 31, 37016.25)
+          repeat __DIO_wait(0.25)
+            local __chR = plr.Character
+            local __humR = __chR and __chR:FindFirstChildOfClass("Humanoid")
+            local __hrpR = __chR and __chR:FindFirstChild("HumanoidRootPart")
+            if not __humR or not __hrpR or not __humR.Sit then break end
+            if not _G.FindMirage then break end
+            __DIO_NoClipShipNow()
+            _tp(CFrame.new(__dest.Position.X, __DIO_FindCruiseY(), __dest.Position.Z))
+            __found = __loc and __loc:FindFirstChild("Mirage Island", true)
+          until not _G.FindMirage or __found or (__dest.Position - __hrpR.Position).Magnitude <= 10 or not __humR.Sit
+          pcall(function()
+            local __chE = plr.Character
+            local __humE = __chE and __chE:FindFirstChildOfClass("Humanoid")
+            if __humE then __humE.Sit = false end
+          end)
         else
-          _tp(workspace.Map.MysticIsland.Center.CFrame*CFrame.new(0,300,0))
+          local __mapM = workspace:FindFirstChild("Map")
+          local __mi = __mapM and __mapM:FindFirstChild("MysticIsland")
+          if __mi and __mi:FindFirstChild("Center") then
+            _tp(__mi.Center.CFrame * CFrame.new(0, 300, 0))
+          else
+            _tp(__found.CFrame * CFrame.new(0, 300, 0))
+          end
         end
       end)
     end
@@ -10336,7 +10568,12 @@ Tabs.Race:AddToggle({
 function MoveCamtoMoon()
     local moonDir = Lighting:GetMoonDirection()
     workspace.CurrentCamera.CFrame = CFrame.new(workspace.CurrentCamera.CFrame.Position, workspace.CurrentCamera.CFrame.Position + moonDir)
-    plr.Character.HumanoidRootPart.CFrame = CFrame.new(plr.Character.HumanoidRootPart.Position, plr.Character.HumanoidRootPart.Position + moonDir)
+    -- V6b: guard nhan vat (respawn giua chung => error moi vong)
+    local __chMM = plr.Character
+    local __hrpMM = __chMM and __chMM:FindFirstChild("HumanoidRootPart")
+    if __hrpMM then
+        __hrpMM.CFrame = CFrame.new(__hrpMM.Position, __hrpMM.Position + moonDir)
+    end
 end
 
 __DIO_SafeLoop(function()
@@ -10589,7 +10826,8 @@ Tabs.Race:AddButton({
             __DIO_TweenTarget = hrp.CFrame __DIO_LastTpT = tick() -- FIXED V3: o yen cho teleport
         end
 
-        if not __SVC_WS.Map:FindFirstChild("Temple of Time") and World3 then
+        local __mapTOT = __SVC_WS:FindFirstChild("Map")
+        if __mapTOT and not __mapTOT:FindFirstChild("Temple of Time") and World3 then
             local stash = __SVC_RS:FindFirstChild("MapStash")
             if stash and stash:FindFirstChild("Temple of Time") then
                 stash["Temple of Time"].Parent = workspace.Map
@@ -10609,7 +10847,8 @@ Callback = function()
             __DIO_TweenTarget = hrp.CFrame __DIO_LastTpT = tick() -- FIXED V3: o yen cho teleport
         end
 
-        if not __SVC_WS.Map:FindFirstChild("Temple of Time") and World3 then
+        local __mapTOT = __SVC_WS:FindFirstChild("Map")
+        if __mapTOT and not __mapTOT:FindFirstChild("Temple of Time") and World3 then
             local stash = __SVC_RS:FindFirstChild("MapStash")
             if stash and stash:FindFirstChild("Temple of Time") then
                 stash["Temple of Time"].Parent = workspace.Map
@@ -10641,7 +10880,8 @@ Callback = function()
             __DIO_FlyTo(pos2, 15)
         end)
 
-        if not workspace.Map:FindFirstChild("Temple of Time") and World3 then
+        local __mapTOT = workspace:FindFirstChild("Map")
+        if __mapTOT and not __mapTOT:FindFirstChild("Temple of Time") and World3 then
             local stash = __SVC_RS:FindFirstChild("MapStash")
             if stash and stash:FindFirstChild("Temple of Time") then
                 stash["Temple of Time"].Parent = workspace.Map
@@ -11316,52 +11556,20 @@ __DIO_SafeLoop(function()
                 local prehistoricLoc = Locations:FindFirstChild("Prehistoric Island", true)
 
                 if not prehistoricLoc then
-                    local myBoat = (function() local __oB5, __rB5 = pcall(CheckBoat) return (__oB5 and __rB5) or false end)() -- FIXED V5: CheckBoat loi => coi nhu chua co thuyen, loop khong bao gio chet o day
-
-                    if not myBoat then
-                        local buyBoatCFrame = CFrame.new(-16927.451, 9.086, 433.864)
-                        TeleportToTarget(buyBoatCFrame)
-
-                        if (buyBoatCFrame.Position - hrp.Position).Magnitude <= 10 then
-                            replicated.Remotes.CommF_:InvokeServer(
-                                "BuyBoat",
-                                _G.SelectedBoat or "Guardian"
-                            )
-                        end
-                        return
-                    end
-
-                    if hum.Sit == false then
-                        local __seatV4 = myBoat:FindFirstChild("VehicleSeat")
-                    if not __seatV4 then
-                        if tick() - (__DIO_LastRebuy or 0) > 10 then
-                            __DIO_LastRebuy = tick()
-                            replicated.Remotes.CommF_:InvokeServer("BuyBoat", (_G.SelectedBoat or "Guardian"))
-                        end
-                        return
-                    end
-                    -- V7 SIT-ASSIST: sat ghe thi THA RA + dap xuong nhe de Seat bat (pin dung yen khong
-                    -- sinh Touch event => ghe khong bao gio bat => dung mai tren thuyen). Tha khi cach ghe
-                    -- <=8 VA dang o tren ghe; rot xuong nuoc thi _tp keo len lai (tu sua 2 chieu).
-                    do
-                        local __hrpV7 = plr.Character.HumanoidRootPart
-                        local __spV7 = __seatV4.CFrame.Position
-                        if (__hrpV7.Position - __spV7).Magnitude <= 8 and __hrpV7.Position.Y >= __spV7.Y - 1 then
-                            __DIO_TweenTarget = nil
-                            __DIO_LastDist = nil __DIO_LastHRPPos = nil
-                            __hrpV7.AssemblyLinearVelocity = Vector3.new(0, -15, 0)
-                            return
-                        end
-                    end
-                    local seatCFrame = __seatV4.CFrame * CFrame.new(0, 1, 0)
-                        _tp(seatCFrame)
-                        return
-                    end
+                    -- =============================================================
+                    -- V6 FIX (giong 3 vong FIND con lai): dung __DIO_BoatAssist
+                    --   * lay thuyen tu GHE DANG NGOI => server lag / CheckBoat loi cung
+                    --     khong con hieu nham "chua co thuyen" => het bay ra shop (Y~9) roi
+                    --     bay len Y=150 => het GIAT LEN GIAT XUONG, tween muot tro lai.
+                    --   * BuyBoat co cooldown, khong spam "spawn function" khi remote loi.
+                    --   * No Clip Ship ap dung cho chinh thuyen dang ngoi.
+                    -- =============================================================
+                    if __DIO_BoatAssist() ~= "sitting" then return end
 
                     local seaCFrame = CFrame.new(-10000000, 31, 37016.25)
                     targetDestination = seaCFrame
-
-                    -- V5.4c: chieu cao theo "Teleport Y boat using a slider" (xem helper __DIO_FindCruiseY)
+                    __DIO_NoClipShipNow()
+                    -- chieu cao theo "Teleport Y boat using a slider" (xem helper __DIO_FindCruiseY)
                     _tp(CFrame.new(seaCFrame.Position.X, __DIO_FindCruiseY(), seaCFrame.Position.Z))
 
                 else
@@ -11739,6 +11947,9 @@ __DIO_SafeLoop(function()
             local __boatsNC = __SVC_WS:FindFirstChild("Boats")
             if not __boatsNC then return end
             local __any = getgenv().NoClipShip or getgenv().FindPrehistoric
+            -- V6: noclip CHINH thuyen dang ngoi (Frozen Dimension / thuyen khong nam trong
+            -- workspace.Boats) - truoc day vong nay chi quet folder Boats nen Frozen khong xuyen duoc.
+            pcall(__DIO_NoClipShipNow)
             for i, boat in pairs(__boatsNC:GetChildren()) do
                 for _, v in pairs(boat:GetDescendants()) do
                     if v:IsA("BasePart") then
@@ -11972,11 +12183,20 @@ __DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.SailBoats then
       pcall(function()
-        local myBoat = (function() local __oB5, __rB5 = pcall(CheckBoat) return (__oB5 and __rB5) or false end)() -- FIXED V5: CheckBoat loi => coi nhu chua co thuyen, loop khong bao gio chet o day
+        -- V6b: __DIO_MyBoat uu tien thuyen lay tu GHE DANG NGOI / cache => khi server lag,
+        -- remote loi hay CheckBoat fail thi KHONG con tuong "mat thuyen" roi bay nguoc ra shop
+        -- (day chinh la nguon "thuyen giat len giat xuong" o cac server ping cao).
+        local myBoat = __DIO_MyBoat()
         if not myBoat and not((_G.Shark and CheckShark()) or (_G.TerrorShark and CheckTerrorShark()) or (_G.MobCrew and CheckFishCrew()) or (_G.Piranha and CheckPiranha()))and not((_G.FishBoat and CheckEnemiesBoat()))and not((_G.SeaBeast1 and CheckSeaBeast()))and not(_G.PGB and CheckPirateGrandBrigade())and not(_G.HCM and CheckHauntedCrew())and not(_G.Leviathan1 and CheckLeviathan())then
           local buyBoatCFrame = CFrame.new(-16927.451, 9.086, 433.864)
           TeleportToTarget(buyBoatCFrame)
-          if (buyBoatCFrame.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 then replicated.Remotes.CommF_:InvokeServer("BuyBoat", (_G.SelectedBoat or "Guardian")) end
+          -- V6b: throttle 4s cho BuyBoat (server tu choi lien tuc thi khong spam remote nua)
+          local __hrpSE = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+          if __hrpSE and (buyBoatCFrame.Position - __hrpSE.Position).Magnitude <= 10
+             and tick() - (__DIO_LastBuyTry or 0) > 4 then
+            __DIO_LastBuyTry = tick()
+            replicated.Remotes.CommF_:InvokeServer("BuyBoat", (_G.SelectedBoat or "Guardian"))
+          end
         elseif myBoat and not((_G.Shark and CheckShark()) or (_G.TerrorShark and CheckTerrorShark()) or (_G.MobCrew and CheckFishCrew()) or (_G.Piranha and CheckPiranha()))and not((_G.FishBoat and CheckEnemiesBoat()))and not((_G.SeaBeast1 and CheckSeaBeast()))and not(_G.PGB and CheckPirateGrandBrigade())and not(_G.HCM and CheckHauntedCrew())and not(_G.Leviathan1 and CheckLeviathan())then
           if plr.Character.Humanoid.Sit == false then
             local __seatV4 = myBoat:FindFirstChild("VehicleSeat")
@@ -12073,24 +12293,49 @@ __DIO_FlyBoatY = function()
     return math.clamp(math.floor(tonumber(_G.FlyBoatY) or 150), 30, 500)
 end
 
--- V5.4c: co mob sea event nao trong server? (ALL: fish boat, brigade, terror,
--- shark, crew, piranha - __DIO_SeaScan cache 0.5s nen re)
+-- V5.4c/V6 FIX: co mob sea event nao trong server?
+-- Ban cu tu liet ke ten mob rieng (thieu Leviathan/SeaBeast/HauntedCrew + de lech ten
+-- voi game). Gio dung CHINH cac ham check cua Auto Sea Event (thu tu y nhu ban cu).
+__DIO_SeaAnyHoldT = __DIO_SeaAnyHoldT or 0
 __DIO_SeaScanAny = function()
-    local __ss = __DIO_SeaScan()
-    return __ss.fish or __ss.pgb or __ss.terror or __ss.shark or __ss.crew or __ss.piranha
+    -- V6b: BO CheckLeviathan theo yeu cau - Leviathan KHONG tinh la 1 sea event.
+    -- Vi vay server co Leviathan cung khong lam Y cua cac Find nhay len slider
+    -- "Teleport Y boat If have Sea Event (ALL)". (Toggle "Auto Attack Leviathan"
+    -- _G.Leviathan1 VAN hoat dong binh thuong - chi khong tinh vao scan Y nay.)
+    local __chk = {
+        CheckEnemiesBoat, CheckPirateGrandBrigade, CheckTerrorShark, CheckShark,
+        CheckFishCrew, CheckPiranha, CheckSeaBeast, CheckHauntedCrew,
+    }
+    for __i = 1, #__chk do
+        local __fn = __chk[__i]
+        if type(__fn) == "function" then
+            local __okC, __res = pcall(__fn)
+            if __okC and __res then
+                __DIO_SeaAnyHoldT = tick()
+                return true
+            end
+        end
+    end
+    return false
 end
 
--- V5.4c: Y bay cua 4 FIND (Frozen/Prehistoric/Kitsune/Mirage):
--- * Toggle "Teleport Y boat using a slider" TAT (mac dinh): TAT scan mob sea
---   event, thuyen bay het duong theo Y slider "Fly Boat" (khong tu nhay Y).
--- * Toggle BAT: BAT scan mob; thay mob trong list => bay len Y slider
---   "Teleport Y boat If have Sea Event (ALL)" (150-600); khong co mob => Y 31 nhu cu.
+-- =====================================================================
+-- V6 FIX XUNG DOT Y GIUA 2 SLIDER (bug "bat Toggle thi Y tut xuong 31"):
+--   * Toggle "Teleport Y boat using a slider" BAT va DANG CO sea event
+--     => bay Y theo slider "Teleport Y boat If have Sea Event (ALL)" (150-600).
+--   * Moi truong hop con lai (toggle TAT, hoac BAT nhung khong co sea event)
+--     => LUON bay theo Y slider "Fly Boat" (30-500).
+--   Ban cu ep Y = 31 khi "khong co mob" => thuyen dang bay 150 bi tut xuong 31
+--   (giat len xuong) roi lai len 150 khi co mob => da BO nhanh 31.
+--   Muon bay sat mat nuoc nhu cu thi chi can keo slider "Fly Boat" xuong 31.
+--   * Hysteresis 3s: mob vua bi giet van giu Y cao 3s => Y khong nhay len xuong.
+-- =====================================================================
 __DIO_FindCruiseY = function()
-    if _G.TeleportYSlider then
-        if __DIO_SeaScanAny() then
-            return math.clamp(math.floor(tonumber(_G.SeaTeleportY) or 150), 150, 600)
-        end
-        return 31
+    if _G.TeleportYSlider and __DIO_SeaScanAny() then
+        return math.clamp(math.floor(tonumber(_G.SeaTeleportY) or 150), 150, 600)
+    end
+    if _G.TeleportYSlider and (tick() - (__DIO_SeaAnyHoldT or 0)) < 3 then
+        return math.clamp(math.floor(tonumber(_G.SeaTeleportY) or 150), 150, 600)
     end
     return __DIO_FlyBoatY()
 end
@@ -12155,6 +12400,8 @@ __DIO_FriendGateList = function()
     return _G.FriendLeviathanList
 end
 __DIO_OnMyBoatOrNear = function(pname, boat)
+    -- V6: guard boat = nil (khong the goi IsDescendantOf(nil) => error lam chet vong Find)
+    if not boat then return true end
     local __p = __SVC_PLR:FindFirstChild(pname)
     if not __p then return true end -- da roi server: khong tinh la thieu ngu
     local __ch = __p.Character
@@ -12229,8 +12476,8 @@ __DIO_SafeLoop(function()
       if _G.Piranha then local a={"Piranha"}if CheckPiranha()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) Attack.Kill(c,_G.Piranha)until _G.Piranha==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
       if _G.MobCrew then local a={"Fish Crew Member"}if CheckFishCrew()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) Attack.Kill(c,_G.MobCrew)until _G.MobCrew==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
       if _G.HCM then local a={"Haunted Crew Member"}if CheckHauntedCrew()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) Attack.Kill(c,_G.HCM)until _G.HCM==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
-      if _G.SeaBeast1 then if workspace.SeaBeasts:FindFirstChild("SeaBeast1")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)_tp(CFrame.new(b.HumanoidRootPart.Position.X,__SVC_WS.Map["WaterBase-Plane"].Position.Y+200,b.HumanoidRootPart.Position.Z))if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then AitSeaSkill_Custom=b.HumanoidRootPart.CFrame;MousePos=AitSeaSkill_Custom.Position;__DIO_SeaSkillAtk() end until _G.SeaBeast1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
-      if _G.Leviathan1 then if workspace.SeaBeasts:FindFirstChild("Leviathan")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Leviathan Segment")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)_tp(CFrame.new(b.HumanoidRootPart.Position.X,__SVC_WS.Map["WaterBase-Plane"].Position.Y+200,b.HumanoidRootPart.Position.Z))if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then MousePos=b:FindFirstChild("Leviathan Segment").Position;__DIO_SeaSkillAtk() end until _G.Leviathan1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
+      if _G.SeaBeast1 then if workspace:FindFirstChild("SeaBeasts") and workspace.SeaBeasts:FindFirstChild("SeaBeast1")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)_tp(CFrame.new(b.HumanoidRootPart.Position.X,__DIO_WaterY()+200,b.HumanoidRootPart.Position.Z))if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then AitSeaSkill_Custom=b.HumanoidRootPart.CFrame;MousePos=AitSeaSkill_Custom.Position;__DIO_SeaSkillAtk() end until _G.SeaBeast1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
+      if _G.Leviathan1 then if workspace:FindFirstChild("SeaBeasts") and workspace.SeaBeasts:FindFirstChild("Leviathan")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Leviathan Segment")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)_tp(CFrame.new(b.HumanoidRootPart.Position.X,__DIO_WaterY()+200,b.HumanoidRootPart.Position.Z))if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then MousePos=b:FindFirstChild("Leviathan Segment").Position;__DIO_SeaSkillAtk() end until _G.Leviathan1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
       if _G.FishBoat then
         if CheckEnemiesBoat() then
             for a,b in pairs(workspace.Enemies:GetChildren()) do
@@ -12278,53 +12525,37 @@ Default = false,
 Callback = function(Value)
   _G.AutofindKitIs = Value
 end})
+-- =====================================================================
+-- V6 AUTO FIND KITSUNE ISLAND (cung bo fix nhu Find Mirage / Find Frozen)
+-- =====================================================================
 __DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.AutofindKitIs then
       pcall(function()
-        if not workspace["_WorldOrigin"].Locations:FindFirstChild("Kitsune Island", true) then
-          local myBoat = (function() local __oB5, __rB5 = pcall(CheckBoat) return (__oB5 and __rB5) or false end)() -- FIXED V5: CheckBoat loi => coi nhu chua co thuyen, loop khong bao gio chet o day
-          if not myBoat then
-            local buyBoatCFrame = CFrame.new(-16927.451, 9.086, 433.864)
-            TeleportToTarget(buyBoatCFrame)
-            if (buyBoatCFrame.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 then replicated.Remotes.CommF_:InvokeServer("BuyBoat", (_G.SelectedBoat or "Guardian")) end
-          else
-            if plr.Character.Humanoid.Sit == false then
-              local __seatV4 = myBoat:FindFirstChild("VehicleSeat")
-              if not __seatV4 then
-                  -- FIXED V4: thuyen hong/chua spawn xong ghe => mua lai (throttle 10s, tranh tru Beli lien tuc)
-                  -- thay vi index nil -> error loop -> ket cung mai mai.
-                  if tick() - (__DIO_LastRebuy or 0) > 10 then
-                      __DIO_LastRebuy = tick()
-                      replicated.Remotes.CommF_:InvokeServer("BuyBoat", (_G.SelectedBoat or "Guardian"))
-                  end
-                  return
-              end
-              -- V7 SIT-ASSIST: sat ghe thi THA RA + dap xuong nhe de Seat bat (pin dung yen khong
-              -- sinh Touch event => ghe khong bao gio bat => dung mai tren thuyen). Tha khi cach ghe
-              -- <=8 VA dang o tren ghe; rot xuong nuoc thi _tp keo len lai (tu sua 2 chieu).
-              do
-                  local __hrpV7 = plr.Character.HumanoidRootPart
-                  local __spV7 = __seatV4.CFrame.Position
-                  if (__hrpV7.Position - __spV7).Magnitude <= 8 and __hrpV7.Position.Y >= __spV7.Y - 1 then
-                      __DIO_TweenTarget = nil
-                      __DIO_LastDist = nil __DIO_LastHRPPos = nil
-                      __hrpV7.AssemblyLinearVelocity = Vector3.new(0, -15, 0)
-                      return
-                  end
-              end
-              local boatSeatCFrame = __seatV4.CFrame * CFrame.new(0, 1, 0)
-              _tp(boatSeatCFrame)
-            else
-              local targetDestination = CFrame.new(-10000000, 31, 37016.25)
-              repeat __DIO_wait(0.25)
-                -- V5.4c: chieu cao theo "Teleport Y boat using a slider" (xem helper __DIO_FindCruiseY)
-                _tp(CFrame.new(-10000000, __DIO_FindCruiseY(), 37016.25))
-              until not _G.AutofindKitIs or (targetDestination.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 or workspace["_WorldOrigin"].Locations:FindFirstChild("Kitsune Island") or plr.Character.Humanoid.Sit == false plr.Character.Humanoid.Sit = false
-            end
-          end
+        local __wo = workspace:FindFirstChild("_WorldOrigin")
+        local __loc = __wo and __wo:FindFirstChild("Locations")
+        local __found = __loc and __loc:FindFirstChild("Kitsune Island", true)
+        if not __found then
+          if __DIO_BoatAssist() ~= "sitting" then return end
+          local __dest = CFrame.new(-10000000, 31, 37016.25)
+          repeat __DIO_wait(0.25)
+            local __chR = plr.Character
+            local __humR = __chR and __chR:FindFirstChildOfClass("Humanoid")
+            local __hrpR = __chR and __chR:FindFirstChild("HumanoidRootPart")
+            if not __humR or not __hrpR or not __humR.Sit then break end
+            if not _G.AutofindKitIs then break end
+            __DIO_NoClipShipNow()
+            _tp(CFrame.new(__dest.Position.X, __DIO_FindCruiseY(), __dest.Position.Z))
+            __found = __loc and __loc:FindFirstChild("Kitsune Island", true)
+          until not _G.AutofindKitIs or __found or (__dest.Position - __hrpR.Position).Magnitude <= 10 or not __humR.Sit
+          pcall(function()
+            local __chE = plr.Character
+            local __humE = __chE and __chE:FindFirstChildOfClass("Humanoid")
+            if __humE then __humE.Sit = false end
+          end)
         else
-          _tp(workspace._WorldOrigin.Locations:FindFirstChild("Kitsune Island").CFrame*CFrame.new(0,500,0))
+          -- giu nguyen hanh vi cu: bay len tren dao Kitsune (Y +500)
+          _tp(__found.CFrame * CFrame.new(0, 500, 0))
         end
       end)
     end
@@ -12342,7 +12573,13 @@ __DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.tweenShrine then
       pcall(function()
-      local kit_is = workspace.Map:FindFirstChild("KitsuneIsland") or game.Workspace._WorldOrigin.Locations:FindFirstChild("Kitsune Island")
+      -- V6b: guard toan bo (Map / _WorldOrigin / Kitsune Island co the nil)
+      local __mapKS = workspace:FindFirstChild("Map")
+      local __woKS = workspace:FindFirstChild("_WorldOrigin")
+      local __locKS = __woKS and __woKS:FindFirstChild("Locations")
+      local __kl = __locKS and __locKS:FindFirstChild("Kitsune Island")
+      local kit_is = (__mapKS and __mapKS:FindFirstChild("KitsuneIsland")) or __kl
+      if not kit_is then return end
       local shrineActive = kit_is:FindFirstChild("ShrineActive")
         if shrineActive then
           for _, v in next, shrineActive:GetDescendants() do
@@ -12352,7 +12589,8 @@ __DIO_SafeLoop(function()
             end
           end
         else
-          _tp(workspace._WorldOrigin.Locations:FindFirstChild("Kitsune Island").CFrame * CFrame.new(0,500,0))
+          local __kl2 = kit_is or (__locKS and __locKS:FindFirstChild("Kitsune Island"))
+          if __kl2 then _tp(__kl2.CFrame * CFrame.new(0, 500, 0)) end
         end
       end)
     end
@@ -12370,10 +12608,16 @@ __DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.Collect_Ember then
       pcall(function()
-        if workspace:WaitForChild("AttachedAzureEmber") or workspace:WaitForChild("EmberTemplate") then
-        notween(workspace:WaitForChild("EmberTemplate"):FindFirstChild("Part").CFrame)
+        -- V6b: guard Part / Kitsune Island (truoc day index thang => error moi vong)
+        local __tpEmber = workspace:FindFirstChild("EmberTemplate")
+        local __partEmber = __tpEmber and __tpEmber:FindFirstChild("Part")
+        if __partEmber and (workspace:FindFirstChild("AttachedAzureEmber") or __tpEmber) then
+          notween(__partEmber.CFrame)
         else
-          _tp(workspace._WorldOrigin.Locations:FindFirstChild("Kitsune Island").CFrame * CFrame.new(0,500,0))
+          local __woE2 = workspace:FindFirstChild("_WorldOrigin")
+          local __locE2 = __woE2 and __woE2:FindFirstChild("Locations")
+          local __kl3 = __locE2 and __locE2:FindFirstChild("Kitsune Island")
+          if __kl3 then _tp(__kl3.CFrame * CFrame.new(0, 500, 0)) end
           replicated.Modules.Net["RF/KitsuneStatuePray"]:InvokeServer()
         end
       end)
@@ -12444,6 +12688,50 @@ Tabs.SeaEvent:AddButton({
 })
 
 -- =====================================================================
+-- V6 FIX 2 DROPDOWN PLAYER (bug "khong hien player trong server" + "chi chon duoc 1 player"):
+--   1) Ban cu: CLEAR_DROPDOWN + nap lai TOAN BO option moi 4s. CLEAR xoa het nut trong
+--      dropdown => dang mo dropdown ma het 4s la danh sach bi xoa/tao lai ngay duoi tay,
+--      click thu 2 bi mat => "chi chon duoc 1 player"; neu luc chay script server chua tra
+--      ve danh sach player (hoac ban choi 1 minh) thi dropdown coi nhu TRONG mai.
+--      => Gio dong bo KIEN: chi ADD nguoi moi / REMOVE nguoi da roi server, khong dung UI
+--      nen lua chon duoc giu nguyen 100%.
+--   2) _G.OwnersBoatList / _G.FriendLeviathanList duoc nap tu settings NGAY khi load
+--      (khong doi bam UI) va KHONG bi xoa trang khi server bao "0 player".
+-- =====================================================================
+__DIO_SelKeyOwner  = "UI/SeaEvent/Owners Boat Hunter"
+__DIO_SelKeyFriend = "UI/SeaEvent/Friend Hunter Leviathan"
+
+-- doc map da luu trong settings -> danh sach ten dang chon
+__DIO_SavedSelList = function(key)
+    local __out = {}
+    local __saved = GetSetting(key, nil)
+    if type(__saved) == "table" then
+        for __k, __v in pairs(__saved) do
+            if __v == true and type(__k) == "string" then table.insert(__out, __k) end
+        end
+    elseif type(__saved) == "string" and __saved ~= "" then
+        table.insert(__out, __saved)
+    end
+    table.sort(__out)
+    return __out
+end
+
+-- chuan hoa value dropdown (map / mang / string) -> danh sach ten trong server.
+-- Neu server bao "chua co player" (#names == 0) => giu nguyen list cu, khong xoa trang.
+__DIO_SelUpdate = function(Value, gname)
+    local __names = __DIO_PlayerNames()
+    if #__names == 0 then
+        if type(_G[gname]) ~= "table" then _G[gname] = {} end
+        return _G[gname]
+    end
+    _G[gname] = __DIO_SeaNormList(Value, __names)
+    return _G[gname]
+end
+
+_G.OwnersBoatList = (type(_G.OwnersBoatList) == "table") and _G.OwnersBoatList or __DIO_SavedSelList(__DIO_SelKeyOwner)
+_G.FriendLeviathanList = (type(_G.FriendLeviathanList) == "table") and _G.FriendLeviathanList or __DIO_SavedSelList(__DIO_SelKeyFriend)
+
+-- =====================================================================
 -- V5.4: OWNERS BOAT HUNTER + TWEEN TO SITTING IN A BOAT OWNER + FRIEND HUNTER LEVIATHAN
 -- * Owners Boat Hunter (chon nhieu): ai la CHU THUYEN (Owner.Value) - uu tien
 --   nguoi DANG LAI thuyen - de board len thuyen ho.
@@ -12459,10 +12747,10 @@ Tabs.SeaEvent:AddButton({
 __DIO_OwnerDrop = Tabs.SeaEvent:AddDropdown({
     Name = __DIO_T["Owners Boat Hunter"],
     Options = __DIO_PlayerNames(),
-    Default = {},
+    Default = _G.OwnersBoatList,
     MultiSelect = true,
     Callback = function(Value)
-        _G.OwnersBoatList = __DIO_SeaNormList(Value, __DIO_PlayerNames())
+        __DIO_SelUpdate(Value, "OwnersBoatList")
     end
 })
 
@@ -12483,27 +12771,53 @@ Tabs.SeaEvent:AddToggle({
 __DIO_FriendDrop = Tabs.SeaEvent:AddDropdown({
     Name = __DIO_T["Friend Hunter Leviathan"],
     Options = __DIO_PlayerNames(),
-    Default = {},
+    Default = _G.FriendLeviathanList,
     MultiSelect = true,
     Callback = function(Value)
-        _G.FriendLeviathanList = __DIO_SeaNormList(Value, __DIO_PlayerNames())
+        __DIO_SelUpdate(Value, "FriendLeviathanList")
     end
 })
 
--- V5.4: tu lam moi 2 dropdown player khi co nguoi vao/ra server (4s/lan)
+-- =====================================================================
+-- V6: DONG BO KIEN 2 dropdown player (thay cho CLEAR_DROPDOWN + nap lai moi 4s)
+-- Chi them nguoi moi / xoa nguoi da roi server. Lua chon dang co + UI dang mo
+-- khong bi dung toi => bam duoc nhieu nguoi, khong mat lua chon.
+-- =====================================================================
+__DIO_OwnerSeen, __DIO_FriendSeen = {}, {}
+do
+    local __initNames = __DIO_PlayerNames()
+    for __i = 1, #__initNames do
+        __DIO_OwnerSeen[__initNames[__i]] = true
+        __DIO_FriendSeen[__initNames[__i]] = true
+    end
+end
+
+__DIO_SyncPlayerDrop = function(drop, seen)
+    if not drop or type(drop.ADD_DROPDOWN_OPTION) ~= "function" then return seen end
+    local __names = __DIO_PlayerNames()
+    if #__names == 0 then return seen end
+    local __now = {}
+    for __i = 1, #__names do __now[__names[__i]] = true end
+    for __i = 1, #__names do
+        local __n = __names[__i]
+        if not seen[__n] then
+            pcall(function() drop:ADD_DROPDOWN_OPTION(__n) end)
+        end
+    end
+    if type(drop.REMOVE_DROPDOWN_OPTION) == "function" then
+        for __n in pairs(seen) do
+            if not __now[__n] then
+                pcall(function() drop:REMOVE_DROPDOWN_OPTION(__n) end)
+            end
+        end
+    end
+    return __now
+end
+
 __DIO_SafeLoop(function()
-    while __DIO_wait(4) do
-        pcall(function()
-            local __names = __DIO_PlayerNames()
-            if __DIO_OwnerDrop and __DIO_OwnerDrop.CLEAR_DROPDOWN then
-                __DIO_OwnerDrop:CLEAR_DROPDOWN()
-                for __i, __n in ipairs(__names) do __DIO_OwnerDrop:ADD_DROPDOWN_OPTION(__n) end
-            end
-            if __DIO_FriendDrop and __DIO_FriendDrop.CLEAR_DROPDOWN then
-                __DIO_FriendDrop:CLEAR_DROPDOWN()
-                for __i, __n in ipairs(__names) do __DIO_FriendDrop:ADD_DROPDOWN_OPTION(__n) end
-            end
-        end)
+    while __DIO_wait(2) do
+        pcall(function() __DIO_OwnerSeen = __DIO_SyncPlayerDrop(__DIO_OwnerDrop, __DIO_OwnerSeen) end)
+        pcall(function() __DIO_FriendSeen = __DIO_SyncPlayerDrop(__DIO_FriendDrop, __DIO_FriendSeen) end)
     end
 end, "SeaPlayerRefresh")
 
@@ -12571,66 +12885,60 @@ Tabs.SeaEvent:AddToggle({
     end
 })
 
+-- =====================================================================
+-- V6 AUTO FIND FROZEN DIMENSION
+-- * Thuyen: __DIO_BoatAssist (lay thuyen tu ghe dang ngoi) => het giat len xuong
+--   khi server lag / remote / CheckBoat loi; khong con spam BuyBoat lien tuc.
+-- * No Clip Ship: __DIO_NoClipShipNow() ap moi 0.25s tren CHINH thuyen dang ngoi
+--   (thuyen trong Frozen Dimension khong nam trong workspace.Boats nen ban cu
+--   vong noclip 1s khong tim thay => khong xuyen duoc da / vat the).
+-- * Y bay: __DIO_FindCruiseY (khong con tut xuong 31 khi bat toggle Y).
+-- * Friend Gate (Friend Hunter Leviathan) giu nguyen.
+-- =====================================================================
 __DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.FrozenDimension then
       pcall(function()
-        if not workspace["_WorldOrigin"].Locations:FindFirstChild("Frozen Dimension", true) then
-          local myBoat = (function() local __oB5, __rB5 = pcall(CheckBoat) return (__oB5 and __rB5) or false end)() -- FIXED V5: CheckBoat loi => coi nhu chua co thuyen, loop khong bao gio chet o day
-          if not myBoat then
-            local buyBoatCFrame = CFrame.new(-16927.451, 9.086, 433.864)
-            TeleportToTarget(buyBoatCFrame)
-            if (buyBoatCFrame.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 then replicated.Remotes.CommF_:InvokeServer("BuyBoat", (_G.SelectedBoat or "Guardian")) end
-          else
-            if plr.Character.Humanoid.Sit == false then
-              local __seatV4 = myBoat:FindFirstChild("VehicleSeat")
-              if not __seatV4 then
-                  -- FIXED V4: thuyen hong/chua spawn xong ghe => mua lai (throttle 10s, tranh tru Beli lien tuc)
-                  -- thay vi index nil -> error loop -> ket cung mai mai.
-                  if tick() - (__DIO_LastRebuy or 0) > 10 then
-                      __DIO_LastRebuy = tick()
-                      replicated.Remotes.CommF_:InvokeServer("BuyBoat", (_G.SelectedBoat or "Guardian"))
-                  end
-                  return
-              end
-              -- V7 SIT-ASSIST: sat ghe thi THA RA + dap xuong nhe de Seat bat (pin dung yen khong
-              -- sinh Touch event => ghe khong bao gio bat => dung mai tren thuyen). Tha khi cach ghe
-              -- <=8 VA dang o tren ghe; rot xuong nuoc thi _tp keo len lai (tu sua 2 chieu).
-              do
-                  local __hrpV7 = plr.Character.HumanoidRootPart
-                  local __spV7 = __seatV4.CFrame.Position
-                  if (__hrpV7.Position - __spV7).Magnitude <= 8 and __hrpV7.Position.Y >= __spV7.Y - 1 then
-                      __DIO_TweenTarget = nil
-                      __DIO_LastDist = nil __DIO_LastHRPPos = nil
-                      __hrpV7.AssemblyLinearVelocity = Vector3.new(0, -15, 0)
-                      return
-                  end
-              end
-              local boatSeatCFrame = __seatV4.CFrame * CFrame.new(0, 1, 0)
-              _tp(boatSeatCFrame)
-            else
-              repeat __DIO_wait(0.25)
-                local targetDestination = CFrame.new(-10000000, 31, 37016.25)
-                -- V5.4 FRIEND GATE: da chon ban trong "Friend Hunter Leviathan" thi PHAI
-                -- cho du ngu (moi ban dang ngoi tren thuyen nay hoac cach thuyen <= 5 studs)
-                -- moi duoc di. Thieu bat ki ai => bat buoc cho (neo gan thuyen khong di xa).
-                -- Khong chon ai (list rong) => tween thuyen ca nhan nhu binh thuong.
-                if not __DIO_AllFriendsAboard(myBoat) then
-                  -- V5.4b FIX: neu _tp(pivot+8) moi 0.25s thi target luon cao hon vi tri
-                  -- hien tai => thuyen tu troi LEN VO HAN khi cho ban. Gio HUY target,
-                  -- thuyen trôi tu nhien tai cho den khi du ngu thi _tp tiep.
-                  __DIO_TweenTarget = nil
-                  __DIO_LastTweenTarget = nil
-                  if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
-                  continue
-                end
-                -- V5.4c: chieu cao theo "Teleport Y boat using a slider" (xem helper __DIO_FindCruiseY)
-                _tp(CFrame.new(-10000000, __DIO_FindCruiseY(), 37016.25))
-              until not _G.FrozenDimension or (targetDestination.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 or workspace["_WorldOrigin"].Locations:FindFirstChild("Frozen Dimension") or plr.Character.Humanoid.Sit == false plr.Character.Humanoid.Sit = false
+        local __wo = workspace:FindFirstChild("_WorldOrigin")
+        local __loc = __wo and __wo:FindFirstChild("Locations")
+        local __found = __loc and __loc:FindFirstChild("Frozen Dimension", true)
+        if not __found then
+          if __DIO_BoatAssist() ~= "sitting" then return end
+          local __dest = CFrame.new(-10000000, 31, 37016.25)
+          repeat __DIO_wait(0.25)
+            local __chR = plr.Character
+            local __humR = __chR and __chR:FindFirstChildOfClass("Humanoid")
+            local __hrpR = __chR and __chR:FindFirstChild("HumanoidRootPart")
+            if not __humR or not __hrpR or not __humR.Sit then break end
+            if not _G.FrozenDimension then break end
+            -- NO CLIP SHIP moi 0.25s (xuyen da / vat the trong Frozen Dimension)
+            __DIO_NoClipShipNow()
+            -- V5.4 FRIEND GATE: da chon ban trong "Friend Hunter Leviathan" thi PHAI cho du ngu
+            -- (moi ban dang ngoi tren thuyen nay hoac cach thuyen <= 5 studs) moi duoc di.
+            if not __DIO_AllFriendsAboard(__DIO_MyBoat()) then
+              -- Thieu ban: HUY target => thuyen nghi tai cho (khong troi len vo han) va van noclip
+              __DIO_TweenTarget = nil
+              __DIO_LastTweenTarget = nil
+              if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+              continue
             end
-          end
+            _tp(CFrame.new(__dest.Position.X, __DIO_FindCruiseY(), __dest.Position.Z))
+            __found = __loc and __loc:FindFirstChild("Frozen Dimension", true)
+          until not _G.FrozenDimension or __found or (__dest.Position - __hrpR.Position).Magnitude <= 10 or not __humR.Sit
+          pcall(function()
+            local __chE = plr.Character
+            local __humE = __chE and __chE:FindFirstChildOfClass("Humanoid")
+            if __humE then __humE.Sit = false end
+          end)
         else
-          _tp(workspace.Map.LeviathanGate.Center.CFrame*CFrame.new(0,300,0))
+          local __mapF = workspace:FindFirstChild("Map")
+          local __gate = __mapF and __mapF:FindFirstChild("LeviathanGate")
+          local __gCenter = __gate and __gate:FindFirstChild("Center")
+          if __gCenter then
+            _tp(__gCenter.CFrame * CFrame.new(0, 300, 0))
+          else
+            _tp(__found.CFrame * CFrame.new(0, 300, 0))
+          end
         end
       end)
     end
@@ -12731,51 +13039,35 @@ Default = false,
 Callback = function(Value)
   _G.SailBoat_Hydra = Value
 end})
+-- =====================================================================
+-- V6b: AUTO DRIVE TO HYDRA ISLAND
+-- Cung bo fix nhu 4 vong Find: thuyen lay tu GHE DANG NGOI (__DIO_BoatAssist)
+-- => server lag / CheckBoat loi khong con lam thuyen giat len xuong, khong spam
+-- BuyBoat, va co No Clip Ship. Y bay giu nguyen thiet ke cu (150 khi co sea event,
+-- 35 khi khong) - day la duong bay ap dao Hydra, khong dung slider Fly Boat.
+-- =====================================================================
 __DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.SailBoat_Hydra then
       pcall(function()
-        local myBoat = (function() local __oB5, __rB5 = pcall(CheckBoat) return (__oB5 and __rB5) or false end)() -- FIXED V5: CheckBoat loi => coi nhu chua co thuyen, loop khong bao gio chet o day
-        if not myBoat then
-          local buyBoatCFrame = CFrame.new(-16927.451, 9.086, 433.864)
-          TeleportToTarget(buyBoatCFrame)
-          if (buyBoatCFrame.Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10 then replicated.Remotes.CommF_:InvokeServer("BuyBoat", (_G.SelectedBoat or "Guardian")) end
-        elseif myBoat then
-          if plr.Character.Humanoid.Sit == false then
-            local __seatV4 = myBoat:FindFirstChild("VehicleSeat")
-            if not __seatV4 then
-                if tick() - (__DIO_LastRebuy or 0) > 10 then
-                    __DIO_LastRebuy = tick()
-                    replicated.Remotes.CommF_:InvokeServer("BuyBoat", (_G.SelectedBoat or "Guardian"))
-                end
-                return
-            end
-            -- V7 SIT-ASSIST: sat ghe thi THA RA + dap xuong nhe de Seat bat (pin dung yen khong
-            -- sinh Touch event => ghe khong bao gio bat => dung mai tren thuyen). Tha khi cach ghe
-            -- <=8 VA dang o tren ghe; rot xuong nuoc thi _tp keo len lai (tu sua 2 chieu).
-            do
-                local __hrpV7 = plr.Character.HumanoidRootPart
-                local __spV7 = __seatV4.CFrame.Position
-                if (__hrpV7.Position - __spV7).Magnitude <= 8 and __hrpV7.Position.Y >= __spV7.Y - 1 then
-                    __DIO_TweenTarget = nil
-                    __DIO_LastDist = nil __DIO_LastHRPPos = nil
-                    __hrpV7.AssemblyLinearVelocity = Vector3.new(0, -15, 0)
-                    return
-                end
-            end
-            local boatSeatCFrame = __seatV4.CFrame * CFrame.new(0, 1, 0)
-            _tp(boatSeatCFrame)
-          else
-            repeat __DIO_wait(0.25)
-              local __seaS = __DIO_SeaScan()
-              if __seaS.fish or __seaS.pgb or __seaS.terror then
-                _tp(CFrame.new(5433, 150, 290))
-              else
-                _tp(CFrame.new(5433, 35, 290))
-              end
-            until _G.SailBoat_Hydra==false or plr.Character:WaitForChild("Humanoid").Sit==false plr.Character.Humanoid.Sit = false
-          end
-        end
+        if __DIO_BoatAssist() ~= "sitting" then return end
+        local __dest = CFrame.new(5433, 35, 290)
+        repeat __DIO_wait(0.25)
+          local __chH = plr.Character
+          local __humH = __chH and __chH:FindFirstChildOfClass("Humanoid")
+          local __hrpH = __chH and __chH:FindFirstChild("HumanoidRootPart")
+          if not __humH or not __hrpH or not __humH.Sit then break end
+          if not _G.SailBoat_Hydra then break end
+          __DIO_NoClipShipNow()
+          local __seaS = __DIO_SeaScan()
+          local __yH = (__seaS.fish or __seaS.pgb or __seaS.terror) and 150 or 35
+          _tp(CFrame.new(__dest.Position.X, __yH, __dest.Position.Z))
+        until not _G.SailBoat_Hydra or not __humH.Sit or (__dest.Position - __hrpH.Position).Magnitude <= 10
+        pcall(function()
+          local __chH2 = plr.Character
+          local __humH2 = __chH2 and __chH2:FindFirstChildOfClass("Humanoid")
+          if __humH2 then __humH2.Sit = false end
+        end)
       end)
     end
   end
@@ -13286,7 +13578,10 @@ Tabs.Esp:AddToggle({
     Callback = function(Value)
         EspEventIsland = Value
         if not Value then
-            for i, v in pairs(workspace._WorldOrigin.Locations:GetChildren()) do
+            -- V6b: guard _WorldOrigin/Locations (truoc day tat toggle la error => esp khong duoc xoa)
+            local __woE = workspace:FindFirstChild("_WorldOrigin")
+            local __locE = __woE and __woE:FindFirstChild("Locations")
+            for i, v in pairs(__locE and __locE:GetChildren() or {}) do
                 pcall(function()
                     if v:FindFirstChild("NameEsp") then
                         v:FindFirstChild("NameEsp"):Destroy()
@@ -14072,7 +14367,14 @@ Tabs.Raids:AddButton({
 Name = __DIO_T["Start Law Raids"],
 Description = "",
 Callback = function()
-  fireclickdetector(workspace.Map.CircleIsland.RaidSummon.Button.Main.ClickDetector)
+  -- V6b: guard chuoi workspace.Map.CircleIsland... (chi co o Sea 2) => het error khi bam sai sea
+  local __mapR = workspace:FindFirstChild("Map")
+  local __ci = __mapR and __mapR:FindFirstChild("CircleIsland")
+  local __btn = __ci and __ci:FindFirstChild("RaidSummon")
+  __btn = __btn and __btn:FindFirstChild("Button")
+  __btn = __btn and __btn:FindFirstChild("Main")
+  local __cd = __btn and __btn:FindFirstChild("ClickDetector")
+  if __cd then fireclickdetector(__cd) end
 end})
 
 Tabs.Raids:AddToggle({
@@ -14415,7 +14717,11 @@ Tabs.Combat:AddToggle({
                     workspace.Camera.CameraSubject = __sp.Character.Humanoid
                 end
             until not SpectatePlys
-            workspace.Camera.CameraSubject = plr.Character.Humanoid
+            -- V6b: guard (respawn dung luc tat toggle => plr.Character nil => error, camera ket
+            -- o nguoi duoc xem)
+            local __chSP = plr.Character
+            local __humSP = __chSP and __chSP:FindFirstChildOfClass("Humanoid")
+            if __humSP then workspace.Camera.CameraSubject = __humSP end
         end)
     end
 })
@@ -14989,70 +15295,36 @@ Name = __DIO_T["Auto Travel"],
 Description = "",
 Default = false,
 Callback = function(Value)
+  -- V6b: callback chi dat flag. Ban cu cho vong bay chay NGAY TRONG callback =>
+  -- workspace["_WorldOrigin"] / Root nil (respawn, map chua load) la error 1 lan
+  -- => tinh nang "bat ma khong bay" vinh vien, khong tu khoi dong lai.
   _G.Teleport = Value
-  if Value then
-    for i,v in pairs(workspace["_WorldOrigin"].Locations:GetChildren()) do
-      if v.Name == _G.Island then
-        repeat __DIO_wait(0.25)
-	     _tp(v.CFrame * CFrame.new(0, 30, 0))
-        until not _G.Teleport or Root.CFrame == v.CFrame
-      end
-    end
-  end
 end
 })
-
-Tabs.Travel:AddSection("Travel - Portal")
-if World1 then
-  Location_Portal = {
-    "Sky",
-    "UnderWater"
-  }
-elseif World2 then
-  Location_Portal = {
-    "SwanRoom",
-    "Cursed Ship"
-  }
-elseif World3 then
-  Location_Portal = {
-    "Castle On The Sea",
-    "Mansion Cafe",
-    "Hydra Teleport",
-    "Canvendish Room",
-    "Temple of Time"
-  }
-end
-
-PortalTP = Tabs.Travel:AddDropdown({
-Name = __DIO_T["Select Portal"],
-Options = Location_Portal,
-Callback = function(Value)
-  _G.Island_PT = Value
-end})
-Tabs.Travel:AddButton({
-Name = __DIO_T["requestEntrance"],
-Description = "",
-Callback = function()
-  if _G.Island_PT == "Sky" then
-    replicated.Remotes.CommF_:InvokeServer("requestEntrance",Vector3.new(-7894, 5547, -380))
-  elseif _G.Island_PT == "UnderWater" then
-    replicated.Remotes.CommF_:InvokeServer("requestEntrance",Vector3.new(61163, 11, 1819))
-  elseif _G.Island_PT == "SwanRoom" then
-    replicated.Remotes.CommF_:InvokeServer("requestEntrance",Vector3.new(2285, 15, 905))
-  elseif _G.Island_PT == "Cursed Ship" then
-    replicated.Remotes.CommF_:InvokeServer("requestEntrance",Vector3.new(923, 126, 32852))
-  elseif _G.Island_PT == "Castle On The Sea" then
-    replicated.Remotes.CommF_:InvokeServer("requestEntrance",Vector3.new(-5097.93164, 316.447021, -3142.66602, -0.405007899, -4.31682743e-08, 0.914313197, -1.90943332e-08, 1, 3.8755779e-08, -0.914313197, -1.76180437e-09, -0.405007899))
-  elseif _G.Island_PT == "Mansion Cafe" then
-    replicated.Remotes.CommF_:InvokeServer("requestEntrance",Vector3.new(-12471.169921875, 374.94024658203, -7551.677734375))
-  elseif _G.Island_PT == "Hydra Teleport" then
-    replicated.Remotes.CommF_:InvokeServer("requestEntrance",Vector3.new(5643.45263671875, 1013.0858154296875, -340.51025390625))
-  elseif _G.Island_PT == "Canvendish Room" then
-    replicated.Remotes.CommF_:InvokeServer("requestEntrance",Vector3.new(5314.54638671875, 22.562219619750977, -127.06755065917969))
-  elseif _G.Island_PT == "Temple of Time" then
-    replicated.Remotes.CommF_:InvokeServer("requestEntrance",Vector3.new(28310.0234, 14895.1123, 109.456741, -0.469690144, -2.85620132e-08, -0.882831335, -3.23509219e-08, 1, -1.51411736e-08, 0.882831335, 2.14487486e-08, -0.469690144))
+__DIO_SafeLoop(function()
+  while __DIO_wait(0.25) do
+    if _G.Teleport then
+      pcall(function()
+        local __woG = workspace:FindFirstChild("_WorldOrigin")
+        local __locG = __woG and __woG:FindFirstChild("Locations")
+        if not __locG or not _G.Island then return end
+        local __dst = __locG:FindFirstChild(_G.Island)
+        if __dst then _tp(__dst.CFrame * CFrame.new(0, 30, 0)) end
+      end)
+    end
   end
-end})
+end, "AutoTravelIsland")
+
+-- =====================================================================
+-- V6: DA XOA theo yeu cau (game da patch):
+--   * Section "Travel - Portal"
+--   * Bang Location_Portal (World1/2/3)
+--   * Dropdown "Select Portal" (PortalTP + flag _G.Island_PT)
+--   * Button "requestEntrance" (dung _G.Island_PT de goi remote requestEntrance)
+-- Luu y: ham noi bo requestentrance(pos) trong _tp VAN GIU NGUYEN (dung cho
+-- teleport xa cua toan bo hub), va cac remote "requestEntrance" khac trong
+-- cac tinh nang linh tinh khong lien quan cung duoc giu.
+-- =====================================================================
 
 Tabs.Travel:AddSection("Travel - NPCs")
 
@@ -16057,16 +16329,21 @@ Tabs.Misc:AddButton({
 Name = __DIO_T["Rain Fruits (Client)"],
 Description = "",
 Callback = function()
+  -- V6b: guard Character/PrimaryPart (respawn giua chung => error lam nut chet han)
+  local __chRF = plr.Character
+  local __ppRF = __chRF and __chRF.PrimaryPart
+  if not __ppRF then return end
   for i, v in pairs(game:GetObjects("rbxassetid://14759368201")[1]:GetChildren()) do
     v.Parent = game.Workspace.Map
-    v:MoveTo(plr.Character.PrimaryPart.Position + Vector3.new(math.random(-50, 50), 100, math.random(-50, 50)))
+    v:MoveTo(__ppRF.Position + Vector3.new(math.random(-50, 50), 100, math.random(-50, 50)))
     if v.Fruit:FindFirstChild("AnimationController") then
       v.Fruit:FindFirstChild("AnimationController"):LoadAnimation(v.Fruit:FindFirstChild("Idle")):Play()
     end
     v.Handle.Touched:Connect(function(otherPart)
       if otherPart.Parent == plr.Character then
         v.Parent = plr.Backpack
-        plr.Character.Humanoid:EquipTool(v)
+        local __humRF = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
+        if __humRF then __humRF:EquipTool(v) end
       end
     end)
   end
