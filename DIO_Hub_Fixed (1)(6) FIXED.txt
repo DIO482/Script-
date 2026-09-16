@@ -558,6 +558,370 @@ __DIO_SafeLoop = function(fn, tag)
     end)
 end
 
+-- =====================================================================
+--  V7 CORE  -  HE THONG "CO HUU FLAG" + "THUE TWEEN" (tween lease)
+--  Giai quet TAN GOC cac bug cua shouldTween / _G. ma ban bao cao:
+--   (1) Bat toggle ma KHONG tween, chi tao highlight mau.
+--   (2) Tat toggle ma van tween / highlight + shouldTween ket mai mai.
+--   (3) Tat CHAM (delay 0.2 ~ 0.5s moi dung han) - vd Farm Level.
+--   (4) TRUNG TWEEN: nhieu tinh nang dung chung 1 flag _G. (vd _G.Level bi
+--       Start Farm / Auto Pole V2 / Bartilo / Superhuman / DeathStep /
+--       Sharkman / GodHuman cung ghi) => tinh nang nay "tra lai" gia tri cu
+--       = true sau khi tinh nang kia da tat => bay + highlight vinh vien.
+--   (5) Auto Dojo Trainer "muon" 7 flag sea (SeaBeast1/Shark/TerrorShark/
+--       Piranha/MobCrew/FishBoat/SailBoats) bang cach ghi thang _G. = true;
+--       neu loop error giua chung (pcall nuot loi) => 7 flag ket true =>
+--       shouldTween = true + highlight + cac loop sea chay mai mai.
+--
+--  CACH LAM: moi flag _G. quan trong deu co BANG CHU (owner). Gia tri that
+--  cua flag = "co it nhat 1 owner CON SONG dang muon no" AND "khong bi chan".
+--  Owner chet (toggle tat) => watchdog tu dong thu hoi het flag cua no.
+-- =====================================================================
+__DIO_FlagWant    = {}   -- [tenFlag] = { [owner] = true }  -> ai dang MUON flag bat
+__DIO_FlagSup     = {}   -- [tenFlag] = { [owner] = true }  -> ai dang CHAN (suppress)
+__DIO_OwnerAlive  = {}   -- [owner]   = tenFlagCuaOwner     -> de watchdog biet owner con song
+__DIO_UIFlagOwner = {}   -- [tenFlag] = { [UIkey] = true }  -> flag nay do element UI nao so huu
+__DIO_UIFlagOn    = {}   -- [tenFlag] = { [UIkey] = true }  -> element UI do HIEU CO dang bat flag nay
+__DIO_UIState     = {}   -- [UIkey]   = true/false          -> trang thai toggle dang ON/OFF
+
+-- V7: bat/tat "UI dang muon flag" theo TUNG element (chinh xac hon dung 1 bit cho
+-- ca element: 1 dropdown MultiSelect co the bat 5 flag roi bo chon 2 trong so do).
+__DIO_UISetOn = function(name, key, on)
+    if type(name) ~= "string" then return end
+    if not __DIO_UIFlagOwner[name] then __DIO_UIFlagOwner[name] = {} end
+    __DIO_UIFlagOwner[name][key] = true
+    if not __DIO_UIFlagOn[name] then __DIO_UIFlagOn[name] = {} end
+    __DIO_UIFlagOn[name][key] = (on == true)
+end
+
+-- V7: danh sach TEN cac flag farm (lay tu __DIO_FarmFlagsOn) dung cho watchdog
+__DIO_FarmFlagNames = {
+    "SailBoat_Hydra", "WardenBoss", "AutoFactory", "HighestMirage", "HCM", "PGB", "Leviathan1", "UPGDrago",
+    "Complete_Trials", "TpDrago_Prehis", "BuyDrago", "BuyMelee_BuyBlackLeg", "BuyMelee_BuyElectro", "BuyMelee_BuyFishmanKarate", "BuyMelee_BuyDragonClaw", "AutoFireFlowers",
+    "DT_Uzoth", "AutoBerry", "Prefully", "Prehis_Find", "Prehis_Skills", "Prehis_DB", "Prehis_DE", "FarmBlazeEM",
+    "Dojoo", "CollectPresent", "AutoLawKak", "TpLab", "AutoPhoenixF", "AutoFarmChest", "AutoHytHallow", "LongsWord",
+    "BlackSpikey", "AutoHolyTorch", "TrainDrago", "AutoSaber", "FarmMastery_Dev", "CitizenQuest", "AutoEctoplasm", "KeysRen",
+    "Auto_Rainbow_Haki", "obsFarm", "AutoBigmom", "Doughv2", "AuraBoss", "Raiding", "Auto_Cavender", "TpPly",
+    "Bartilo_Quest", "Level", "FarmEliteHunt", "AutoZou", "AutoFarm_Bone", "AutoMaterial", "CraftVM", "FrozenTP",
+    "ShotHL", "TPDoor", "AcientOne", "AutoFarmNear", "AutoRaidCastle", "DarkBladev3", "AutoFarmRaid", "Auto_Cake_Prince",
+    "Addealer", "TPNpc", "TwinHook", "FindMirage", "FrozenDimension", "FarmChestM", "Shark", "TerrorShark",
+    "Piranha", "MobCrew", "SeaBeast1", "FishBoat", "AutoPole", "AutoPoleV2", "Auto_SuperHuman", "AutoDeathStep",
+    "Auto_SharkMan_Karate", "Auto_Electric_Claw", "AutoDragonTalon", "Auto_Def_DarkCoat", "Auto_God_Human", "Auto_Tushita", "AutoMatSoul", "AutoKenVTWO",
+    "AutoSerpentBow", "AutoFMon", "Auto_Soul_Guitar", "TPGEAR", "AutoSaw", "AutoTridentW2", "AutoEvoRace", "AutoGetQuestBounty",
+    "MarinesCoat", "TravelDres", "Defeating", "DummyMan", "Auto_Yama", "Auto_SwanGG", "SwanCoat", "AutoEcBoss",
+    "Auto_Mink", "Auto_Human", "Auto_Skypiea", "Auto_Fish", "CDK_TS", "CDK_YM", "CDK", "AutoFarmGodChalice",
+    "AutoFistDarkness", "AutoMiror", "Teleport", "AutoKilo", "AutoGetUsoap", "Praying", "TryLucky", "AutoColShad",
+    "AutoUnHaki", "Auto_DonAcces", "AutoRipIngay", "DragoV3", "DragoV1", "SailBoats", "FarmGodChalice", "IceBossRen",
+    "Lvthan", "beasthunter", "DangerLV", "Relic123", "tweenKitsune", "Collect_Ember", "AutofindKitIs", "Snaguine",
+    "TwFruits", "tweenKitShrine", "Tp_LgS", "Tp_MasterA", "tweenShrine", "FarmMastery_G", "FarmMastery_S", "FarmBoss",
+    "AutoFarmAllBoss", "AutoFishSlap", "TweenBoatOwner", "FarmTyrant", "FarmPhaBinh", "AutoSpawnCP", "AutoBerryH", "AutoChestBP",
+    "FarmEliteHop", "AutoHop_Dough", "AutoDoughKing", "AutoAttackDoughKing", "AutoChipFruit", "AutoChipBeli", "Auto_StartRaid", "StartEvent",
+    "AutoMysticIsland", "AutoPlayerHunter", "SafeMode", "AutoKillMob", "AutoStartPrehistoric", "AutoFarmIsland", "AutoFarmDungeon", "AutoFarmCandy",
+    "AutoTP_Gift", "AutoTPGift", "AutoTPAndCollect", "MasterAutoLevel", "MasterAutoCandy", "TPFloor1", "TPFloor2", "TPFloor3",
+    "TPFloor4", "FarmEliteH", "Safemode", "Greybeard", "ResetPH", "NextIs", "senth", "senth2",
+}
+
+-- V7: THOI HAN "THUE TWEEN" (giay). Mot tinh nang hop le chi can goi _tp lai
+-- trong khoang thoi gian nay de giu shouldTween = true. Neu KHONG goi lai (vi da
+-- tat toggle) => thue het han => shouldTween = false + highlight tu huy.
+-- Dat 10s (ban cu la 30s va tinh tu __DIO_LastTpT - thu ma loop zombie van cap
+-- nhat duoc - nen moi bi ket). 10s du dai cho moi vong farm cham nhat cua hub.
+__DIO_TWEEN_LEASE = 10
+
+-- V7: thoi diem "tat cung" gan nhat + cua so cho phep bay sau tuong tac UI
+__DIO_TweenKillT  = 0
+__DIO_TweenAllowT = 0
+__DIO_TweenArmedT = 0
+__DIO_FlyBusyT    = 0
+
+-- V7: cache bang getgenv() (watchdog doc ~184 flag / 0.4s => goi getgenv() moi
+-- lan rat ton; nhieu executor tra ve dung 1 bang nen cache la an toan).
+__DIO_GENV = nil
+__DIO_Genv = function()
+    if __DIO_GENV ~= nil then return __DIO_GENV end
+    pcall(function()
+        local g = getgenv()
+        if type(g) == "table" and g ~= _G then __DIO_GENV = g end
+    end)
+    return __DIO_GENV
+end
+
+-- Doc gia tri flag o ca _G lan getgenv() (nhieu executor getgenv() KHONG phai _G)
+__DIO_FlagGet = function(name)
+    local v = rawget(_G, name)
+    if v == nil then
+        local g = __DIO_Genv()
+        if g then v = rawget(g, name) end
+    end
+    return v
+end
+__DIO_FlagSet = function(name, val)
+    pcall(rawset, _G, name, val)
+    local g = __DIO_Genv()
+    if g and rawget(g, name) ~= nil then pcall(rawset, g, name, val) end
+end
+
+-- Tinh lai gia tri that cua 1 flag tu bang want / suppress.
+__DIO_FlagApply = function(name)
+    local w, s = __DIO_FlagWant[name], __DIO_FlagSup[name]
+    local anyW, anyS = false, false
+    if w then for _ in pairs(w) do anyW = true break end end
+    if s then for _ in pairs(s) do anyS = true break end end
+    local v = (anyW and not anyS) or false
+    __DIO_FlagSet(name, v)
+    return v
+end
+
+-- on = true  : owner dang MUON flag bat.
+-- on = false : owner KHONG muon nua (owner KHAC van giu flag neu ho muon).
+-- suppress   : chan tam thoi (vd Bartilo chan Farm Level de lam quest).
+__DIO_SetFlag = function(name, owner, on, suppress)
+    if type(name) ~= "string" then return nil end
+    owner = tostring(owner or "anon")
+    local bag = suppress and __DIO_FlagSup or __DIO_FlagWant
+    if not bag[name] then bag[name] = {} end
+    if on then
+        bag[name][owner] = true
+        -- Neu ten owner trung voi 1 flag _G. (vd owner "Dojoo" <-> _G.Dojoo)
+        -- => watchdog co the kiem tra "owner con song khong".
+        if __DIO_OwnerAlive[owner] == nil and __DIO_FlagGet(owner) ~= nil then
+            __DIO_OwnerAlive[owner] = owner
+        end
+    else
+        bag[name][owner] = nil
+    end
+    return __DIO_FlagApply(name)
+end
+
+-- =====================================================================
+--  V7: "FLAG DUNG CHUNG" - nhieu tinh nang cung ghi 1 flag _G.
+--  Voi cac flag nay, MOI toggle deu dang ky 1 owner rieng ("UI:<key>") nen
+--  khong con canh tinh nang A tat -> tinh nang B (dang bat) bi mat flag,
+--  hoac tinh nang A "tra lai" gia tri cu = true -> B song lai mai mai.
+-- =====================================================================
+__DIO_SharedFlags = {
+    Level = true, AutoFarm_Bone = true, Auto_Cake_Prince = true,
+    FarmTyrant = true, AutoFarmNear = true,
+    Prehis_Find = true, Prehis_Skills = true, Prehis_DB = true, Prehis_DE = true,
+    SailBoats = true, FishBoat = true, SeaBeast1 = true, Shark = true,
+    TerrorShark = true, Piranha = true, MobCrew = true, FarmEliteHunt = true,
+    DangerSc = true, Raiding = true, FarmEliteH = true, AutoFarmChest = true,
+    AutoChestBP = true, Auto_Awakener = true, SelectChip = true,
+}
+__DIO_UIWant = function(name, key, on)
+    if not __DIO_SharedFlags[name] then return end
+    __DIO_SetFlag(name, "UI:" .. tostring(key), on and true or false)
+end
+
+-- =====================================================================
+-- V7: "MUON" flag GIA TRI (string/number) - vd _G.DangerSc = "Lv Infinite".
+-- Ban cu dung __DIO_BorrowFlag cho ca loai nay => bi ep ve true/false (sai).
+-- Co che: nho gia tri GOC cua tung owner; khi tra thi uu tien gia tri ma owner
+-- KHAC dang muon, neu khong con ai muon thi tra ve dung gia tri goc.
+-- =====================================================================
+__DIO_ValWant = {}   -- [name] = { [owner] = { v = gia tri muon, r = gia tri goc } }
+
+__DIO_BorrowValue = function(owner, name, value)
+    if type(name) ~= "string" then return end
+    owner = tostring(owner or "anon")
+    local bag = __DIO_ValWant[name]
+    if not bag then bag = {} __DIO_ValWant[name] = bag end
+    if bag[owner] == nil then bag[owner] = { r = __DIO_FlagGet(name) } end
+    bag[owner].v = value
+    __DIO_FlagSet(name, value)
+    if __DIO_OwnerAlive[owner] == nil and __DIO_FlagGet(owner) ~= nil then
+        __DIO_OwnerAlive[owner] = owner
+    end
+end
+
+__DIO_ReleaseValue = function(owner, name)
+    local bag = __DIO_ValWant[name]
+    if not bag or bag[owner] == nil then return end
+    local restore = bag[owner].r
+    bag[owner] = nil
+    local remaining = nil
+    for o, e in pairs(bag) do remaining = e.v break end
+    if remaining ~= nil then
+        __DIO_FlagSet(name, remaining)
+    else
+        __DIO_FlagSet(name, restore)
+    end
+end
+
+-- Tuong thich nguoc code cu
+function __DIO_BorrowFlag(owner, name)
+    if type(name) == "table" then
+        for i = 1, #name do __DIO_SetFlag(name[i], owner, true) end
+        return
+    end
+    __DIO_SetFlag(name, owner, true)
+end
+function __DIO_ReleaseFlag(owner, name)
+    if type(name) == "table" then
+        for i = 1, #name do __DIO_SetFlag(name[i], owner, false) end
+        return
+    end
+    __DIO_SetFlag(name, owner, false)
+end
+function __DIO_ReleaseAll(owner)
+    owner = tostring(owner or "anon")
+    for name, bag in pairs(__DIO_FlagWant) do
+        if bag[owner] then bag[owner] = nil __DIO_FlagApply(name) end
+    end
+    for name, bag in pairs(__DIO_FlagSup) do
+        if bag[owner] then bag[owner] = nil __DIO_FlagApply(name) end
+    end
+    for name, bag in pairs(__DIO_ValWant) do
+        if bag[owner] then __DIO_ReleaseValue(owner, name) end
+    end
+    __DIO_OwnerAlive[owner] = nil
+end
+-- Tat ca flag ma 1 owner dang muon / dang chan
+function __DIO_FlagsOfOwner(owner)
+    local out = {}
+    for name, bag in pairs(__DIO_FlagWant) do if bag[owner] then out[#out+1] = name end end
+    for name, bag in pairs(__DIO_FlagSup)  do if bag[owner] then out[#out+1] = name end end
+    return out
+end
+
+-- =====================================================================
+--  V7 TWEEN GATE - ai duoc phep goi _tp / ai duoc phep giu shouldTween
+-- =====================================================================
+__DIO_AnyFarmFlag = function()
+    local ok, r = pcall(function()
+        return (type(__DIO_FarmFlagsOn) == "function") and __DIO_FarmFlagsOn() or false
+    end)
+    return (ok and r) and true or false
+end
+
+-- _tp hop le khi:
+--   * co flag farm dang bat (bat ky tinh nang nao), HOAC
+--   * dang trong 1 chuyen bay cua __DIO_FlyTo (FlyBusy), HOAC
+--   * nguoi dung VUA tuong tac UI (<=5s) - nut Travel/Teleport/Dropdown..., HOAC
+--   * chuyen bay hop le dang dien ra (shouldTween do stomper bat + target con tuoi).
+-- Ngoai cac truong hop do => _tp bi BO QUA. Day la cho khoa bug "tat toggle roi
+-- ma vong loop zombie van goi _tp keo nhan vat bay tiep / highlight ket mai".
+__DIO_TweenAllowed = function()
+    if __DIO_FlyBusy == true then return true end
+    if __DIO_TweenAllowT ~= nil and (tick() - __DIO_TweenAllowT) < 5 then return true end
+    if __DIO_AnyFarmFlag() then return true end
+    if shouldTween == true and __DIO_TweenTarget ~= nil
+       and (tick() - (__DIO_TweenArmedT or 0)) < (__DIO_TWEEN_LEASE or 10) then return true end
+    return false
+end
+
+-- Tat CUNG: dung tween ngay lap tuc, khong delay, khong debounce, huy highlight.
+__DIO_TweenKill = function(keepHighlight)
+    __DIO_TweenKillT  = tick()
+    __DIO_TweenAllowT = 0          -- het cua so "vua bam UI" => loop zombie khong lot qua gate
+    __DIO_TweenArmedT = 0
+    __DIO_TweenTarget = nil
+    __DIO_LastTweenTarget = nil
+    __DIO_LastTpT = 0
+    __DIO_FalseSince = nil         -- huy debounce => Heartbeat controller dung NGAY frame nay
+    __DIO_CurTarget = nil
+    __DIO_LastDist = nil
+    __DIO_LastHRPPos = nil
+    shouldTween = false
+    pcall(function()
+        if __DIO_LastTween then __DIO_LastTween:Cancel() end
+        __DIO_LastTween = nil
+    end)
+    if keepHighlight ~= true then pcall(function()
+        if type(__DIO_HlOff) == "function" then __DIO_HlOff() end
+    end) end
+end
+
+-- =====================================================================
+--  V7 WATCHDOG - don rac moi 0.4s (chay nen, khong anh huong hieu nang)
+-- =====================================================================
+__DIO_WatchdogReport = {}
+__DIO_Watchdog = function()
+    -- [1] Owner da TAT => thu hoi TOAN BO flag no dang muon/chan.
+    --     Day la cho khoa cua bug Auto Dojo Trainer / BorrowFlag tra ve gia tri cu.
+    for owner, oflag in pairs(__DIO_OwnerAlive) do
+        local alive = (__DIO_FlagGet(oflag) == true)
+        if not alive then
+            __DIO_ReleaseAll(owner)
+            __DIO_WatchdogReport[owner] = (__DIO_WatchdogReport[owner] or 0) + 1
+        end
+    end
+
+    -- [2] Quet flag farm "mo coi": dang true nhung (a) khong co owner nao muon,
+    --     (b) moi toggle so huu no deu dang OFF => ep false.
+    local swept = 0
+    for i = 1, #__DIO_FarmFlagNames do
+        local name = __DIO_FarmFlagNames[i]
+        if __DIO_FlagGet(name) == true then
+            local wanted = false
+            local w = __DIO_FlagWant[name]
+            if w then for _ in pairs(w) do wanted = true break end end
+            local uiOn = false
+            local uiKey = nil
+            local owners = __DIO_UIFlagOwner[name]
+            local onTab  = __DIO_UIFlagOn[name]
+            if onTab then
+                for key, v in pairs(onTab) do
+                    if v == true then uiOn = true uiKey = key break end
+                end
+            end
+            -- V7 self-heal: flag dang true + element UI so huu no VAN dang bat, nhung
+            -- chua co "owner UI" trong bang want (vi luc bat thi flag da true san tu
+            -- truoc) => dang ky lai, de tinh nang khac "tra flag" khong lam chet no.
+            if uiOn and uiKey and __DIO_SharedFlags[name] and not wanted then
+                __DIO_SetFlag(name, "UI:" .. tostring(uiKey), true)
+                wanted = true
+            end
+            if (not wanted) and (not uiOn) and (owners ~= nil) then
+                __DIO_FlagSet(name, false)
+                swept = swept + 1
+                __DIO_WatchdogReport[name] = (__DIO_WatchdogReport[name] or 0) + 1
+            end
+        end
+    end
+
+    -- [3] FlyBusy ket (error giua chung) => tu mo khoa sau 6 phut
+    if __DIO_FlyBusy == true and __DIO_FlyBusyT ~= nil and (tick() - __DIO_FlyBusyT) > 360 then
+        __DIO_FlyBusy = false
+    end
+
+    -- [4] shouldTween / highlight ket ma khong con ai muon bay => don sach.
+    --     KHONG dung __DIO_TweenKill o day vi no xoa __DIO_TweenAllowT (co the pha
+    --     chuyen bay hop le cua nut Travel vua bam). Chi ep shouldTween + huy highlight.
+    local anyF = __DIO_AnyFarmFlag()
+    if not anyF and __DIO_FlyBusy ~= true then
+        local fresh = (__DIO_TweenTarget ~= nil) and ((tick() - (__DIO_TweenArmedT or 0)) < (__DIO_TWEEN_LEASE or 10))
+        if not fresh and (shouldTween == true or swept > 0) then
+            shouldTween = false
+            __DIO_TweenTarget = nil
+            __DIO_TweenArmedT = 0
+            __DIO_FalseSince = nil
+            pcall(function() if type(__DIO_HlOff) == "function" then __DIO_HlOff() end end)
+        end
+    end
+end
+
+__DIO_SafeLoop(function()
+    while __DIO_wait(0.4) do
+        pcall(__DIO_Watchdog)
+    end
+end, "V7Watchdog")
+
+-- =====================================================================
+--  V7 NOTIFY CUA TOGGLE: TAT MAC DINH (theo yeu cau "xoa notify cua toggle").
+--  Muon xem lai thi bat: getgenv().DIO_ToggleNotify = true
+-- =====================================================================
+if getgenv().DIO_ToggleNotify == nil then getgenv().DIO_ToggleNotify = false end
+__DIO_TNotify = function(title, content, dur)
+    if getgenv().DIO_ToggleNotify ~= true then return end
+    pcall(function()
+        if Window and Window.Notify then
+            Window:Notify({ Title = tostring(title), Content = tostring(content), Duration = tonumber(dur) or 3 })
+        end
+    end)
+end
+
+
 local SaveFolderName = "DIOHub_V3"
 local SaveFileName = SaveFolderName .. "/Settings.json"
 
@@ -2276,6 +2640,15 @@ end
 _tp = function(target)
 
     if __DIO_Dodging then return end
+    -- =====================================================================
+    -- V7 GATE (fix "tat toggle roi ma van bi keo di" + "highlight ket mai mai"):
+    -- Neu KHONG con tinh nang nao MUON bay (khong co flag farm, khong FlyBusy,
+    -- khong vua bam UI, khong dang trong 1 chuyen bay hop le) => BO QUA _tp.
+    -- Cac vong loop "zombie" (repeat ... until chua kip thoat) van goi _tp vai
+    -- tram ms sau khi ban tat toggle; truoc day chung dat lai __DIO_TweenTarget
+    -- => stomper bat shouldTween len lai => bay tiep / highlight khong tat.
+    -- =====================================================================
+    if type(__DIO_TweenAllowed) == "function" and not __DIO_TweenAllowed() then return end
     local gg
     if typeof(target) == "Vector3" then
         gg = CFrame.new(target)
@@ -2339,6 +2712,7 @@ _tp = function(target)
     __DIO_TweenTarget = gg
     __DIO_LastTweenTarget = gg
     __DIO_LastTpT = tick()
+    __DIO_TweenArmedT = tick()   -- V7: _tp da QUA GATE => muc tieu nay "hop le"
     __DIO_LastTweenT = tick()
     local __ft = __DIO_NewFakeTween()
     __DIO_LastTween = __ft
@@ -2360,8 +2734,24 @@ if not __DIO_SmoothCtl then
                 -- tat/bat lien tuc; clear target ngay lap tuc se lam thuyen/farm dung hinh oan)
                 local __st = shouldTween
                 if not __st then
-                    if __DIO_FalseSince == nil then __DIO_FalseSince = tick() end
-                    if tick() - __DIO_FalseSince < 0.5 then __st = true end
+                    -- =========================================================
+                    -- V7 FIX "TAT CHAM 0.2 ~ 0.5s" (Farm Level va moi toggle khac):
+                    -- Cu: LUON debounce shouldTween=false 0.5s => tat toggle xong
+                    --    nhan vat van bi keo them nua giay.
+                    -- Moi: CHI debounce khi VAN CON flag farm (chong flicker do loop
+                    --    nhay flag lien tuc), va rut xuong 0.2s. Con khi da tat THAT
+                    --    (khong con flag nao / vua bam tat) => dung NGAY frame nay.
+                    -- =========================================================
+                    local __anyF = false
+                    pcall(function()
+                        __anyF = (type(__DIO_FarmFlagsOn) == "function") and __DIO_FarmFlagsOn() or false
+                    end)
+                    if __anyF or __DIO_FlyBusy == true then
+                        if __DIO_FalseSince == nil then __DIO_FalseSince = tick() end
+                        if tick() - __DIO_FalseSince < 0.2 then __st = true end
+                    else
+                        __DIO_FalseSince = nil
+                    end
                 else
                     __DIO_FalseSince = nil
                 end
@@ -2376,6 +2766,7 @@ if not __DIO_SmoothCtl then
                         end
                     end
                     __DIO_TweenTarget = nil
+                    __DIO_TweenArmedT = 0
                     __DIO_LastDist = nil __DIO_LastHRPPos = nil
                     return
                 end
@@ -2554,14 +2945,30 @@ old_tp = function(p)
     local char = plr.Character
     if char and char:FindFirstChild("HumanoidRootPart") then
         char.HumanoidRootPart.CFrame = p
-        __DIO_TweenTarget = p __DIO_LastTweenTarget = p __DIO_LastTpT = tick()
+        __DIO_TweenTarget = p __DIO_LastTweenTarget = p __DIO_LastTpT = tick() __DIO_TweenArmedT = tick()
         if __DIO_Block then __DIO_Block.CFrame = p end
     end
 end
 
 topos = function(...) return _tp(...) end
 StopTween = function(state)
-    shouldTween = state and true or false
+    if state then
+        shouldTween = true
+        __DIO_TweenAllowT = tick()   -- V7: co tinh nang muon bay tiep
+        return
+    end
+    -- =====================================================================
+    -- V7: StopTween(false) = TAT CUNG (hard kill).
+    --  * shouldTween = false NGAY (khong doi stomper 0.1s)
+    --  * xoa target + huy debounce => Heartbeat controller dung ngay frame nay
+    --  * khoa cua so "vua bam UI" => loop zombie goi _tp se bi GATE chan
+    --  * huy highlight (het canh "tat roi ma van con mau xanh tren nguoi")
+    -- =====================================================================
+    if type(__DIO_TweenKill) == "function" then
+        __DIO_TweenKill(false)
+        return
+    end
+    shouldTween = false
     __DIO_TweenTarget = nil
     __DIO_LastDist = nil
     __DIO_LastHRPPos = nil
@@ -2592,7 +2999,7 @@ notween = function(p)
     if __DIO_Dodging then return end
     local c = plr.Character
     local h = c and c:FindFirstChild("HumanoidRootPart")
-    if h then h.CFrame = p __DIO_TweenTarget = p __DIO_LastTweenTarget = p __DIO_LastTpT = tick() if __DIO_Block then __DIO_Block.CFrame = p end end
+    if h then h.CFrame = p __DIO_TweenTarget = p __DIO_LastTweenTarget = p __DIO_LastTpT = tick() __DIO_TweenArmedT = tick() if __DIO_Block then __DIO_Block.CFrame = p end end
 end
 function BTP(p)
     local player = game.Players.LocalPlayer
@@ -2815,7 +3222,17 @@ spawn(function()
       -- thi GIU shouldTween = true + highlight cho bat ky tinh nang nao da goi _tp, cho du
       -- co _G cua no co nam trong danh sach __DIO_FarmFlagsOn hay khong. Het target/het tuoi
       -- va khong con flag nao => ve false nhu cu (tat het toggle = dung bay, highlight tu huy).
-      if __DIO_FarmFlagsOn() or (__DIO_TweenTarget ~= nil and __DIO_LastTpT ~= nil and (tick() - __DIO_LastTpT) < 30) then
+      -- =====================================================================
+      -- V7 FIX "shouldTween KET / TRUNG TWEEN":
+      --  * Cu: giu shouldTween = true suot 30 GIAY sau lan _tp cuoi cung, ke ca khi
+      --    da tat het toggle => "tat toggle roi van tween", "highlight ket mai mai",
+      --    va 2 tinh nang de bi "ghep" shouldTween cua nhau.
+      --  * Moi: chi giu khi (a) con flag farm, (b) dang FlyBusy, hoac (c) muc tieu
+      --    duoc _tp HOP LE (da qua V7 GATE) dat trong 2.5s. Loop zombie bi GATE chan
+      --    nen khong the tu "lam tuoi" muc tieu => tat toggle la DUNG HAN.
+      -- =====================================================================
+      if __DIO_FarmFlagsOn() or __DIO_FlyBusy == true
+         or (__DIO_TweenTarget ~= nil and (tick() - (__DIO_TweenArmedT or 0)) < (__DIO_TWEEN_LEASE or 10)) then
        shouldTween = true
 
         -- V5.4 FIX MAT HIGHLIGHT: tao highlight TRUOC check Sit. Truoc day khi NGOM
@@ -3246,6 +3663,19 @@ local Window = redzlib:MakeWindow({
     SaveFolder = "dio.json"
 })
 
+-- =====================================================================
+-- V7: dinh nghia lai __DIO_TNotify SAU khi co `local Window` (ban dinh nghia o
+-- dau file khong nhin thay bien local nay). __DIO_TNotify = notify cua TOGGLE,
+-- DA TAT MAC DINH theo yeu cau "xoa notify cua toggle".
+-- Muon xem lai:  getgenv().DIO_ToggleNotify = true
+-- =====================================================================
+__DIO_TNotify = function(title, content, dur)
+    if getgenv().DIO_ToggleNotify ~= true then return end
+    pcall(function()
+        Window:Notify({ Title = tostring(title), Content = tostring(content), Duration = tonumber(dur) or 3 })
+    end)
+end
+
 local Minimizer = Window:NewMinimizer({
   KeyCode = Enum.KeyCode.LeftControl
 })
@@ -3274,17 +3704,6 @@ local Tabs = {
     Misc = Window:MakeTab({ Title = "Misc", Icon = "" })
 }
 
--- =====================================================================
--- V5.2 TEXT MAP (bang text dung chung cho toan bo UI)
--- Moi Name cua toggle/dropdown/button/slider trong source deu lookup qua
--- bang nay:  Name = __DIO_T["Select Boats"]
--- * Mac dinh value = key (UI hien thi giong heu het truoc).
--- * Muon doi/dich text (vd tieng Viet): chi sua VALUE trong bang nay,
--- 1 cho duy nhat, khong phai sua tung dong UI.
--- * Neu key chua co trong bang => tu hien dung chinh key (khong bao loi).
--- Luu y: Default cua dropdown KHONG di qua map (no la gia tri phai trung
--- khop voi Options, khong phai label) nen dung nguyen nhu cu.
--- =====================================================================
 __DIO_T = setmetatable({
     ["FIX LAG "] = "FIX LAG ",
     ["Select Weapon"] = "Select Weapon",
@@ -3679,11 +4098,28 @@ do
                         if _G.SaveData[key] ~= Value then
                             SetSetting(key, Value)
                         end
+                        -- V7: dang ky trang thai toggle de watchdog biet cai gi DANG ON
+                        __DIO_UIState[key] = (Value == true)
                         if Value == true then
+                            -- V7: bam BAT => mo "cua so cho phep bay" 5s de _tp GATE cho qua
+                            __DIO_TweenAllowT = tick()
                             local __before = {}
                             pcall(function()
                                 for k, v in pairs(_G) do
                                     if type(v) == "boolean" and v == true then __before[k] = true end
+                                end
+                            end)
+                            -- V7 FIX BUG _G.: nhieu executor getgenv() KHONG phai _G, nen cac
+                            -- flag dang getgenv().Xxx (vd getgenv().AutoMaterial, getgenv().Set,
+                            -- getgenv().Observation) truoc day KHONG duoc "chup anh" => tat toggle
+                            -- ma flag van true => shouldTween + highlight ket mai mai.
+                            local __beforeG = {}
+                            pcall(function()
+                                local g = getgenv()
+                                if type(g) == "table" and g ~= _G then
+                                    for k, v in pairs(g) do
+                                        if type(v) == "boolean" and v == true then __beforeG[k] = true end
+                                    end
                                 end
                             end)
                             pcall(origCb, true)
@@ -3695,6 +4131,22 @@ do
                                     end
                                 end
                             end)
+                            pcall(function()
+                                local g = getgenv()
+                                if type(g) == "table" and g ~= _G then
+                                    for k, v in pairs(g) do
+                                        if type(v) == "boolean" and v == true and __beforeG[k] == nil then
+                                            __ownedFlags[k] = true
+                                        end
+                                    end
+                                end
+                            end)
+                            -- V7: dang ky "flag nay thuoc toggle nao" (dung cho watchdog quet mo coi)
+                            -- va dang ky "owner UI" cho cac flag DUNG CHUNG (Level, Prehis_Find...)
+                            for __fk in pairs(__ownedFlags or {}) do
+                                pcall(__DIO_UISetOn, __fk, key, true)
+                                pcall(__DIO_UIWant, __fk, key, true)
+                            end
                             -- =============================================================
                             -- V6 FIX "bat toggle ma khong co shouldTween / chi hien highlight":
                             -- vua bam BAT => bat shouldTween + highlight NGAY (khong doi stomper chay
@@ -3718,8 +4170,19 @@ do
                             pcall(origCb, false)
                             if __ownedFlags then
                                 for k in pairs(__ownedFlags) do
+                                    -- V7: thu hoi CA cac flag ma toggle nay "muon" qua
+                                    -- __DIO_SetFlag/__DIO_BorrowFlag (vd AutoDeathStep muon _G.Level)
+                                    pcall(function() __DIO_UISetOn(k, key, false) end)
+                                    pcall(function() __DIO_UIWant(k, key, false) end)
+                                    pcall(function() __DIO_ReleaseAll(k) end)
                                     pcall(function()
                                         if rawget(_G, k) == true then rawset(_G, k, false) end
+                                    end)
+                                    pcall(function()
+                                        local g = getgenv()
+                                        if type(g) == "table" and g ~= _G and rawget(g, k) == true then
+                                            rawset(g, k, false)
+                                        end
                                     end)
                                 end
                             end
@@ -3732,15 +4195,22 @@ do
                                 -- van con on se tu _tp lai trong ~0.25s nen khong mat dieu khien.
                                 __DIO_TweenTarget = nil
                                 __DIO_LastTweenTarget = nil
+                                __DIO_TweenArmedT = 0
                                 if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
                                 if not __anyOn and not __DIO_FlyBusy then
-                                    shouldTween = false
-                                    __DIO_TweenTarget = nil
-                                    if type(StopTween) == "function" then pcall(StopTween, false) end
-                                    local __c = plr.Character
-                                    if __c then
-                                        local __hl = __c:FindFirstChild('highlight')
-                                        if __hl then __hl:Destroy() end
+                                    -- V7: TAT CUNG - shouldTween=false NGAY, huy debounce 0.5s,
+                                    -- khoa _tp GATE, huy highlight. Khong con delay khi tat toggle.
+                                    if type(__DIO_TweenKill) == "function" then
+                                        __DIO_TweenKill(false)
+                                    else
+                                        shouldTween = false
+                                        __DIO_TweenTarget = nil
+                                        if type(StopTween) == "function" then pcall(StopTween, false) end
+                                        local __c = plr.Character
+                                        if __c then
+                                            local __hl = __c:FindFirstChild('highlight')
+                                            if __hl then __hl:Destroy() end
+                                        end
                                     end
                                 end
                             end)
@@ -3799,7 +4269,35 @@ do
                         if not __DIO_DeepEq(_G.SaveData[key], Value) then
                             SetSetting(key, Value)
                         end
+                        -- V7: dropdown cung duoc phep "khoi dong" 1 chuyen bay (Select Island,
+                        -- Select Sea Event, Farm Mode...) => mo cua so _tp GATE 5s.
+                        __DIO_TweenAllowT = tick()
+                        local __beforeD = {}
+                        pcall(function()
+                            for k, v in pairs(_G) do
+                                if type(v) == "boolean" and v == true then __beforeD[k] = true end
+                            end
+                        end)
                         pcall(origCb, Value)
+                        -- V7: dang ky chu quyen flag cho dropdown (vd "Select Sea Event"
+                        -- bat/tat _G.Shark, _G.SeaBeast1, _G.TerrorShark... theo lua chon).
+                        --  * flag VUA bat  => danh dau element nay dang muon no
+                        --  * flag ma element nay tung bat nhung GIO da tat (do bo chon)
+                        --    => bo danh dau, de watchdog khong tuong la van dang bat.
+                        pcall(function()
+                            for k, v in pairs(_G) do
+                                if type(v) == "boolean" and v == true and __beforeD[k] == nil then
+                                    __DIO_UISetOn(k, key, true)
+                                end
+                            end
+                        end)
+                        pcall(function()
+                            for __fn, __keys in pairs(__DIO_UIFlagOwner) do
+                                if __keys[key] == true and __DIO_FlagGet(__fn) ~= true then
+                                    __DIO_UISetOn(__fn, key, false)
+                                end
+                            end
+                        end)
                     end
                 end
                 local ctrl = _AddDropdown(self, Setting)
@@ -3844,6 +4342,56 @@ do
                     end)
                 end
                 return ctrl
+            end
+        end
+
+        -- =====================================================================
+        -- V7 (MOI): wrapper cho AddButton.
+        --  * Mo "cua so cho phep bay" 5s TRUOC khi chay callback => moi nut
+        --    Travel / Teleport / totopofgreattree... goi _tp deu lot qua GATE.
+        --  * Chup anh _G. / getgenv() flag ma nut bat len => dang ky chu quyen
+        --    (truoc day button KHONG duoc track nen flag ket true mai mai).
+        -- =====================================================================
+        local _AddButton = tab.AddButton
+        if type(_AddButton) == "function" then
+            function tab:AddButton(Setting)
+                local key = __DIOKey(tabName, Setting and (Setting.Name or Setting.Title))
+                local origCb = Setting and Setting.Callback
+                if Setting and origCb then
+                    Setting.Callback = function(...)
+                        __DIO_TweenAllowT = tick()
+                        local __beforeB, __beforeBG = {}, {}
+                        pcall(function()
+                            for k, v in pairs(_G) do
+                                if type(v) == "boolean" and v == true then __beforeB[k] = true end
+                            end
+                        end)
+                        pcall(function()
+                            local g = getgenv()
+                            if type(g) == "table" and g ~= _G then
+                                for k, v in pairs(g) do
+                                    if type(v) == "boolean" and v == true then __beforeBG[k] = true end
+                                end
+                            end
+                        end)
+                        local __okB, __errB = pcall(origCb, ...)
+                        if not __okB then
+                            pcall(function() warn("[DIO] Button '" .. tostring(Setting and (Setting.Name or Setting.Title)) .. "' error: " .. tostring(__errB)) end)
+                        end
+                        -- V7: nut bam chi dang ky CHU QUYEN (khong danh dau "dang bat")
+                        -- vi nut bam la hanh dong 1 lan, khong co trang thai ON/OFF.
+                        pcall(function()
+                            for k, v in pairs(_G) do
+                                if type(v) == "boolean" and v == true and __beforeB[k] == nil then
+                                    if not __DIO_UIFlagOwner[k] then __DIO_UIFlagOwner[k] = {} end
+                                    __DIO_UIFlagOwner[k][key] = true
+                                end
+                            end
+                        end)
+                        return __okB
+                    end
+                end
+                return _AddButton(self, Setting)
             end
         end
     end
@@ -4548,8 +5096,20 @@ local function __DIO_LvlReset()
 end
 
 function __DIO_FarmHardStop()
+    -- =====================================================================
+    -- V7 FIX TRUNG TWEEN (Farm Level/Bone/Cake/Tyrant/Nearest):
+    -- Cu: _G[__DIO_OwnFarmFlag] = false  -> ghi THANG vao _G.
+    -- Van de: _G.Level con bi Auto Pole V2 / Bartilo / Auto Superhuman /
+    -- Auto DeathStep / Auto Sharkman / Auto God Human ghi chen. Neu 1 trong
+    -- so do "tra lai" gia tri cu = true SAU khi ban tat Start Farm thi
+    -- _G.Level ket true VINH VIEN => shouldTween = true + highlight + vong
+    -- Farm Level chay mai mai (dung nhu ban mo ta).
+    -- Moi: di qua bang chu owner "StartFarm" cua __DIO_SetFlag.
+    -- =====================================================================
     if __DIO_OwnFarmFlag then
-        _G[__DIO_OwnFarmFlag] = false
+        pcall(__DIO_SetFlag, __DIO_OwnFarmFlag, "StartFarm", false)
+        pcall(__DIO_SetFlag, __DIO_OwnFarmFlag, "StartFarm", false, true)
+        if rawget(_G, __DIO_OwnFarmFlag) == true then rawset(_G, __DIO_OwnFarmFlag, false) end
         __DIO_OwnFarmFlag = nil
     end
     __DIO_LvlReset()
@@ -4563,25 +5123,31 @@ function __DIO_ApplyFarmMode()
         StopTween(false)
         return
     end
+    -- V7: tra lai flag cua mode CU truoc khi muon flag cua mode MOI
+    -- (doi Farm Mode giua chung khong con de sot 2 flag farm cung luc).
+    if __DIO_OwnFarmFlag then
+        pcall(__DIO_SetFlag, __DIO_OwnFarmFlag, "StartFarm", false)
+        __DIO_OwnFarmFlag = nil
+    end
     local __mode = _G.FarmMode
     if __mode == "Farm Level" then
         __DIO_OwnFarmFlag = "Level"
-        _G.Level = true
     elseif __mode == "Farm Bone" then
         __DIO_OwnFarmFlag = "AutoFarm_Bone"
-        _G.AutoFarm_Bone = true
     elseif __mode == "Farm Cake" then
         __DIO_OwnFarmFlag = "Auto_Cake_Prince"
-        _G.Auto_Cake_Prince = true
     elseif __mode == "Farm Tyrant" then
         __DIO_OwnFarmFlag = "FarmTyrant"
-        _G.FarmTyrant = true
     elseif __mode == "Farm Nearest" then
         __DIO_OwnFarmFlag = "AutoFarmNear"
-        _G.AutoFarmNear = true
+    end
+    if __DIO_OwnFarmFlag then
+        -- V7: muon flag qua bang chu owner "StartFarm" (watchdog tu thu hoi khi tat)
+        pcall(__DIO_SetFlag, __DIO_OwnFarmFlag, "StartFarm", true)
     end
 
     shouldTween = true
+    __DIO_TweenAllowT = tick()   -- V7: mo cua so _tp GATE => tween chay NGAY, khong doi stomper
 end
 
 function __DIO_ApplyAcceptQuest()
@@ -5097,15 +5663,26 @@ Description = "",
 Default = true,
 Callback = function(Value)
     _G.StopWhenChalice = Value
+    -- V7: tat "Stop Items" => bo CHAN Auto Farm Chest / Auto Chest Bypass ngay
+    if not Value then
+        __DIO_SetFlag("AutoFarmChest", "StopWhenChalice", false, true)
+        __DIO_SetFlag("AutoChestBP",   "StopWhenChalice", false, true)
+        __DIO_ReleaseAll("StopWhenChalice")
+    end
 end})
 
 __DIO_SafeLoop(function()
     while __DIO_wait(1) do
-        if _G.StopWhenChalice and (_G.AutoFarmChest or _G.AutoChestBP) then
+        if _G.StopWhenChalice then
             pcall(function()
                 if GetBP("God's Chalice") or GetBP("Sweet Chalice") or GetBP("Fist of Darkness") then
-                    _G.AutoFarmChest = false
-                    _G.AutoChestBP = false
+                    -- V7: CHAN (suppress) thay vi giet han. Tat "Stop Items" hoac dung het
+                    -- item => Auto Farm Chest / Auto Chest Bypass cua ban tu chay lai.
+                    __DIO_SetFlag("AutoFarmChest", "StopWhenChalice", true, true)
+                    __DIO_SetFlag("AutoChestBP",   "StopWhenChalice", true, true)
+                else
+                    __DIO_SetFlag("AutoFarmChest", "StopWhenChalice", false, true)
+                    __DIO_SetFlag("AutoChestBP",   "StopWhenChalice", false, true)
                 end
             end)
         end
@@ -5218,7 +5795,7 @@ __DIO_SafeLoop(function()
                 __DIO_BerryHopT = tick()
                 pcall(function()
                     if Window and Window.Notify then
-                        Window:Notify({Title = "Auto Farm Berry + Hop", Content = "Het berry trong server -> Hop server khac...", Duration = 4})
+                        __DIO_TNotify("Auto Farm Berry + Hop", "Het berry trong server -> Hop server khac...", 4)
                     end
                 end)
                 pcall(function()
@@ -5255,7 +5832,10 @@ if World1 then
             "Galley Pirate", "Galley Captain",
         },
         Callback = function(Value)
+            -- V7: ghi ca 2 noi (nhieu executor getgenv() KHONG phai _G) de vong
+            -- Auto Kill Mob luon doc duoc ten mob da chon.
             getgenv().SelectMob = Value
+            pcall(rawset, _G, "SelectMob", Value)
         end
     })
 end
@@ -5272,7 +5852,10 @@ if World2 then
             "Arctic Warrior", "Snow Lurker", "Sea Soldier", "Water Fighter",
         },
         Callback = function(Value)
+            -- V7: ghi ca 2 noi (nhieu executor getgenv() KHONG phai _G) de vong
+            -- Auto Kill Mob luon doc duoc ten mob da chon.
             getgenv().SelectMob = Value
+            pcall(rawset, _G, "SelectMob", Value)
         end
     })
 end
@@ -5293,7 +5876,10 @@ if World3 then
             "Island Boy", "Sun-kissed Warrior", "Isle Champion",
         },
         Callback = function(Value)
+            -- V7: ghi ca 2 noi (nhieu executor getgenv() KHONG phai _G) de vong
+            -- Auto Kill Mob luon doc duoc ten mob da chon.
             getgenv().SelectMob = Value
+            pcall(rawset, _G, "SelectMob", Value)
         end
     })
 end
@@ -5302,15 +5888,36 @@ Tabs.Main:AddToggle({
     Default = false,
     Callback = function(Value)
         _G.AutoKillMob = Value
-        if not Value then
+        if Value then
+            -- V7: bat => shouldTween + highlight + mo cua so bay NGAY (khong doi stomper 0.1s)
+            shouldTween = true
+            __DIO_TweenAllowT = tick()
+            pcall(__DIO_HlOn)
+        else
+            -- V7: tat => TAT CUNG (khong con delay), xoa target orbit + huy highlight
             StopTween(false)
             __DIO_CurTarget = nil
             if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
         end
     end
 })
+-- =====================================================================
+-- V7 FIX "Select Mob + Auto Kill Mob chi tao highlight mau, khong tween di":
+--  Nguyen nhan: khi trong server KHONG con mob nao ten do (chua spawn / da bi
+--  giet het) thi GetConnectionEnemies tra ve nil, va bang toa do cu (PosMsList)
+--  CHI co mob World 3 => o World 1/2 khong co toa do du phong => KHONG goi _tp
+--  lan nao. Trong khi _G.AutoKillMob van nam trong __DIO_FarmFlagsOn => stomper
+--  van bat shouldTween = true + tao highlight => dung nhu "chi co mau, khong bay".
+--  Cach fix:
+--   1) Dung bang toa do DAO cua chinh hub (Sea1/2/3_Islands, co san danh sach Mobs)
+--      + PosMsList lam toa do du phong => luon co cho de bay toi.
+--   2) Du them toa do tu workspace._WorldOrigin.EnemySpawns theo ten mob.
+--   3) Attack.Kill(mob, true) - ep tham so 2 = true (neu truyen _G.AutoKillMob ma
+--      gia tri khong dung bang true thi Attack.Kill KHONG _tp => chi co highlight).
+--   4) Vong lap nhanh hon (0.25s) + kiem tra tat toggle moi 0.1s => tat la dung ngay.
+-- =====================================================================
 __DIO_SafeLoop(function()
-    while __DIO_wait(1) do
+    while __DIO_wait(0.25) do
         if _G.AutoKillMob then
             pcall(function()
                 local mobName = getgenv().SelectMob
@@ -5320,13 +5927,32 @@ __DIO_SafeLoop(function()
                     repeat
                         __DIO_wait(0.1)
                         if not _G.AutoKillMob then break end
-                        Attack.Kill(mob, _G.AutoKillMob)
+                        Attack.Kill(mob, true)   -- V7: ep true => chac chan co _tp
                     until not _G.AutoKillMob or not mob.Parent or mob:FindFirstChild("Humanoid") == nil or mob.Humanoid.Health <= 0
                 else
-                    local pos = PosMsList and PosMsList[mobName]
+                    -- V7: khong con mob => bay den DAO cua mob do (khong dung im tao highlight)
+                    local pos = (type(__DIO_MobSpawnPos) == "table") and __DIO_MobSpawnPos[mobName] or nil
+                    if not pos and PosMsList then pos = PosMsList[mobName] end
+                    if not pos then
+                        pcall(function()
+                            local __wo = workspace:FindFirstChild("_WorldOrigin")
+                            local __sp = __wo and __wo:FindFirstChild("EnemySpawns")
+                            if __sp then
+                                for _, s in ipairs(__sp:GetChildren()) do
+                                    if s.Name == mobName or string.find(s.Name, mobName, 1, true) then
+                                        pos = s.CFrame * CFrame.new(0, 20, 0)
+                                        break
+                                    end
+                                end
+                            end
+                        end)
+                    end
                     if pos then
                         _tp(pos)
-                        __DIO_wait(0.5)
+                        __DIO_wait(0.4)
+                    else
+                        __DIO_TNotify("Auto Kill Mob", "Khong tim thay toa do dao cua mob: " .. tostring(mobName), 3)
+                        __DIO_wait(1)
                     end
                 end
             end)
@@ -5609,6 +6235,38 @@ elseif World2 then
     IslandData = Sea2_Islands
 elseif World3 then
     IslandData = Sea3_Islands
+end
+
+-- =====================================================================
+-- V7 (MOI): BANG TOA DO DAO THEO TEN MOB.
+-- Dung lam toa do DU PHONG cho "Select Mob + Auto Kill Mob" khi trong server
+-- chua spawn mob do. Truoc day chi co PosMsList (rieng World 3) => o World 1/2
+-- tinh nang nay KHONG goi _tp lan nao, chi tao highlight mau (dung nhu ban ta).
+-- Nguon du lieu: chinh Sea1/2/3_Islands cua hub (moi dao co san field Mobs).
+-- =====================================================================
+__DIO_MobSpawnPos = __DIO_MobSpawnPos or {}
+do
+    local __islandSets = { Sea1_Islands, Sea2_Islands, Sea3_Islands }
+    for __s = 1, 3 do
+        local __set = __islandSets[__s]
+        if type(__set) == "table" then
+            for __islandName, __data in pairs(__set) do
+                if type(__data) == "table" and __data.CFrame and type(__data.Mobs) == "table" then
+                    for __m = 1, #__data.Mobs do
+                        local __mn = __data.Mobs[__m]
+                        if type(__mn) == "string" and __DIO_MobSpawnPos[__mn] == nil then
+                            __DIO_MobSpawnPos[__mn] = __data.CFrame * CFrame.new(0, 20, 0)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    for __mn, __cf in pairs(PosMsList or {}) do
+        if __DIO_MobSpawnPos[__mn] == nil and typeof(__cf) == "CFrame" then
+            __DIO_MobSpawnPos[__mn] = __cf * CFrame.new(0, 20, 0)
+        end
+    end
 end
 Tabs.Main:AddToggle({
     Name = __DIO_T["Auto Farm All Island"],
@@ -5997,7 +6655,7 @@ __DIO_SafeLoop(function()
 
                 if GetBP("Sweet Chalice") then
                     replicated.Remotes.CommF_:InvokeServer("CakePrinceSpawner", true)
-                    _G.FarmEliteHunt = false
+                    __DIO_ReleaseFlag("AutoDoughKing","FarmEliteHunt")   -- V7
                     return
                 end
 
@@ -6007,9 +6665,9 @@ __DIO_SafeLoop(function()
                 if not plr.Backpack:FindFirstChild("God's Chalice")
                     or plr.Character:FindFirstChild("God's Chalice")
                 then
-                    _G.FarmEliteHunt = true
+                    __DIO_BorrowFlag("AutoDoughKing","FarmEliteHunt")    -- V7
                 else
-                    _G.FarmEliteHunt = false
+                    __DIO_ReleaseFlag("AutoDoughKing","FarmEliteHunt")   -- V7
                 end
 
                 if GetM("Conjured Cocoa") <= 10 then
@@ -6925,7 +7583,7 @@ __DIO_FireMeleeSwordNow = function(mob)
             if not __hasMelee and not __hasSword then
                 if tick() - (__DIO_NoWepWarnT or 0) > 60 then
                     __DIO_NoWepWarnT = tick()
-                    pcall(function() Window:Notify({Title = "Skill Melee/Sword", Content = "Khong tim thay vu khi Melee hoac Sword trong tui - khong co skill de ban.", Duration = 5}) end)
+                    pcall(function() __DIO_TNotify("Skill Melee/Sword", "Khong tim thay vu khi Melee hoac Sword trong tui - khong co skill de ban.", 5) end)
                 end
                 return
             end
@@ -6982,6 +7640,77 @@ end
 })
 
 FastAttackModule = FastAttackModule or {}
+
+-- =====================================================================
+-- V7: NUT CHAN DOAN - bam de in ra console (F9) toan bo trang thai tween/flag.
+-- Dung khi ban nghi "shouldTween ket" hoac "highlight khong tat": no se chi ra
+-- CHINH XAC flag nao dang true va owner nao dang giu no.
+-- =====================================================================
+Tabs.Settings:AddSection("DIO V7 Diag")
+Tabs.Settings:AddButton({
+    Name = "V7 - Kiem tra shouldTween / flag ket",
+    Description = "In trang thai tween + flag dang bat ra console (F9)",
+    Callback = function()
+        __DIO_TweenAllowT = tick()
+        local __on = {}
+        pcall(function()
+            for __i = 1, #__DIO_FarmFlagNames do
+                local __n = __DIO_FarmFlagNames[__i]
+                if __DIO_FlagGet(__n) == true then table.insert(__on, __n) end
+            end
+        end)
+        warn("[DIO V7] shouldTween=" .. tostring(shouldTween)
+            .. " | FlyBusy=" .. tostring(__DIO_FlyBusy)
+            .. " | target=" .. tostring(__DIO_TweenTarget ~= nil)
+            .. " | lease con " .. string.format("%.1f", (__DIO_TWEEN_LEASE or 10) - (tick() - (__DIO_TweenArmedT or 0))) .. "s"
+            .. " | FarmFlagsOn=" .. tostring(__DIO_AnyFarmFlag()))
+        warn("[DIO V7] Flag farm dang TRUE (" .. #__on .. "): " .. (#__on > 0 and table.concat(__on, ", ") or "(khong co)"))
+        local __w = {}
+        pcall(function()
+            for __fn, __bag in pairs(__DIO_FlagWant) do
+                local __os = {}
+                for __o in pairs(__bag) do table.insert(__os, __o) end
+                if #__os > 0 then table.insert(__w, __fn .. "<-" .. table.concat(__os, "+")) end
+            end
+        end)
+        warn("[DIO V7] Bang chu (owner dang MUON flag): " .. (#__w > 0 and table.concat(__w, " | ") or "(trong)"))
+        local __s = {}
+        pcall(function()
+            for __fn, __bag in pairs(__DIO_FlagSup) do
+                local __os = {}
+                for __o in pairs(__bag) do table.insert(__os, __o) end
+                if #__os > 0 then table.insert(__s, __fn .. "<-" .. table.concat(__os, "+")) end
+            end
+        end)
+        warn("[DIO V7] Bang CHAN (suppress): " .. (#__s > 0 and table.concat(__s, " | ") or "(trong)"))
+        local __pn = __DIO_PlayerNames()
+        warn("[DIO V7] Player trong server (" .. #__pn .. "): " .. (#__pn > 0 and table.concat(__pn, ", ") or "(khong co - ban dang 1 minh)"))
+        local __oc, __fc = 0, 0
+        pcall(function() __oc = #__DIO_OwnerDrop.DROPDOWN_OPTIONS end)
+        pcall(function() __fc = #__DIO_FriendDrop.DROPDOWN_OPTIONS end)
+        warn("[DIO V7] Dropdown 'Owners Boat Hunter' = " .. __oc .. " option | 'Friend Hunter Leviathan' = " .. __fc .. " option")
+        local __hl = plr.Character and plr.Character:FindFirstChild("highlight")
+        warn("[DIO V7] Highlight tren nhan vat: " .. tostring(__hl ~= nil))
+    end
+})
+Tabs.Settings:AddButton({
+    Name = "V7 - Tat cung tween + don flag ket",
+    Description = "Ep shouldTween=false, xoa highlight, thu hoi moi flag mo coi",
+    Callback = function()
+        pcall(function()
+            for __i = 1, #__DIO_FarmFlagNames do
+                local __n = __DIO_FarmFlagNames[__i]
+                local __hasOwner = (__DIO_FlagWant[__n] ~= nil) or (__DIO_UIFlagOwner[__n] ~= nil)
+                if __hasOwner == false and __DIO_FlagGet(__n) == true then
+                    __DIO_FlagSet(__n, false)
+                end
+            end
+        end)
+        pcall(function() for __o in pairs(__DIO_OwnerAlive) do __DIO_ReleaseAll(__o) end end)
+        pcall(__DIO_TweenKill, false)
+        warn("[DIO V7] Da tat cung tween + don flag. shouldTween=" .. tostring(shouldTween))
+    end
+})
 
 Tabs.Settings:AddSlider({
     Name = __DIO_T["Fast Attack Delay"],
@@ -8176,15 +8905,16 @@ Description = "",
 Default = false,
 Callback = function(Value)
   _G.Auto_Yama = Value
+  if not Value then __DIO_ReleaseAll("Auto_Yama") StopTween(false) end
 end})
 __DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.Auto_Yama then
 	    if replicated.Remotes.CommF_:InvokeServer("EliteHunter", "Progress") < 30 then
-	      _G.FarmEliteHunt = true
+	      __DIO_BorrowFlag("Auto_Yama","FarmEliteHunt")    -- V7: muon theo owner
 	    elseif replicated.Remotes.CommF_:InvokeServer("EliteHunter", "Progress") > 30 then
-	      _G.FarmEliteHunt = false
+	      __DIO_ReleaseFlag("Auto_Yama","FarmEliteHunt")   -- V7: tra (khong giet toggle Elite Hunt)
 	      if (workspace.Map.Waterfall.SealedKatana.Handle.Position-plr.Character.HumanoidRootPart.Position).Magnitude >= 20 then
             _tp(workspace.Map.Waterfall.SealedKatana.Handle.CFrame)
             local zx = GetConnectionEnemies("Ghost")
@@ -8776,6 +9506,8 @@ Description = "",
 Default = false,
 Callback = function(Value)
   _G.AutoPoleV2 = Value
+  -- V7: tat Auto Pole V2 => tra het flag ma no muon (Level / Raiding / Auto_Awakener)
+  if not Value then __DIO_ReleaseAll("AutoPoleV2") StopTween(false) end
 end})
 __DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
@@ -8783,12 +9515,14 @@ __DIO_SafeLoop(function()
       if _G.AutoPoleV2 then
 	   if not GetBP("Pole (1st Form)") then replicated.Remotes.CommF_:InvokeServer("LoadItem","Pole (1st Form)") end
 	   if not GetBP("Pole (2nd Form)") then replicated.Remotes.CommF_:InvokeServer("LoadItem","Pole (2nd Form)") end
-	   if GetBP("Pole (1st Form)") and GetBP("Pole (1st Form)").Level.Value <= 179 then _G.Level = true elseif GetBP("Pole (1st Form)") and GetBP("Pole (1st Form)").Level.Value >= 180 then _G.Level = false end
+	   -- V7: Auto Pole V2 khong con ghi THANG _G.Level (nhan vat bi "bat coc" farm level
+	   -- khi ban dang tat Start Farm, va nguoc lai tra ve true lam Farm Level song mai).
+	   if GetBP("Pole (1st Form)") and GetBP("Pole (1st Form)").Level.Value <= 179 then __DIO_SetFlag("Level","AutoPoleV2",true) elseif GetBP("Pole (1st Form)") and GetBP("Pole (1st Form)").Level.Value >= 180 then __DIO_SetFlag("Level","AutoPoleV2",false) end
 	   if not GetBP("Rumble Fruit") then return end
 	   if GetBP("Rumble Fruit").AwakenedMoves:FindFirstChild("Z") and GetBP("Rumble Fruit").AwakenedMoves:FindFirstChild("X") and GetBP("Rumble Fruit").AwakenedMoves:FindFirstChild("C") and GetBP("Rumble Fruit").AwakenedMoves:FindFirstChild("V") and GetBP("Rumble Fruit").AwakenedMoves:FindFirstChild("F") then
 	     _G.SelectChip = nil
-		 _G.Raiding = false
-		 _G.Auto_Awakener = false
+		 __DIO_ReleaseFlag("AutoPoleV2","Raiding")        -- V7
+		 __DIO_ReleaseFlag("AutoPoleV2","Auto_Awakener")  -- V7
 		if plr.Data.Fragments.Value >= 5000 then
           replicated.Remotes.CommF_:InvokeServer("Thunder God", "Talk") __DIO_wait(Sec)
           replicated.Remotes.CommF_:InvokeServer("Thunder God", "Sure")
@@ -8797,8 +9531,8 @@ __DIO_SafeLoop(function()
           _G.SelectChip = "Rumble"
           local Buying = replicated.Remotes.CommF_:InvokeServer("RaidsNpc","Select",_G.SelectChip)
           if Buying then Buying:Stop() end
-          _G.Raiding = true
-          _G.Auto_Awakener = true
+          __DIO_BorrowFlag("AutoPoleV2","Raiding")        -- V7
+          __DIO_BorrowFlag("AutoPoleV2","Auto_Awakener")  -- V7
 	    end
       end
     end)
@@ -9137,6 +9871,7 @@ Description = "",
 Default = false,
 Callback = function(Value)
   _G.DarkBladev3 = Value
+  if not Value then __DIO_ReleaseAll("DarkBladev3") StopTween(false) end
 end})
 __DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
@@ -9151,8 +9886,12 @@ __DIO_SafeLoop(function()
             fireclickdetector(workspace.Map.GraveIsland.Mountain.Rocks.Button.ClickDetector)
           end
         else
-          _G.AutoFarmChest = true;
+          -- V7: ban cu ghi THANG _G.AutoFarmChest = true va KHONG BAO GIO tra lai
+          -- => tat "Auto Dark Blade (V3)" xong Auto Farm Chest van chay + highlight ket.
+          __DIO_BorrowFlag("DarkBladev3","AutoFarmChest")
         end
+      else
+        __DIO_ReleaseFlag("DarkBladev3","AutoFarmChest")
       end
     end)
   end
@@ -9188,6 +9927,7 @@ Description = "",
 Default = false,
 Callback = function(Value)
   _G.Auto_Def_DarkCoat = Value
+  if not Value then __DIO_ReleaseAll("Auto_Def_DarkCoat") StopTween(false) end
 end})
 __DIO_SafeLoop(function()
   while __DIO_wait(1) do
@@ -9199,7 +9939,8 @@ __DIO_SafeLoop(function()
           local v = GetConnectionEnemies("Darkbeard")
 		  if v then repeat __DIO_wait(0.25)Attack.Kill(v,_G.Auto_Def_DarkCoat)until _G.Auto_Def_DarkCoat == false or not v.Parent or v.Humanoid.Health <= 0 end
         elseif not GetBP("Fist of Darkness") and not GetConnectionEnemies("Darkbeard") then
-          repeat __DIO_wait(.1) _G.AutoFarmChest = true until not _G.Auto_Def_DarkCoat or GetBP("Fist of Darkness") or GetConnectionEnemies("Darkbeard") _G.AutoFarmChest = false
+          repeat __DIO_wait(.1) __DIO_BorrowFlag("Auto_Def_DarkCoat","AutoFarmChest") until not _G.Auto_Def_DarkCoat or GetBP("Fist of Darkness") or GetConnectionEnemies("Darkbeard")
+          __DIO_ReleaseFlag("Auto_Def_DarkCoat","AutoFarmChest")  -- V7: tra flag (ban cu ghi thang _G. => ket true mai mai)
         end
       end)
     end
@@ -9704,6 +10445,15 @@ Description = "",
 Default = false,
 Callback = function(Value)
   _G.Bartilo_Quest = Value
+  -- V7: tat Bartilo => bo CHAN Farm Level (ban cu bo ket _G.Level=false vinh vien
+  -- => Start Farm dang bat cung bi che, khong farm duoc nua)
+  if not Value then
+    __DIO_SetFlag("Level","Bartilo_Quest",false,true)
+    __DIO_ReleaseAll("Bartilo_Quest")
+    StopTween(false)
+    __DIO_CurTarget = nil
+    if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+  end
 end})
 __DIO_SafeLoop(function()
   while __DIO_wait(1) do
@@ -9711,7 +10461,7 @@ __DIO_SafeLoop(function()
       if _G.Bartilo_Quest and plr.Data.Level.Value >= 850 then
       local Qbart = plr.PlayerGui.Main.Quest
         if replicated.Remotes.CommF_:InvokeServer("BartiloQuestProgress","Bartilo") == 0 then
-          _G.Level = false
+          __DIO_SetFlag("Level","Bartilo_Quest",true,true) -- V7: CHAN tam Farm Level (suppress), tat Bartilo se tu mo
           if Qbart.Visible == true then
             local v = GetConnectionEnemies("Swan Pirate")
             if v then
@@ -9734,7 +10484,7 @@ __DIO_SafeLoop(function()
             end
           end
           elseif replicated.Remotes.CommF_:InvokeServer("BartiloQuestProgress","Bartilo") == 1 then
-            _G.Level = false
+            __DIO_SetFlag("Level","Bartilo_Quest",true,true) -- V7: CHAN tam Farm Level (suppress)
             local je = GetConnectionEnemies("Jeremy")
             if je then
               repeat __DIO_wait(Sec) Attack.Kill(je,_G.Bartilo_Quest) until _G.Bartilo_Quest == false or not je.Parent or je.Humanoid.Health <= 0 or Qbart.Visible == false or not je:FindFirstChild("HumanoidRootPart")
@@ -9842,25 +10592,15 @@ __DIO_SafeLoop(function()
   end
 end, "L8665")
 
-__DIO_FlagBorrow = {}
-function __DIO_BorrowFlag(owner, name)
-    local bag = __DIO_FlagBorrow[owner]
-    if not bag then bag = {} __DIO_FlagBorrow[owner] = bag end
-    if bag[name] == nil then bag[name] = { v = _G[name] } end
-end
-function __DIO_ReleaseFlag(owner, name)
-    local bag = __DIO_FlagBorrow[owner]
-    if bag and bag[name] ~= nil then
-        _G[name] = bag[name].v
-        bag[name] = nil
-    end
-end
-function __DIO_ReleaseAll(owner)
-    local bag = __DIO_FlagBorrow[owner]
-    if not bag then return end
-    for name, e in pairs(bag) do _G[name] = e.v end
-    __DIO_FlagBorrow[owner] = nil
-end
+-- =====================================================================
+-- V7: DA BO __DIO_BorrowFlag/__DIO_ReleaseFlag/__DIO_ReleaseAll ban cu o day.
+-- Ban cu NHU lai gia tri CU cua flag (vd _G.Level = true) khi tra => neu ban da
+-- tat Start Farm giua chung thi Auto Superhuman/DeathStep/Sharkman/GodHuman
+-- "tra lai" _G.Level = true => Farm Level song lai mai mai, shouldTween + highlight
+-- ket. Ban moi (V7 CORE, dau file) dung BANG CHU owner + refcount: tra flag chi
+-- khi KHONG CON owner nao muon no, va watchdog tu thu hoi khi owner da tat.
+-- =====================================================================
+__DIO_FlagBorrow = __DIO_FlagBorrow or {}
 
 __DIO_BuyMeleeToggles = {}
 
@@ -9957,23 +10697,23 @@ __DIO_SafeLoop(function()
         if not GetBP("Black Leg") then
           if M_Beli >= 150000 and __DIO_FlyTo(__DIO_MeleeCF("BuyBlackLeg"), 15, __on) then replicated.Remotes.CommF_:InvokeServer("BuyBlackLeg") end
           return
-        elseif GetBP("Black Leg").Level.Value < 300 then __DIO_BorrowFlag("Auto_SuperHuman","Level") _G.Level = true return
-        else _G.Level = false end
+        elseif GetBP("Black Leg").Level.Value < 300 then __DIO_BorrowFlag("Auto_SuperHuman","Level") return
+        else __DIO_ReleaseFlag("Auto_SuperHuman","Level") end
         if not GetBP("Electro") then
           if M_Beli >= 500000 and __DIO_FlyTo(__DIO_MeleeCF("BuyElectro"), 15, __on) then replicated.Remotes.CommF_:InvokeServer("BuyElectro") end
           return
-        elseif GetBP("Electro").Level.Value < 300 then __DIO_BorrowFlag("Auto_SuperHuman","Level") _G.Level = true return
-        else _G.Level = false end
+        elseif GetBP("Electro").Level.Value < 300 then __DIO_BorrowFlag("Auto_SuperHuman","Level") return
+        else __DIO_ReleaseFlag("Auto_SuperHuman","Level") end
         if not GetBP("Fishman Karate") then
           if M_Beli >= 750000 and __DIO_FlyTo(__DIO_MeleeCF("BuyFishmanKarate"), 15, __on) then replicated.Remotes.CommF_:InvokeServer("BuyFishmanKarate") end
           return
-        elseif GetBP("Fishman Karate").Level.Value < 300 then __DIO_BorrowFlag("Auto_SuperHuman","Level") _G.Level = true return
-        else _G.Level = false end
+        elseif GetBP("Fishman Karate").Level.Value < 300 then __DIO_BorrowFlag("Auto_SuperHuman","Level") return
+        else __DIO_ReleaseFlag("Auto_SuperHuman","Level") end
         if not GetBP("Dragon Claw") then
           if M_Frag >= 1500 and __DIO_FlyTo(__DIO_MeleeCF("BlackbeardReward"), 15, __on) then replicated.Remotes.CommF_:InvokeServer("BlackbeardReward","DragonClaw","2") end
           return
-        elseif GetBP("Dragon Claw").Level.Value < 300 then __DIO_BorrowFlag("Auto_SuperHuman","Level") _G.Level = true return
-        else _G.Level = false end
+        elseif GetBP("Dragon Claw").Level.Value < 300 then __DIO_BorrowFlag("Auto_SuperHuman","Level") return
+        else __DIO_ReleaseFlag("Auto_SuperHuman","Level") end
         if __DIO_FlyTo(__DIO_MeleeCF("BuySuperhuman"), 15, __on) then replicated.Remotes.CommF_:InvokeServer("BuySuperhuman") end
       end)
     end
@@ -10011,10 +10751,10 @@ __DIO_SafeLoop(function()
               __DIO_FlyTo(CFrame.new(5668.9780273438, 28.519989013672, -6483.3520507813), 10, __on)
             end
           end
-          _G.Level = false
+          __DIO_ReleaseFlag("AutoDeathStep","Level")
           return
         else
-          __DIO_BorrowFlag("AutoDeathStep","Level") _G.Level = true
+          __DIO_BorrowFlag("AutoDeathStep","Level")
           return
         end
       end)
@@ -10041,10 +10781,10 @@ __DIO_SafeLoop(function()
           return
         end
         if GetBP("Fishman Karate").Level.Value < 400 then
-          __DIO_BorrowFlag("Auto_SharkMan_Karate","Level") _G.Level = true
+          __DIO_BorrowFlag("Auto_SharkMan_Karate","Level")
           return
         end
-        _G.Level = false
+        __DIO_ReleaseFlag("Auto_SharkMan_Karate","Level")
 
         if GetBP("Water Key") then
           if __DIO_FlyTo(__DIO_MeleeCF("BuySharkmanKarate"), 15, __on) then
@@ -10086,7 +10826,7 @@ __DIO_SafeLoop(function()
           if __DIO_FlyTo(__DIO_MeleeCF("BuyElectricClaw"), 15, __on) then replicated.Remotes.CommF_:InvokeServer("BuyElectricClaw") end
         else
 
-          __DIO_BorrowFlag("Auto_Electric_Claw","AutoFarm_Bone") _G.AutoFarm_Bone = true
+          __DIO_BorrowFlag("Auto_Electric_Claw","AutoFarm_Bone")
           repeat __DIO_wait(0.25) until not _G.Auto_Electric_Claw or GetBP("Electric Claw") or not plr.Character
           __DIO_ReleaseFlag("Auto_Electric_Claw","AutoFarm_Bone")
         end
@@ -10116,7 +10856,7 @@ __DIO_SafeLoop(function()
         if GetBP("Dragon Claw").Level.Value >= 400 then
           if __DIO_FlyTo(__DIO_MeleeCF("BuyDragonTalon"), 15, __on) then replicated.Remotes.CommF_:InvokeServer("Bones","Buy",1,1) replicated.Remotes.CommF_:InvokeServer("BuyDragonTalon") end
         else
-          __DIO_BorrowFlag("AutoDragonTalon","AutoFarm_Bone") _G.AutoFarm_Bone = true
+          __DIO_BorrowFlag("AutoDragonTalon","AutoFarm_Bone")
           repeat __DIO_wait(0.25) until not _G.AutoDragonTalon or GetBP("Dragon Talon") or not plr.Character
           __DIO_ReleaseFlag("AutoDragonTalon","AutoFarm_Bone")
         end
@@ -10143,28 +10883,28 @@ __DIO_SafeLoop(function()
           if GetM("Dragon Scale") == false or GetM("Dragon Scale") < 10 then
             if World3 then
               Lv = 1575
-              __DIO_BorrowFlag("Auto_God_Human","Level") _G.Level = true
+              __DIO_BorrowFlag("Auto_God_Human","Level")
             else
               replicated.Remotes.CommF_:InvokeServer("TravelZou")
             end
           elseif GetM("Fish Tail") == false or GetM("Fish Tail") < 20 then
             if World3 then
               Lv = 1775
-              __DIO_BorrowFlag("Auto_God_Human","Level") _G.Level = true
+              __DIO_BorrowFlag("Auto_God_Human","Level")
             else
               replicated.Remotes.CommF_:InvokeServer("TravelZou")
             end
           elseif GetM("Mystic Droplet") == false or GetM("Mystic Droplet") < 10 then
             if World2 then
               Lv = 1425
-              __DIO_BorrowFlag("Auto_God_Human","Level") _G.Level = true
+              __DIO_BorrowFlag("Auto_God_Human","Level")
             else
               replicated.Remotes.CommF_:InvokeServer("TravelDressrosa")
             end
           elseif GetM("Magma Ore") == false or GetM("Magma Ore") < 20 then
             if World2 then
               Lv = 1175
-              __DIO_BorrowFlag("Auto_God_Human","Level") _G.Level = true
+              __DIO_BorrowFlag("Auto_God_Human","Level")
             else
               replicated.Remotes.CommF_:InvokeServer("TravelDressrosa")
             end
@@ -10195,8 +10935,10 @@ __DIO_SafeLoop(function()
           if GetM("Leviathan Heart") >= 1 then print("Completed!!")
           else
 
-            __DIO_BorrowFlag("Snaguine","DangerSc") __DIO_BorrowFlag("Snaguine","SailBoats")
-            if World3 then _G.DangerSc = "Lv Infinite" _G.SailBoats = true; else _G.SailBoats = false; end
+            -- V7: DangerSc la flag GIA TRI ("Lv Infinite"/"Lv 1") => dung __DIO_BorrowValue
+            -- (ban cu dung __DIO_BorrowFlag cho no => bi ep ve true/false, tra ve sai gia tri).
+            __DIO_BorrowValue("Snaguine","DangerSc","Lv Infinite")
+            if World3 then __DIO_BorrowFlag("Snaguine","SailBoats") else __DIO_ReleaseFlag("Snaguine","SailBoats") end
           end
           if GetM("Vampire Fang") <= 19 then
             if World2 then
@@ -10595,6 +11337,7 @@ Description = "",
 Default = false,
 Callback = function(Value)
   _G.Auto_Mink = Value
+  if not Value then __DIO_ReleaseAll("Auto_Mink") StopTween(false) end
 end})
 __DIO_SafeLoop(function()
   while __DIO_wait(1) do
@@ -10619,9 +11362,9 @@ __DIO_SafeLoop(function()
         elseif replicated.Remotes.CommF_:InvokeServer("Wenlocktoad","1") == 0 then
           replicated.Remotes.CommF_:InvokeServer("Wenlocktoad","2")
         elseif replicated.Remotes.CommF_:InvokeServer("Wenlocktoad","1") == 1 then
-		  _G.AutoFarmChest = true
+		  __DIO_BorrowFlag("Auto_Mink","AutoFarmChest")   -- V7: muon theo owner
 	    else
-	      _G.AutoFarmChest = false
+	      __DIO_ReleaseFlag("Auto_Mink","AutoFarmChest")  -- V7: tra (khong giet toggle cua ban)
         end
       end
     end)
@@ -11047,6 +11790,13 @@ Description = "",
 Default = false,
 Callback = function(Value)
   _G.Dojoo = Value
+  -- V7: tat Dojo => tra het 7 flag sea ma no da "muon" + dung tween ngay
+  if not Value then
+    __DIO_ReleaseAll("Dojoo")
+    StopTween(false)
+    __DIO_CurTarget = nil
+    if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+  end
 end})
 function printBeltName(data) if type(data) == "table" and data.Quest["BeltName"] then return data.Quest["BeltName"] end end
 __DIO_SafeLoop(function()
@@ -11066,57 +11816,51 @@ __DIO_SafeLoop(function()
             else _tp(CFrame.new(-16759.58984375, 71.28376770019531, 1595.3399658203125))
             end
           elseif NameBelt == "Yellow" then
+            -- V7 FIX TRUNG TWEEN NGHIEM TRONG NHAT: ban cu ghi THANG _G.Shark/_G.SeaBeast1/...
+            -- = true trong 1 vong repeat. Chi can 1 loi nho (pcall nuot) hoac tat toggle dung
+            -- luc => 7 flag sea ket TRUE VINH VIEN => __DIO_FarmFlagsOn() = true mai mai =>
+            -- shouldTween = true + highlight + cac loop Sea Event chay khong dung.
+            -- Gio "muon" qua bang chu owner "Dojoo": tat Dojoo => watchdog thu hoi het NGAY.
             repeat __DIO_wait(0.25)
-              _G.SeaBeast1 = true
-              _G.TerrorShark = true
-              _G.Shark = true
-              _G.Piranha = true
-              _G.MobCrew = true
-              _G.FishBoat = true
-              _G.SailBoats = true
+              __DIO_BorrowFlag("Dojoo", {"SeaBeast1","TerrorShark","Shark","Piranha","MobCrew","FishBoat","SailBoats"})
             until not _G.Dojoo or not progress
-            _G.SeaBeast1 = false
-            _G.TerrorShark = false
-            _G.Shark = false
-            _G.Piranha = false
-            _G.MobCrew = false
-            _G.FishBoat = false
-            _G.SailBoats = false
+            __DIO_ReleaseAll("Dojoo")
           elseif NameBelt == "Green" then
             repeat __DIO_wait()
-              _G.SailBoats = true
+              __DIO_BorrowFlag("Dojoo", "SailBoats")
             until not _G.Dojoo or not progress
-            _G.SailBoats = false
+            __DIO_ReleaseAll("Dojoo")
           elseif NameBelt == "Purple" then
             repeat __DIO_wait()
-              _G.FarmEliteHunt = true
+              __DIO_BorrowFlag("Dojoo", "FarmEliteHunt")
             until not _G.Dojoo or not progress
-            _G.FarmEliteHunt = false
+            __DIO_ReleaseAll("Dojoo")
           elseif NameBelt == "Red" then
             repeat __DIO_wait()
-              _G.SailBoats = true
-              _G.FishBoat = true
+              __DIO_BorrowFlag("Dojoo", {"SailBoats","FishBoat"})
             until not _G.Dojoo or not progress
-            _G.SailBoats = false
-            _G.FishBoat = false
+            __DIO_ReleaseAll("Dojoo")
           elseif NameBelt == "Black" then
+            -- V7: Prehis_Find / Prehis_Skills la flag cua 2 TOGGLE RIENG. Ban cu ghi thang
+            -- _G. => tat Dojo xong la TAT LUON toggle "Auto Find Prehistoric Island" cua
+            -- nguoi dung (UI van hien ON ma flag = false => "bat ma khong chay").
             repeat __DIO_wait()
               if workspace.Map:FindFirstChild("PrehistoricIsland") or workspace._WorldOrigin.Locations:FindFirstChild("Prehistoric Island") then
-                _G.Prehis_Find = true
+                __DIO_SetFlag("Prehis_Find","Dojoo",true)
                 if workspace.Map.PrehistoricIsland.Core.ActivationPrompt:FindFirstChild("ProximityPrompt",true) then
-                  _G.Prehis_Skills = false
-                  _G.Prehis_Find = true
+                  __DIO_SetFlag("Prehis_Skills","Dojoo",false)
+                  __DIO_SetFlag("Prehis_Find","Dojoo",true)
                 else
-                  _G.Prehis_Skills = true
-                  _G.Prehis_Find = false
+                  __DIO_SetFlag("Prehis_Skills","Dojoo",true)
+                  __DIO_SetFlag("Prehis_Find","Dojoo",false)
                 end
               else
-                _G.Prehis_Find = true
-                _G.Prehis_Skills = false
+                __DIO_SetFlag("Prehis_Find","Dojoo",true)
+                __DIO_SetFlag("Prehis_Skills","Dojoo",false)
               end
             until not _G.Dojoo or not progress
-            _G.Prehis_Find = false
-            _G.Prehis_Skills = false
+            __DIO_SetFlag("Prehis_Find","Dojoo",false)
+            __DIO_SetFlag("Prehis_Skills","Dojoo",false)
           elseif NameBelt == "Orange" or NameBelt == "Blue" then
             return nil
           end
@@ -11233,20 +11977,19 @@ Description = "",
 Default = false,
 Callback = function(Value)
   _G.DragoV1 = Value
+  if not Value then __DIO_ReleaseAll("DragoV1") StopTween(false) end
 end})
 __DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.DragoV1 then
         if GetM("Dragon Egg") <= 0 then
+        -- V7: dung bang chu owner "DragoV1" - khong con canh ghi de flag cua
+        -- toggle "Auto Find Prehistoric Island" / "Auto Draco Skills".
         repeat __DIO_wait()
-          _G.Prehis_Find = true
-          _G.Prehis_Skills = true
-          _G.Prehis_DE = true
+          __DIO_BorrowFlag("DragoV1", {"Prehis_Find","Prehis_Skills","Prehis_DE"})
         until not _G.DragoV1 or GetM("Dragon Egg") >= 1
-          _G.Prehis_Find = false
-          _G.Prehis_Skills = false
-          _G.Prehis_DE = false
+          __DIO_ReleaseAll("DragoV1")
         end
       end
     end)
@@ -11293,19 +12036,20 @@ Description = "",
 Default = false,
 Callback = function(Value)
   _G.DragoV3 = Value
+  if not Value then __DIO_ReleaseAll("DragoV3") StopTween(false) end
 end})
 __DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.DragoV3 then
+        -- V7: giong Auto Dojo Trainer - ban cu ghi thang 3 flag dung chung trong repeat,
+        -- loi giua chung (pcall nuot) => SailBoats/TerrorShark ket TRUE VINH VIEN.
         repeat __DIO_wait(0.5)
-          _G.DangerSc = "Lv Infinite"
-          _G.SailBoats = true
-          _G.TerrorShark = true
+          __DIO_BorrowValue("DragoV3","DangerSc","Lv Infinite")
+          __DIO_BorrowFlag("DragoV3","SailBoats")
+          __DIO_BorrowFlag("DragoV3","TerrorShark")
         until not _G.DragoV3
-        _G.DangerSc = "Lv 1"
-        _G.SailBoats = false
-        _G.TerrorShark = false
+        __DIO_ReleaseAll("DragoV3")
       end
     end)
   end
@@ -12078,13 +12822,16 @@ Q = Tabs.SeaEvent:AddDropdown({
                 end
             end
         end
+        -- V7: dung __DIO_SetFlag voi owner "SeaEventDrop" + __DIO_UISetOn de watchdog
+        -- biet chinh xac entity nao DANG duoc chon. Ban cu ghi thang _G[flag] nen khi
+        -- Auto Dojo Trainer / Auto Draco V3 cung ghi chen cac flag nay => trung tween.
         for __name, __flag in pairs(__DIO_SeaEntityMap) do
             if __sel[__name] then
-                _G[__flag] = true
+                __DIO_SetFlag(__flag, "SeaEventDrop:" .. __name, true)
                 __DIO_SeaSelPrev[__name] = true
             elseif __DIO_SeaSelPrev[__name] then
                 -- truoc do la chon o dropdown nay, gio bo chon => tat flag tuong ung
-                _G[__flag] = false
+                __DIO_SetFlag(__flag, "SeaEventDrop:" .. __name, false)
                 __DIO_SeaSelPrev[__name] = nil
             end
         end
@@ -12784,42 +13531,159 @@ __DIO_FriendDrop = Tabs.SeaEvent:AddDropdown({
 -- khong bi dung toi => bam duoc nhieu nguoi, khong mat lua chon.
 -- =====================================================================
 __DIO_OwnerSeen, __DIO_FriendSeen = {}, {}
+-- V7: khoi tao "seen" tu nhung gi DROPDOWN DANG CO THAT (DROPDOWN_OPTIONS),
+-- khong tu __DIO_PlayerNames() - 2 cai nay co the lech nhau (player vao giua 2
+-- lan goi) => co ten bi danh dau "seen" ma dropdown khong co => khong bao gio them.
 do
-    local __initNames = __DIO_PlayerNames()
-    for __i = 1, #__initNames do
-        __DIO_OwnerSeen[__initNames[__i]] = true
-        __DIO_FriendSeen[__initNames[__i]] = true
-    end
-end
-
-__DIO_SyncPlayerDrop = function(drop, seen)
-    if not drop or type(drop.ADD_DROPDOWN_OPTION) ~= "function" then return seen end
-    local __names = __DIO_PlayerNames()
-    if #__names == 0 then return seen end
-    local __now = {}
-    for __i = 1, #__names do __now[__names[__i]] = true end
-    for __i = 1, #__names do
-        local __n = __names[__i]
-        if not seen[__n] then
-            pcall(function() drop:ADD_DROPDOWN_OPTION(__n) end)
-        end
-    end
-    if type(drop.REMOVE_DROPDOWN_OPTION) == "function" then
-        for __n in pairs(seen) do
-            if not __now[__n] then
-                pcall(function() drop:REMOVE_DROPDOWN_OPTION(__n) end)
+    local function __seed(drop, seen)
+        local __opts = drop and drop.DROPDOWN_OPTIONS
+        if type(__opts) == "table" then
+            for __i = 1, #__opts do
+                local __o = __opts[__i]
+                local __nm = (type(__o) == "table" and __o.Name) or __o
+                if type(__nm) == "string" then seen[__nm] = true end
             end
         end
     end
-    return __now
+    pcall(__seed, __DIO_OwnerDrop,  __DIO_OwnerSeen)
+    pcall(__seed, __DIO_FriendDrop, __DIO_FriendSeen)
+end
+
+-- =====================================================================
+-- V7 FIX NGHIEM TRONG - "2 DROPDOWN KHONG HIEN PLAYER TRONG SERVER":
+--   Library Redz dinh nghia  ham nhu  aL.ADD_DROPDOWN_OPTION = function(a8) ...
+--   (gan bang DAU CHAM, tham so a8 la TEN OPTION). Ban cu goi
+--       drop:ADD_DROPDOWN_OPTION(__n)      -- DAU HAI CHAM!
+--   => Lua truyen drop thanh a8 va __n bi vo hieu. Vi drop la TABLE nen ham
+--      roi nhanh vao nhanh  if type(a8)=="table" then for i=1,#a8 do ... end
+--      ma #drop == 0 (khong co key so) => vong for KHONG chay gi ca => return.
+--   Ket qua: KHONG co bat ky player moi nao duoc them vao dropdown. Neu luc
+--   script load ma __DIO_PlayerNames() tra ve rong (server chua replicate xong
+--   danh sach player / ban la nguoi dau tien vao) thi dropdown TRONG VINH VIEN.
+--   REMOVE_DROPDOWN_OPTION cung loi tuong tu (aS[tostring(drop)] = nil).
+--   => Doi sang goi DUNG: drop.ADD_DROPDOWN_OPTION(ten)  (dau cham)
+--      va co san 3 duong du phong cho cac phien ban library khac.
+-- =====================================================================
+__DIO_DropHas = function(drop, name)
+    if type(drop) ~= "table" then return false end
+    local __opts = drop.DROPDOWN_OPTIONS
+    if type(__opts) == "table" then
+        for __i = 1, #__opts do
+            local __o = __opts[__i]
+            if type(__o) == "table" and __o.Name == name then return true end
+            if __o == name then return true end
+        end
+    end
+    return false
+end
+
+__DIO_DropAdd = function(drop, name)
+    if type(drop) ~= "table" or type(name) ~= "string" then return false end
+    if __DIO_DropHas(drop, name) then return true end
+    local __ok = false
+    -- [1] Library Redz: ADD_DROPDOWN_OPTION la FIELD (khong phai phuong thuc) =>
+    --     goi bang DAU CHAM voi DUY NHAT 1 tham so la TEN OPTION.
+    if type(drop.ADD_DROPDOWN_OPTION) == "function" then
+        pcall(drop.ADD_DROPDOWN_OPTION, name)
+        __ok = __DIO_DropHas(drop, name)
+    end
+    -- [2] Du phong: Add(...) la phuong thuc (dinh nghia function ap:Add(...)) => dau hai cham
+    if not __ok and type(drop.Add) == "function" then
+        pcall(drop.Add, drop, name)
+        __ok = __DIO_DropHas(drop, name)
+    end
+    -- [3] Du phong: ADD_DROPDOWN_OPTION ho tro ca tham so la BANG ten
+    if not __ok and type(drop.ADD_DROPDOWN_OPTION) == "function" then
+        pcall(drop.ADD_DROPDOWN_OPTION, { name })
+        __ok = __DIO_DropHas(drop, name)
+    end
+    return __ok
+end
+
+__DIO_DropRemove = function(drop, name)
+    if type(drop) ~= "table" then return false end
+    if type(drop.REMOVE_DROPDOWN_OPTION) == "function" then
+        pcall(drop.REMOVE_DROPDOWN_OPTION, name)   -- DAU CHAM, 1 tham so = ten (dung API)
+    elseif type(drop.Remove) == "function" then
+        pcall(drop.Remove, drop, name)             -- phuong thuc => dau hai cham
+    end
+    return not __DIO_DropHas(drop, name)
+end
+
+-- Dong bo KIEN: chi them nguoi moi / xoa nguoi da roi server (khong CLEAR_DROPDOWN)
+__DIO_SyncPlayerDrop = function(drop, seen)
+    if type(drop) ~= "table" then return seen end
+    seen = (type(seen) == "table") and seen or {}
+    local __names = __DIO_PlayerNames()
+    if #__names == 0 then return seen end   -- server chua tra ve danh sach => giu nguyen
+    local __now = {}
+    for __i = 1, #__names do __now[__names[__i]] = true end
+    -- [A] THEM nguoi moi (hoac nguoi cu ma dropdown thieu do loi cu)
+    for __i = 1, #__names do
+        local __n = __names[__i]
+        if not __DIO_DropHas(drop, __n) then
+            __DIO_DropAdd(drop, __n)
+        end
+    end
+    -- [B] XOA nguoi da roi server
+    for __n in pairs(seen) do
+        if not __now[__n] then
+            if __DIO_DropRemove(drop, __n) then __now[__n] = nil end
+        end
+    end
+    -- [C] Tra ve danh sach that su DANG CO trong dropdown (khong phai danh sach muon co)
+    local __seen2 = {}
+    local __opts = drop.DROPDOWN_OPTIONS
+    if type(__opts) == "table" then
+        for __i = 1, #__opts do
+            local __o = __opts[__i]
+            local __nm = (type(__o) == "table" and __o.Name) or __o
+            if type(__nm) == "string" then __seen2[__nm] = true end
+        end
+    else
+        __seen2 = __now
+    end
+    return __seen2
 end
 
 __DIO_SafeLoop(function()
-    while __DIO_wait(2) do
-        pcall(function() __DIO_OwnerSeen = __DIO_SyncPlayerDrop(__DIO_OwnerDrop, __DIO_OwnerSeen) end)
+    while __DIO_wait(1) do
+        pcall(function() __DIO_OwnerSeen  = __DIO_SyncPlayerDrop(__DIO_OwnerDrop,  __DIO_OwnerSeen)  end)
         pcall(function() __DIO_FriendSeen = __DIO_SyncPlayerDrop(__DIO_FriendDrop, __DIO_FriendSeen) end)
     end
 end, "SeaPlayerRefresh")
+
+-- V7 SELF-TEST: neu sau 6s ma server CO player nhung dropdown van TRONG =>
+-- dung duong cuu cuoi: CLEAR_DROPDOWN roi nap lai toan bo (chi chay 1 lan,
+-- luc chua co lua chon nao cua nguoi dung nen khong mat click).
+task.delay(6, function()
+    pcall(function()
+        local __names = __DIO_PlayerNames()
+        if #__names == 0 then return end
+        for _, __pair in ipairs({ {__DIO_OwnerDrop, "Owner"}, {__DIO_FriendDrop, "Friend"} }) do
+            local __drop = __pair[1]
+            if type(__drop) == "table" then
+                local __cnt = 0
+                if type(__drop.DROPDOWN_OPTIONS) == "table" then __cnt = #__drop.DROPDOWN_OPTIONS end
+                if __cnt == 0 then
+                    warn("[DIO V7] Dropdown " .. __pair[2] .. " trong -> nap lai toan bo player")
+                    if type(__drop.CLEAR_DROPDOWN) == "function" then pcall(__drop.CLEAR_DROPDOWN) end
+                    for __i = 1, #__names do __DIO_DropAdd(__drop, __names[__i]) end
+                end
+            end
+        end
+    end)
+end)
+
+-- V7: dong bo NGAY 1 lan sau khi UI kip ve (khong doi 1~2s moi thay player)
+task.delay(0.5, function()
+    pcall(function() __DIO_OwnerSeen  = __DIO_SyncPlayerDrop(__DIO_OwnerDrop,  __DIO_OwnerSeen)  end)
+    pcall(function() __DIO_FriendSeen = __DIO_SyncPlayerDrop(__DIO_FriendDrop, __DIO_FriendSeen) end)
+end)
+task.delay(3, function()
+    pcall(function() __DIO_OwnerSeen  = __DIO_SyncPlayerDrop(__DIO_OwnerDrop,  __DIO_OwnerSeen)  end)
+    pcall(function() __DIO_FriendSeen = __DIO_SyncPlayerDrop(__DIO_FriendDrop, __DIO_FriendSeen) end)
+end)
 
 -- V5.4: loop board thuyen owner (ngom cho trong / bam sat thuyen)
 __DIO_SafeLoop(function()
@@ -13728,7 +14592,7 @@ __DIO_GachaRollOnce = function()
             if not mods then
                 if tick() - (__DIO_GachaWarnT or 0) > 60 then
                     __DIO_GachaWarnT = tick()
-                    pcall(function() Window:Notify({Title = "Auto Random Fruit", Content = "Khong tim thay module Gacha (Controllers.GachaClient) trong game nay.", Duration = 5}) end)
+                    pcall(function() __DIO_TNotify("Auto Random Fruit", "Khong tim thay module Gacha (Controllers.GachaClient) trong game nay.", 5) end)
                 end
                 return
             end
@@ -13740,7 +14604,7 @@ __DIO_GachaRollOnce = function()
             if not (success and gachaData and gachaData.Level and gachaData.Level.RequirementMet) then
                 if tick() - (__DIO_GachaWarnT or 0) > 60 then
                     __DIO_GachaWarnT = tick()
-                    pcall(function() Window:Notify({Title = "Auto Random Fruit", Content = "Chua du dieu kien cap do de roll " .. __DIO_GACHA_NAME .. " - tam dung.", Duration = 5}) end)
+                    pcall(function() __DIO_TNotify("Auto Random Fruit", "Chua du dieu kien cap do de roll " .. __DIO_GACHA_NAME .. " - tam dung.", 5) end)
                 end
                 return
             end
@@ -14184,7 +15048,7 @@ __DIO_SafeLoop(function()
             if not btnCF then
                 if World1 and not __raidWarnedSea1 then
                     __raidWarnedSea1 = true
-                    pcall(function() Window:Notify({Title = "Auto Start Raid", Content = "Sea 1 khong co Raid - sang Sea 2/3.", Duration = 4}) end)
+                    pcall(function() __DIO_TNotify("Auto Start Raid", "Sea 1 khong co Raid - sang Sea 2/3.", 4) end)
                 end
                 return
             end
@@ -14197,7 +15061,7 @@ __DIO_SafeLoop(function()
                 end
                 if tick() - __raidChipNotifyT > 15 then
                     __raidChipNotifyT = tick()
-                    pcall(function() Window:Notify({Title = "Auto Start Raid", Content = "Chua co Special Microchip - bat 'Auto Buy Chip' de mua chip. Da den gan nut Raid, co chip se tu bat.", Duration = 4}) end)
+                    pcall(function() __DIO_TNotify("Auto Start Raid", "Chua co Special Microchip - bat 'Auto Buy Chip' de mua chip. Da den gan nut Raid, co chip se tu bat.", 4) end)
                 end
                 return
             end
@@ -15460,6 +16324,8 @@ __DIO_FlyTo = function(targetCF, arriveDist, cancelFn)
     local __old = shouldTween
     shouldTween = true
     __DIO_FlyBusy = true
+    __DIO_FlyBusyT = tick()          -- V7: moc thoi gian de watchdog tu mo khoa neu ket
+    __DIO_TweenAllowT = tick()       -- V7: _tp GATE cho qua suot chuyen bay nay
     local __t0 = tick()
     local __spd = math.max(tonumber(_G.TweenSpeed) or 300, 1)
     local __timeout = math.min(math.max((targetCF.Position - __h.Position).Magnitude / __spd + 25, 15), 300)
@@ -15482,7 +16348,17 @@ __DIO_FlyTo = function(targetCF, arriveDist, cancelFn)
         end
     end)
     __DIO_FlyBusy = false
-    shouldTween = __old
+    -- V7: chi ha shouldTween ve gia tri cu khi KHONG con tinh nang farm nao dang bat.
+    -- Ban cu luon tra shouldTween = __old => neu __old = false ma ban dang bat them
+    -- 1 toggle farm khac thi chuyen bay nay tat luon tween cua toggle kia.
+    local __anyF = false
+    pcall(function() __anyF = (type(__DIO_FarmFlagsOn) == "function") and __DIO_FarmFlagsOn() or false end)
+    if __anyF then
+        shouldTween = true
+    else
+        shouldTween = __old
+        if __old ~= true then pcall(function() if type(__DIO_TweenKill) == "function" then __DIO_TweenKill(false) end end) end
+    end
     if not __okFly then warn("[DIO] FlyTo error: " .. tostring(__errFly)) end
     return __ok
 end
@@ -15503,13 +16379,13 @@ BuyMelee = function(npcNames, cancelFn, ...)
 
     local entry = __DIO_BUY_MELEE_CF[key]
     if not entry then
-        pcall(function() Window:Notify({Title = "Buy Melee", Content = "Khong co toa do teacher cho: " .. tostring(key), Duration = 3}) end)
+        pcall(function() __DIO_TNotify("Buy Melee", "Khong co toa do teacher cho: " .. tostring(key), 3) end)
         return
     end
     local targetCF = nil
     if sea1 then targetCF = entry.sea1 elseif sea2 then targetCF = entry.sea2 else targetCF = entry.sea3 end
     if not targetCF then
-        pcall(function() Window:Notify({Title = "Buy Melee", Content = "Khong co toa do cho sea hien tai: " .. tostring(key), Duration = 3}) end)
+        pcall(function() __DIO_TNotify("Buy Melee", "Khong co toa do cho sea hien tai: " .. tostring(key), 3) end)
         return
     end
     if __DIO_BuyBusy then return end
@@ -15529,7 +16405,7 @@ BuyMelee = function(npcNames, cancelFn, ...)
             if not __h0 then __release() return end
             local standCF = targetCF * CFrame.new(0, 0, 4)
             local dist0 = (standCF.Position - __h0.Position).Magnitude
-            pcall(function() Window:Notify({Title = "Buy Melee", Content = "Dang bay den " .. tostring(npcNames[1]) .. " (" .. string.format("%.0f", dist0) .. " studs)", Duration = 3}) end)
+            pcall(function() __DIO_TNotify("Buy Melee", "Dang bay den " .. tostring(npcNames[1]) .. " (" .. string.format("%.0f", dist0) .. " studs)", 3) end)
 
             local __spd = math.max(tonumber(_G.TweenSpeed) or 300, 1)
             local __timeout = math.min(math.max(dist0 / __spd + 25, 15), 300)
@@ -15557,14 +16433,14 @@ BuyMelee = function(npcNames, cancelFn, ...)
             __release()
 
             if __cancelled then
-                pcall(function() Window:Notify({Title = "Buy Melee", Content = "Da huy (toggle tat) - khong tween/mua nua.", Duration = 3}) end)
+                pcall(function() __DIO_TNotify("Buy Melee", "Da huy (toggle tat) - khong tween/mua nua.", 3) end)
             elseif __arrived then
                 local __bok = pcall(function() replicated.Remotes.CommF_:InvokeServer(unpack(buyArgs)) end)
                 pcall(function()
-                    Window:Notify({Title = "Buy Melee", Content = tostring(npcNames[1]) .. ": " .. (__bok and "Da den noi, da goi mua." or "Den noi nhung remote mua lo - kiem tra lai."), Duration = 3})
+                    __DIO_TNotify("Buy Melee", tostring(npcNames[1]) .. ": " .. (__bok and "Da den noi, da goi mua." or "Den noi nhung remote mua lo - kiem tra lai."), 3)
                 end)
             else
-                pcall(function() Window:Notify({Title = "Buy Melee", Content = "Khong den duoc teacher trong 300s - chua mua. Bat lai toggle de thu lai.", Duration = 4}) end)
+                pcall(function() __DIO_TNotify("Buy Melee", "Khong den duoc teacher trong 300s - chua mua. Bat lai toggle de thu lai.", 4) end)
             end
         end)
         __release()
@@ -15577,7 +16453,7 @@ __DIO_SafeLoop(function()
             __DIO_BuyBusy = false
             __DIO_BuyFlying = false
             __DIO_BuyBusyT = nil
-            pcall(function() Window:Notify({Title = "Buy Melee", Content = "Phat hien tween bi ket - da tu phu hoi. Bat lai toggle de tiep tuc.", Duration = 4}) end)
+            pcall(function() __DIO_TNotify("Buy Melee", "Phat hien tween bi ket - da tu phu hoi. Bat lai toggle de tiep tuc.", 4) end)
         end
     end
 end, "L14031")
@@ -15621,7 +16497,7 @@ do
                             if __Owned(j.owned) then
                                 if not __warned[j.key] then
                                     __warned[j.key] = true
-                                    pcall(function() Window:Notify({Title = "Buy Melee", Content = "Da co " .. j.owned .. " - khong con phai bay/mua (co the tat toggle).", Duration = 4}) end)
+                                    pcall(function() __DIO_TNotify("Buy Melee", "Da co " .. j.owned .. " - khong con phai bay/mua (co the tat toggle).", 4) end)
                                 end
                             else
                                 __warned[j.key] = nil
@@ -15631,7 +16507,7 @@ do
                                     __warned[j.key .. "_poor"] = nil
                                 elseif not __warned[j.key .. "_poor"] then
                                     __warned[j.key .. "_poor"] = true
-                                    pcall(function() Window:Notify({Title = "Buy Melee", Content = "Thieu " .. (j.beli and ("Beli " .. j.beli) or ("Fragments " .. j.frag)) .. " de mua " .. tostring(j.owned) .. " - khong bay (bay den cung khong mua duoc).", Duration = 4}) end)
+                                    pcall(function() __DIO_TNotify("Buy Melee", "Thieu " .. (j.beli and ("Beli " .. j.beli) or ("Fragments " .. j.frag)) .. " de mua " .. tostring(j.owned) .. " - khong bay (bay den cung khong mua duoc).", 4) end)
                                 end
 
                                 if enough and (not __DIO_BuyJobT[j.key] or (tick() - __DIO_BuyJobT[j.key]) >= __DIO_BUY_RETRY) then
