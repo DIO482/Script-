@@ -208,6 +208,7 @@ local _SPY_TARGETS = {
     ["turtlespy"] = true,
     ["darkdex"] = true,
     ["dex"] = true,
+    ["dex++"] = true, 
     ["explorer"] = true,
     ["remotespy"] = true,
     ["spygui"] = true,
@@ -646,9 +647,16 @@ __DIO_AnyFarmFlag = function()
     local ok, r = pcall(function()
         return (type(__DIO_FarmFlagsOn) == "function") and __DIO_FarmFlagsOn() or false
     end)
-    return (ok and r) and true or false
+    if ok and r then return true end
+    local ok2, any2 = pcall(function()
+        local _, a = __DIO_FarmFlagOnSet()
+        return a
+    end)
+    return (ok2 and any2) and true or false
 end
 __DIO_TweenAllowed = function()
+    if type(__DIO_TweenBlocked) == "function" and __DIO_TweenBlocked() then return false end
+    if __DIO_Dodging == true and type(__DIO_DodgeStale) == "function" then __DIO_DodgeStale() end
     if __DIO_FlyBusy == true then return true end
     if __DIO_TweenAllowT ~= nil and (tick() - __DIO_TweenAllowT) < 5 then return true end
     if __DIO_AnyFarmFlag() then return true end
@@ -656,11 +664,141 @@ __DIO_TweenAllowed = function()
        and (tick() - (__DIO_TweenArmedT or 0)) < (__DIO_TWEEN_LEASE or 10) then return true end
     return false
 end
+__DIO_TweenArmedFlags = nil
+__DIO_TweenBlockT     = 0
+__DIO_TweenBlockDur   = 0.5
+__DIO_FlagPrev        = {}
+__DIO_FlagOnT         = {}
+__DIO_FlagOffT        = {}
+__DIO_DodgeT0         = 0
+__DIO_DODGE_MAX       = 8
+__DIO_ExtraFarmFlags  = { "AutoMaterial", "NextIs", "senth", "senth2", "KillAuraFull", "AcceptQuestBoss", "GetQFast" }
+__DIO_FarmFlagList    = nil
+__DIO_FarmFlagAll = function()
+    if __DIO_FarmFlagList ~= nil then return __DIO_FarmFlagList end
+    local t, seen = {}, {}
+    for i = 1, #__DIO_FarmFlagNames do
+        local n = __DIO_FarmFlagNames[i]
+        if type(n) == "string" and not seen[n] then seen[n] = true t[#t + 1] = n end
+    end
+    for i = 1, #__DIO_ExtraFarmFlags do
+        local n = __DIO_ExtraFarmFlags[i]
+        if not seen[n] then seen[n] = true t[#t + 1] = n end
+    end
+    __DIO_FarmFlagList = t
+    return t
+end
+__DIO_IsFarmFlag = function(name)
+    if type(name) ~= "string" then return false end
+    local list = __DIO_FarmFlagAll()
+    for i = 1, #list do if list[i] == name then return true end end
+    return false
+end
+__DIO_FarmFlagOnSet = function()
+    local out, any = {}, false
+    local list = __DIO_FarmFlagAll()
+    for i = 1, #list do
+        local n = list[i]
+        if __DIO_FlagGet(n) == true then out[n] = true any = true end
+    end
+    if __DIO_BuyFlying == true then out["__DIO_BuyFlying"] = true any = true end
+    return out, any
+end
+__DIO_FlagPoll = function()
+    local on, any = __DIO_FarmFlagOnSet()
+    local prev, now = __DIO_FlagPrev, tick()
+    local list = __DIO_FarmFlagAll()
+    for i = 1, #list do
+        local n = list[i]
+        local v = (on[n] == true)
+        local pv = prev[n]
+        if pv ~= nil and pv ~= v then
+            if v then __DIO_FlagOnT[n] = now __DIO_FlagOffT[n] = nil
+            else __DIO_FlagOffT[n] = now __DIO_FlagOnT[n] = nil end
+        end
+        prev[n] = v
+    end
+    return on, any
+end
+__DIO_TweenBlock = function(dur)
+    __DIO_TweenBlockT = tick()
+    __DIO_TweenBlockDur = tonumber(dur) or 0.5
+    __DIO_TweenTarget = nil
+    __DIO_TweenArmedFlags = nil
+    __DIO_TweenArmedT = 0
+    __DIO_LastDist = nil
+    __DIO_LastHRPPos = nil
+    __DIO_CurTarget = nil
+    pcall(function()
+        if __DIO_LastTween then __DIO_LastTween:Cancel() end
+        __DIO_LastTween = nil
+    end)
+end
+__DIO_TweenBlocked = function()
+    local bt = __DIO_TweenBlockT or 0
+    if bt <= 0 then return false end
+    return (tick() - bt) < (__DIO_TweenBlockDur or 0.5)
+end
+__DIO_TweenOwnerAlive = function()
+    local f = __DIO_TweenArmedFlags
+    if f == nil then return true end
+    for k in pairs(f) do
+        if k == "__DIO_BuyFlying" then
+            if __DIO_BuyFlying ~= true then return false end
+        elseif __DIO_FlagGet(k) ~= true then
+            return false
+        end
+    end
+    return true
+end
+__DIO_DodgeStale = function()
+    if __DIO_Dodging ~= true then return false end
+    if (tick() - (__DIO_DodgeT0 or 0)) > (__DIO_DODGE_MAX or 8) then
+        __DIO_Dodging = false
+        return true
+    end
+    return false
+end
+__DIO_TweenValid = function()
+    if __DIO_TweenTarget == nil then return false end
+    if __DIO_Dodging == true then
+        __DIO_DodgeStale()
+        if __DIO_Dodging == true then return false end
+    end
+    if __DIO_TweenBlocked() then return false end
+    if not __DIO_TweenOwnerAlive() then return false end
+    if (tick() - (__DIO_TweenArmedT or 0)) > (__DIO_TWEEN_LEASE or 10) then return false end
+    return true
+end
+__DIO_TweenDrop = function()
+    __DIO_TweenTarget = nil
+    __DIO_TweenArmedFlags = nil
+    __DIO_TweenArmedT = 0
+    __DIO_LastDist = nil
+    __DIO_LastHRPPos = nil
+    pcall(function()
+        if __DIO_LastTween then __DIO_LastTween:Cancel() end
+        __DIO_LastTween = nil
+    end)
+end
+__DIO_TweenSet = function(cf)
+    if cf == nil then return end
+    local ok = pcall(function() return cf.Position end)
+    if not ok then return end
+    __DIO_TweenTarget = cf
+    __DIO_LastTweenTarget = cf
+    __DIO_LastTpT = tick()
+    __DIO_TweenArmedT = tick()
+    local __ab = nil
+    pcall(function() __ab = (__DIO_FarmFlagOnSet()) end)
+    if type(__ab) == "table" then __DIO_TweenArmedFlags = __ab end
+end
 __DIO_TweenKill = function(keepHighlight)
     __DIO_TweenKillT  = tick()
     __DIO_TweenAllowT = 0
     __DIO_TweenArmedT = 0
     __DIO_TweenTarget = nil
+    __DIO_TweenArmedFlags = nil
     __DIO_LastTweenTarget = nil
     __DIO_LastTpT = 0
     __DIO_FalseSince = nil
@@ -678,6 +816,8 @@ __DIO_TweenKill = function(keepHighlight)
 end
 __DIO_WatchdogReport = {}
 __DIO_Watchdog = function()
+    pcall(__DIO_FlagPoll)
+    pcall(__DIO_DodgeStale)
     for owner, oflag in pairs(__DIO_OwnerAlive) do
         local alive = (__DIO_FlagGet(oflag) == true)
         if not alive then
@@ -716,15 +856,22 @@ __DIO_Watchdog = function()
         __DIO_FlyBusy = false
     end
     local anyF = __DIO_AnyFarmFlag()
+    if __DIO_TweenTarget ~= nil and not __DIO_TweenValid() then
+        __DIO_TweenDrop()
+    end
     if not anyF and __DIO_FlyBusy ~= true then
         local fresh = (__DIO_TweenTarget ~= nil) and ((tick() - (__DIO_TweenArmedT or 0)) < (__DIO_TWEEN_LEASE or 10))
         if not fresh and (shouldTween == true or swept > 0) then
             shouldTween = false
             __DIO_TweenTarget = nil
+            __DIO_TweenArmedFlags = nil
             __DIO_TweenArmedT = 0
             __DIO_FalseSince = nil
             pcall(function() if type(__DIO_HlOff) == "function" then __DIO_HlOff() end end)
         end
+    end
+    if __DIO_TweenTarget == nil and __DIO_CurTarget == nil and __DIO_FlyBusy ~= true then
+        pcall(function() if type(__DIO_HlOff) == "function" then __DIO_HlOff() end end)
     end
 end
 __DIO_SafeLoop(function()
@@ -1097,6 +1244,44 @@ __DIO_EquipFarmWeapon = function(model)
     pcall(weaponSc, kind)
   end
 end
+__DIO_SelfHrp = function()
+    local c = plr.Character
+    if not c then return nil, nil end
+    return c:FindFirstChild("HumanoidRootPart"), c:FindFirstChildOfClass("Humanoid")
+end
+__DIO_MobAliveRoot = function(model)
+    if model == nil then return nil end
+    local ok, r = pcall(function()
+        if typeof(model) ~= "Instance" or model.Parent == nil then return nil end
+        local root = model:FindFirstChild("HumanoidRootPart")
+        local hum  = model:FindFirstChildOfClass("Humanoid")
+        if not root or not hum or hum.Health <= 0 then return nil end
+        return root
+    end)
+    if ok then return r end
+    return nil
+end
+__DIO_HitRange = function(base)
+    local fd = tonumber(_G.FarmDistance) or 20
+    return math.max(tonumber(base) or 60, fd + 25)
+end
+__DIO_CanUseSkillOn = function(model, base)
+    local h, hum = __DIO_SelfHrp()
+    if not h or not hum or hum.Health <= 0 then return false end
+    local r = __DIO_MobAliveRoot(model)
+    if not r then return false end
+    local ok, d = pcall(function() return (r.Position - h.Position).Magnitude end)
+    if not ok or d == nil then return false end
+    return d <= __DIO_HitRange(base)
+end
+__DIO_MobDist = function(model)
+    local h = __DIO_SelfHrp()
+    local r = __DIO_MobAliveRoot(model)
+    if not h or not r then return math.huge end
+    local ok, d = pcall(function() return (r.Position - h.Position).Magnitude end)
+    if not ok then return math.huge end
+    return d
+end
 __DIO_M1Click = function()
   pcall(function()
     vim1:SendMouseButtonEvent(0, 0, 0, true, game, 1)
@@ -1145,6 +1330,10 @@ task.spawn(function()
             __DIO_wait(0.2)
         else
             pcall(function()
+                if type(__DIO_TweenBlocked) == "function" and __DIO_TweenBlocked() then
+                    __DIO_CurTarget = nil
+                    return
+                end
                 local mdl = __DIO_CurTarget
                 if not mdl or not mdl.Parent or (now - __DIO_TargetT) > 1.5 then
                     __DIO_CurTarget = nil
@@ -1219,14 +1408,20 @@ local Attack = {}
 		if model and Succes then
 			local __root = model:FindFirstChild("HumanoidRootPart")
 			if not __root then return end
+			local __humM = model:FindFirstChildOfClass("Humanoid")
+			if not __humM or __humM.Health <= 0 then return end
 			if not model:GetAttribute("Locked") then
 				model:SetAttribute("Locked", __root.CFrame)
 			end
 			local __lk = model:GetAttribute("Locked")
 			PosMon = __lk and __lk.Position or __root.Position
-			BringEnemy(model)
+			pcall(BringEnemy, model)
 			__DIO_EquipFarmWeapon(model)
-			local Equipped = game.Players.LocalPlayer.Character:FindFirstChildOfClass("Tool")
+			local Equipped = nil
+			pcall(function()
+				local __chK = game.Players.LocalPlayer.Character
+				Equipped = __chK and __chK:FindFirstChildOfClass("Tool")
+			end)
 			local ToolTip = Equipped and Equipped.ToolTip
 			if ToolTip == "Blox Fruit" then
 				_tp(__DIO_FarmPos(model, 10, 0, 90))
@@ -1251,14 +1446,20 @@ local Attack = {}
 		if model and Succes then
 			local __root = model:FindFirstChild("HumanoidRootPart")
 			if not __root then return end
+			local __humM = model:FindFirstChildOfClass("Humanoid")
+			if not __humM or __humM.Health <= 0 then return end
 			if not model:GetAttribute("Locked") then
 				model:SetAttribute("Locked", __root.CFrame)
 			end
 			local __lk = model:GetAttribute("Locked")
 			PosMon = __lk and __lk.Position or __root.Position
-			BringEnemy(model)
+			pcall(BringEnemy, model)
 			__DIO_EquipFarmWeapon(model)
-			local Equipped = game.Players.LocalPlayer.Character:FindFirstChildOfClass("Tool")
+			local Equipped = nil
+			pcall(function()
+				local __chK2 = game.Players.LocalPlayer.Character
+				Equipped = __chK2 and __chK2:FindFirstChildOfClass("Tool")
+			end)
 			local ToolTip = Equipped and Equipped.ToolTip
 			if ToolTip == "Blox Fruit" then
 				_tp(__DIO_FarmPos(model, 10, 0, 90))
@@ -1283,14 +1484,20 @@ local Attack = {}
 		if model and Succes then
 			local __root = model:FindFirstChild("HumanoidRootPart")
 			if not __root then return end
+			local __humM = model:FindFirstChildOfClass("Humanoid")
+			if not __humM or __humM.Health <= 0 then return end
 			if not model:GetAttribute("Locked") then
 				model:SetAttribute("Locked", __root.CFrame)
 			end
 			local __lk = model:GetAttribute("Locked")
 			PosMon = __lk and __lk.Position or __root.Position
-			BringEnemy(model)
+			pcall(BringEnemy, model)
 			__DIO_EquipFarmWeapon(model)
-			local Equipped = game.Players.LocalPlayer.Character:FindFirstChildOfClass("Tool")
+			local Equipped = nil
+			pcall(function()
+				local __chK3 = game.Players.LocalPlayer.Character
+				Equipped = __chK3 and __chK3:FindFirstChildOfClass("Tool")
+			end)
 			local ToolTip = Equipped and Equipped.ToolTip
 			if ToolTip == "Blox Fruit" then
 				_tp(__DIO_FarmPos(model, 10, 0, 90))
@@ -1306,14 +1513,15 @@ local Attack = {}
 		if model and Succes then
 			local __root = model:FindFirstChild("HumanoidRootPart")
 			if not __root then return end
+			local __humM = model:FindFirstChildOfClass("Humanoid")
+			if not __humM or __humM.Health <= 0 then return end
 			if not model:GetAttribute("Locked") then
 				model:SetAttribute("Locked", __root.CFrame)
 			end
 			local __lk = model:GetAttribute("Locked")
 			PosMon = __lk and __lk.Position or __root.Position
-			BringEnemy(model)
+			pcall(BringEnemy, model)
 			__DIO_EquipFarmWeapon(model)
-			_tp(model.HumanoidRootPart.CFrame * CFrame.new(0, 30, 0))
 			if RandomCFrame then
 				__DIO_wait(0.1)
 				_tp(model.HumanoidRootPart.CFrame * CFrame.new(0, 30, 25))
@@ -1338,10 +1546,11 @@ local Attack = {}
 			end
 			local __lk = model:GetAttribute("Locked")
 			PosMon = __lk and __lk.Position or root.Position
-			BringEnemy(model)
+			pcall(BringEnemy, model)
 			if __DIO_UseMasteryNow(model) then
 				weaponSc("Blox Fruit")
 				_tp(root.CFrame * CFrame.new(0, 20, 0))
+				if not __DIO_CanUseSkillOn(model, 60) then return end
 				Useskills("Blox Fruit", "Z")
 				Useskills("Blox Fruit", "X")
 				Useskills("Blox Fruit", "C")
@@ -1350,6 +1559,7 @@ local Attack = {}
 			else
 				pcall(EquipWeapon, _G.SelectWeapon)
 				_tp(root.CFrame * CFrame.new(0, 30, 0))
+				if not __DIO_CanUseSkillOn(model, 45) then return end
 				__DIO_M1Click()
 			end
 		end
@@ -1364,15 +1574,17 @@ local Attack = {}
 			end
 			local __lk = model:GetAttribute("Locked")
 			PosMon = __lk and __lk.Position or root.Position
-			BringEnemy(model)
+			pcall(BringEnemy, model)
 			if __DIO_UseMasteryNow(model) then
 				weaponSc("Gun")
 				_tp(root.CFrame * CFrame.new(0, 35, 8))
+				if not __DIO_CanUseSkillOn(model, 100) then return end
 				Useskills("Gun", "Z")
 				Useskills("Gun", "X")
 			else
 				pcall(EquipWeapon, _G.SelectWeapon)
 				_tp(root.CFrame * CFrame.new(0, 30, 0))
+				if not __DIO_CanUseSkillOn(model, 45) then return end
 				__DIO_M1Click()
 			end
 		end
@@ -1793,25 +2005,29 @@ __DIO_Dodging = __DIO_Dodging or false
 _G.DodgeSeaBeast = true
 function __DIO_DoDodge(height)
     height = height or 200
-    if __DIO_Dodging then return end
+    if __DIO_Dodging == true then return end
     local char = plr.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
     __DIO_Dodging = true
+    __DIO_DodgeT0 = tick()
     pcall(function()
         if __DIO_LastTween then __DIO_LastTween:Cancel() __DIO_LastTween = nil end
     end)
     local baseY = hrp.Position.Y + height
     local t0 = tick()
-    repeat
-        local c = plr.Character
-        local h = c and c:FindFirstChild("HumanoidRootPart")
-        if not h then break end
-        h.CFrame = CFrame.new(h.Position.X, baseY, h.Position.Z)
-        __DIO_wait()
-    until (not __DIO_DodgeSeabeast() and not __DIO_TerrorDodge()) or (tick() - t0) > 6
-    __DIO_wait(0.35)
+    pcall(function()
+        repeat
+            local c = plr.Character
+            local h = c and c:FindFirstChild("HumanoidRootPart")
+            if not h then break end
+            h.CFrame = CFrame.new(h.Position.X, baseY, h.Position.Z)
+            __DIO_wait()
+        until (not __DIO_DodgeSeabeast() and not __DIO_TerrorDodge()) or (tick() - t0) > (__DIO_DODGE_MAX or 8) - 2
+    end)
+    pcall(function() __DIO_wait(0.35) end)
     __DIO_Dodging = false
+    __DIO_DodgeT0 = 0
 end
 __DIO_SafeLoop(function()
     while __DIO_wait(0.1) do
@@ -2255,6 +2471,50 @@ function requestentrance(pos)
         end
     end
 end
+__DIO_BoatVehCache = setmetatable({}, { __mode = "k" })
+__DIO_BoatOwnerName = function(boat)
+    if not boat or not boat.Parent then return nil end
+    local ok, own = pcall(function()
+        local o = boat:FindFirstChild("Owner")
+        return o and o.Value
+    end)
+    if ok and own ~= nil then return tostring(own) end
+    return nil
+end
+__DIO_IsMyBoat = function(boat)
+    if not boat then return false end
+    local okP = pcall(function() return boat.Parent end)
+    if not okP or boat.Parent == nil then return false end
+    local own = __DIO_BoatOwnerName(boat)
+    if own == nil or own == "" then return true end
+    return own == tostring(plr.Name)
+end
+__DIO_BoatHasVehicleSeat = function(boat)
+    if not boat then return false end
+    local c = __DIO_BoatVehCache[boat]
+    if c ~= nil then return c end
+    local has = false
+    local ok = pcall(function()
+        if boat:FindFirstChild("VehicleSeat") then has = true return end
+        for _, d in ipairs(boat:GetDescendants()) do
+            if d:IsA("VehicleSeat") then has = true break end
+        end
+    end)
+    if not ok then has = true end
+    __DIO_BoatVehCache[boat] = has
+    return has
+end
+__DIO_CanPivotBoat = function(hum)
+    if not hum or not hum.Sit then return false, nil end
+    local seat = hum.SeatPart
+    if not seat then return false, nil end
+    local boat = seat:FindFirstAncestorOfClass("Model")
+    if not boat then return false, nil end
+    if not __DIO_IsMyBoat(boat) then return false, boat end
+    if seat:IsA("VehicleSeat") then return true, boat end
+    if not __DIO_BoatHasVehicleSeat(boat) then return true, boat end
+    return false, boat
+end
 __DIO_TweenTarget = nil
 __DIO_LastTpT = 0
 __DIO_LastDist = nil
@@ -2281,7 +2541,11 @@ __DIO_NewFakeTween = function()
     return t
 end
 _tp = function(target)
-    if __DIO_Dodging then return end
+    if __DIO_Dodging == true then
+        if type(__DIO_DodgeStale) == "function" then __DIO_DodgeStale() end
+        if __DIO_Dodging == true then return end
+    end
+    if type(__DIO_TweenBlocked) == "function" and __DIO_TweenBlocked() then return end
     if type(__DIO_TweenAllowed) == "function" and not __DIO_TweenAllowed() then return end
     local gg
     if typeof(target) == "Vector3" then
@@ -2310,27 +2574,44 @@ _tp = function(target)
             pcall(function() requestentrance(target) end)
         end
     end
-    if sea3 and getdis(gg.Position, newdao.Position) < 2000 then
-        local hrp = plr.Character.HumanoidRootPart
-        if math.abs(newdao.Position.Y - hrp.CFrame.Y) > 1000 then
-            repeat
-                __DIO_wait(0.5)
-                old_tp(cframenpc)
-                if getdis(cframenpc) < 10 then
-                    local net = ReplicatedStorage.Modules.Net
-                    net["RF/SubmarineWorkerSpeak"]:InvokeServer("AskKilledTikiBoss")
+    pcall(function()
+        if not sea3 then return end
+        local __chSub = plr.Character
+        local hrp = __chSub and __chSub:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+        local __okD0, __d0 = pcall(getdis, gg.Position, newdao.Position)
+        if (not __okD0) or (__d0 == nil) or __d0 >= 2000 then return end
+        if math.abs(newdao.Position.Y - hrp.CFrame.Y) <= 1000 then return end
+        local __t0Sub, __trySub = tick(), 0
+        while __trySub < 16 and (tick() - __t0Sub) < 10 do
+            __trySub = __trySub + 1
+            __DIO_wait(0.5)
+            local __chS2 = plr.Character
+            local __hrpS2 = __chS2 and __chS2:FindFirstChild("HumanoidRootPart")
+            if not __hrpS2 then break end
+            pcall(old_tp, cframenpc)
+            local __okN, __dN = pcall(getdis, cframenpc)
+            if __okN and __dN ~= nil and __dN < 10 then
+                local __netS = ReplicatedStorage:FindFirstChild("Modules")
+                __netS = __netS and __netS:FindFirstChild("Net")
+                local __rfS = __netS and __netS:FindFirstChild("RF/SubmarineWorkerSpeak")
+                if __rfS then
+                    pcall(function() __rfS:InvokeServer("AskKilledTikiBoss") end)
                     __DIO_wait(0.5)
-                    net["RF/SubmarineWorkerSpeak"]:InvokeServer("TravelToSubmergedIsland")
+                    pcall(function() __rfS:InvokeServer("TravelToSubmergedIsland") end)
                 end
-            until getdis(gg.Position) < 2000
-            __DIO_wait(0.6)
-            pcall(function()
-                if hrp:FindFirstChild("BodyClip") then
-                    hrp.BodyClip:Destroy()
-                end
-            end)
+            end
+            local __okG, __dG = pcall(getdis, gg.Position)
+            if __okG and __dG ~= nil and __dG < 2000 then break end
         end
-    end
+        __DIO_wait(0.6)
+        pcall(function()
+            local __chS3 = plr.Character
+            local __hrpS3 = __chS3 and __chS3:FindFirstChild("HumanoidRootPart")
+            local __bc = __hrpS3 and __hrpS3:FindFirstChild("BodyClip")
+            if __bc then __bc:Destroy() end
+        end)
+    end)
     do
         local __pp = gg.Position
         if __pp.X ~= __pp.X or __pp.Y ~= __pp.Y or __pp.Z ~= __pp.Z then return end
@@ -2340,6 +2621,11 @@ _tp = function(target)
     __DIO_LastTpT = tick()
     __DIO_TweenArmedT = tick()
     __DIO_LastTweenT = tick()
+    local __armedBy = nil
+    pcall(function() __armedBy = (__DIO_FarmFlagOnSet()) end)
+    if type(__armedBy) == "table" then __DIO_TweenArmedFlags = __armedBy end
+    shouldTween = true
+    __DIO_FalseSince = nil
     local __ft = __DIO_NewFakeTween()
     __DIO_LastTween = __ft
     return __ft
@@ -2353,22 +2639,7 @@ if not __DIO_SmoothCtl then
                     __DIO_LastDist = nil __DIO_LastHRPPos = nil
                     return
                 end
-                local __st = shouldTween
-                if not __st then
-                    local __anyF = false
-                    pcall(function()
-                        __anyF = (type(__DIO_FarmFlagsOn) == "function") and __DIO_FarmFlagsOn() or false
-                    end)
-                    if __anyF or __DIO_FlyBusy == true then
-                        if __DIO_FalseSince == nil then __DIO_FalseSince = tick() end
-                        if tick() - __DIO_FalseSince < 0.2 then __st = true end
-                    else
-                        __DIO_FalseSince = nil
-                    end
-                else
-                    __DIO_FalseSince = nil
-                end
-                if not __st then
+                if not __DIO_TweenValid() then
                     if __DIO_WasTweenActive then
                         __DIO_WasTweenActive = false
                         local rc = plr.Character
@@ -2378,6 +2649,36 @@ if not __DIO_SmoothCtl then
                         end
                     end
                     __DIO_TweenTarget = nil
+                    __DIO_TweenArmedFlags = nil
+                    __DIO_TweenArmedT = 0
+                    __DIO_FalseSince = nil
+                    __DIO_LastDist = nil __DIO_LastHRPPos = nil
+                    if __DIO_FlyBusy ~= true and shouldTween == true then
+                        local __anyF = false
+                        pcall(function()
+                            __anyF = (type(__DIO_FarmFlagsOn) == "function") and __DIO_FarmFlagsOn() or false
+                        end)
+                        if not __anyF then
+                            shouldTween = false
+                            pcall(function() if type(__DIO_HlOff) == "function" then __DIO_HlOff() end end)
+                        end
+                    end
+                    return
+                end
+                local __st = shouldTween
+                if not __st then
+                    if __DIO_FlyBusy == true then
+                        __st = true
+                    else
+                        if __DIO_FalseSince == nil then __DIO_FalseSince = tick() end
+                        if tick() - __DIO_FalseSince < 0.05 then __st = true end
+                    end
+                else
+                    __DIO_FalseSince = nil
+                end
+                if not __st then
+                    __DIO_TweenTarget = nil
+                    __DIO_TweenArmedFlags = nil
                     __DIO_TweenArmedT = 0
                     __DIO_LastDist = nil __DIO_LastHRPPos = nil
                     return
@@ -2401,6 +2702,24 @@ if not __DIO_SmoothCtl then
                     __DIO_LastChar = char
                 end
                 local sitting = hum.Sit
+                if sitting then
+                    local __canBoat, __boatS = true, nil
+                    if type(__DIO_CanPivotBoat) == "function" then
+                        __canBoat, __boatS = __DIO_CanPivotBoat(hum)
+                    end
+                    if not __canBoat then
+                        __DIO_TweenTarget = nil
+                        __DIO_TweenArmedFlags = nil
+                        __DIO_TweenArmedT = 0
+                        __DIO_LastDist = nil __DIO_LastHRPPos = nil
+                        pcall(function()
+                            local __bvS = hrp:FindFirstChild("BodyClip")
+                            if __bvS then __bvS:Destroy() end
+                        end)
+                        return
+                    end
+                    if __boatS then __DIO_BoatCache = __boatS end
+                end
                 local cur = hrp.Position
                 local want = target.Position
                 if cur.X ~= cur.X or cur.Y ~= cur.Y or cur.Z ~= cur.Z then return end
@@ -2534,7 +2853,7 @@ old_tp = function(p)
     local char = plr.Character
     if char and char:FindFirstChild("HumanoidRootPart") then
         char.HumanoidRootPart.CFrame = p
-        __DIO_TweenTarget = p __DIO_LastTweenTarget = p __DIO_LastTpT = tick() __DIO_TweenArmedT = tick()
+        __DIO_TweenSet(p)
         if __DIO_Block then __DIO_Block.CFrame = p end
     end
 end
@@ -2543,6 +2862,8 @@ StopTween = function(state)
     if state then
         shouldTween = true
         __DIO_TweenAllowT = tick()
+        __DIO_TweenBlockT = 0
+        __DIO_FalseSince = nil
         return
     end
     if type(__DIO_TweenKill) == "function" then
@@ -2572,10 +2893,18 @@ TeleportToTarget = function(targetCFrame)
     if (targetCFrame.Position - __hrpTT.Position).Magnitude > 1000 then _tp(targetCFrame) else _tp(targetCFrame) end
 end
 notween = function(p)
-    if __DIO_Dodging then return end
+    if __DIO_Dodging == true then
+        if type(__DIO_DodgeStale) == "function" then __DIO_DodgeStale() end
+        if __DIO_Dodging == true then return end
+    end
+    if type(__DIO_TweenBlocked) == "function" and __DIO_TweenBlocked() then return end
     local c = plr.Character
     local h = c and c:FindFirstChild("HumanoidRootPart")
-    if h then h.CFrame = p __DIO_TweenTarget = p __DIO_LastTweenTarget = p __DIO_LastTpT = tick() __DIO_TweenArmedT = tick() if __DIO_Block then __DIO_Block.CFrame = p end end
+    if h then
+        h.CFrame = p
+        __DIO_TweenSet(p)
+        if __DIO_Block then __DIO_Block.CFrame = p end
+    end
 end
 function BTP(p)
     local player = game.Players.LocalPlayer
@@ -2626,7 +2955,7 @@ __DIO_TweenOnIfAnyFlag = function()
     end
     if __on then
         shouldTween = true
-        pcall(__DIO_HlOn)
+        __DIO_TweenBlockT = 0
     end
     return __on
 end
@@ -2665,18 +2994,19 @@ __DIO_MyBoat = function()
     local __seat = __hum and __hum.SeatPart
     if __seat then
         local __b = __seat:FindFirstAncestorOfClass("Model")
-        if __b and (__b:FindFirstChild("VehicleSeat") or __b:FindFirstChild("Owner") or __b == __DIO_BoatCache) then
+        if __b and __DIO_IsMyBoat(__b) then
             __DIO_BoatCache = __b
             return __b
         end
     end
     local __c = __DIO_BoatCache
-    if __c and __c.Parent then
-        local __okO, __own = pcall(function() return tostring(__c.Owner.Value) end)
-        if (not __okO) or __own == tostring(plr.Name) then return __c end
-    end
+    if __c and __c.Parent and __DIO_IsMyBoat(__c) then return __c end
     local __okB, __b2 = pcall(CheckBoat)
-    if __okB and __b2 then __DIO_BoatCache = __b2 return __b2 end
+    if __okB and __b2 and __DIO_IsMyBoat(__b2) then
+        __DIO_BoatCache = __b2
+        return __b2
+    end
+    __DIO_BoatCache = nil
     return nil
 end
 __DIO_BoatSeatOf = function(boat)
@@ -2696,11 +3026,28 @@ __DIO_BoatAssist = function()
     if __hum.Sit then
         local __seat = __hum.SeatPart
         local __b = __seat and __seat:FindFirstAncestorOfClass("Model")
-        if __b then
+        local __canDrive = __DIO_CanPivotBoat(__hum)
+        if __canDrive and __b then
             __DIO_BoatCache = __b
             __DIO_NoClipShipNow(__b)
+            return "sitting"
         end
-        return "sitting"
+        __DIO_TweenDrop()
+        if __b and __DIO_IsMyBoat(__b) then
+            local __drv = __DIO_BoatSeatOf(__b)
+            if __drv and __drv ~= __seat then
+                pcall(function() __hum.Sit = false end)
+                pcall(function() __DIO_wait(0.15) end)
+                if (__hrp.Position - __drv.Position).Magnitude > 20 then
+                    pcall(function() __hrp.CFrame = __drv.CFrame * CFrame.new(0, 1, 0) end)
+                end
+                pcall(function() __drv:Sit(__hum) end)
+            end
+        else
+            pcall(function() __hum.Sit = false end)
+            __DIO_BoatCache = nil
+        end
+        return "busy"
     end
     local __boat = __DIO_MyBoat()
     if not __boat then
@@ -2741,15 +3088,27 @@ spawn(function()
       if __DIO_Block and __DIO_Block.Parent ~= workspace then
           pcall(function() __DIO_Block.Parent = workspace end)
       end
-      if __DIO_FarmFlagsOn() or __DIO_FlyBusy == true
-         or (__DIO_TweenTarget ~= nil and (tick() - (__DIO_TweenArmedT or 0)) < (__DIO_TWEEN_LEASE or 10)) then
+      local __anyFlagST = __DIO_FarmFlagsOn()
+      local __validST   = __DIO_TweenValid()
+      if __DIO_TweenTarget ~= nil and not __validST then
+          __DIO_TweenTarget = nil
+          __DIO_TweenArmedFlags = nil
+          __DIO_TweenArmedT = 0
+          __DIO_LastDist = nil
+          __DIO_LastHRPPos = nil
+      end
+      local __movingST = (__validST or __DIO_FlyBusy == true
+          or (__DIO_CurTarget ~= nil and (__anyFlagST or __DIO_FlyBusy == true)))
+      if __anyFlagST or __movingST or __DIO_FlyBusy == true then
        shouldTween = true
-        do
+        if __movingST then
             local __chHL = plr.Character
             if __chHL and tick() - (__DIO_LastHlDecor or 0) >= 0.25 then
                 __DIO_LastHlDecor = tick()
                 pcall(__DIO_HlOn)
             end
+        else
+            pcall(__DIO_HlOff)
         end
         local __stompHum = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
         if __stompHum and __stompHum.Sit then
@@ -2763,6 +3122,8 @@ spawn(function()
         if __chST then for _, no in pairs(__chST:GetDescendants()) do if no:IsA("BasePart") and no.CanCollide then no.CanCollide = false end end end
       elseif not __DIO_FlyBusy then
         shouldTween = false
+        __DIO_TweenArmedFlags = nil
+        __DIO_FalseSince = nil
         pcall(function()
             local __chOFF = plr.Character
             local __hrpOFF = __chOFF and __chOFF:FindFirstChild("HumanoidRootPart")
@@ -3559,6 +3920,7 @@ do
                         __DIO_UIState[key] = (Value == true)
                         if Value == true then
                             __DIO_TweenAllowT = tick()
+                            __DIO_TweenBlockT = 0
                             local __before = {}
                             pcall(function()
                                 for k, v in pairs(_G) do
@@ -3624,10 +3986,22 @@ do
                             end
                             pcall(function()
                                 local __anyOn = (type(__DIO_FarmFlagsOn) == "function") and __DIO_FarmFlagsOn() or false
+                                local __ownFarm = false
+                                for __k in pairs(__ownedFlags or {}) do
+                                    if type(__DIO_IsFarmFlag) == "function" and __DIO_IsFarmFlag(__k) then
+                                        __ownFarm = true
+                                        break
+                                    end
+                                end
                                 __DIO_TweenTarget = nil
+                                __DIO_TweenArmedFlags = nil
                                 __DIO_LastTweenTarget = nil
                                 __DIO_TweenArmedT = 0
+                                __DIO_FalseSince = nil
                                 if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+                                if __ownFarm and not __DIO_FlyBusy then
+                                    pcall(__DIO_TweenBlock, 0.5)
+                                end
                                 if not __anyOn and not __DIO_FlyBusy then
                                     if type(__DIO_TweenKill) == "function" then
                                         __DIO_TweenKill(false)
@@ -3683,6 +4057,7 @@ do
                             SetSetting(key, Value)
                         end
                         __DIO_TweenAllowT = tick()
+                        __DIO_TweenBlockT = 0
                         local __beforeD = {}
                         pcall(function()
                             for k, v in pairs(_G) do
@@ -4851,7 +5226,7 @@ ChestBP = Tabs.Main:AddToggle({
                                 local RootPart = __chCB and __chCB:FindFirstChild("HumanoidRootPart")
                                 if RootPart then
                                     RootPart.CFrame = Chests[1].CFrame
-                                    __DIO_TweenTarget = Chests[1].CFrame __DIO_LastTpT = tick()
+                                    __DIO_TweenSet(Chests[1].CFrame)
                                 end
                             end
                         end)
@@ -4995,6 +5370,11 @@ __DIO_SafeLoop(function()
         end
     end
 end, "BerryHop")
+__DIO_DefaultMobName = function()
+    if World1 then return "Bandit" end
+    if World2 then return "Raider" end
+    return "Pirate Millionaire"
+end
 Tabs.Main:AddSection("Farm Mob")
 if World1 then
     Tabs.Main:AddDropdown({
@@ -5036,6 +5416,7 @@ end
 if World3 then
     Tabs.Main:AddDropdown({
         Name = __DIO_T["Select Mob"],
+        Default = "Pirate Millionaire",
         Options = {
             "Pirate Millionaire", "Dragon Crew Warrior", "Dragon Crew Archer",
             "Female Islander", "Giant Islander", "Marine Commodore",
@@ -5061,9 +5442,8 @@ Tabs.Main:AddToggle({
     Callback = function(Value)
         _G.AutoKillMob = Value
         if Value then
-            shouldTween = true
             __DIO_TweenAllowT = tick()
-            pcall(__DIO_HlOn)
+            __DIO_TweenBlockT = 0
         else
             StopTween(false)
             __DIO_CurTarget = nil
@@ -5076,7 +5456,13 @@ __DIO_SafeLoop(function()
         if _G.AutoKillMob then
             pcall(function()
                 local mobName = getgenv().SelectMob
-                if not mobName or mobName == "" then return end
+                if type(mobName) ~= "string" or mobName == "" then mobName = _G.SelectMob end
+                if type(mobName) ~= "string" or mobName == "" then
+                    mobName = __DIO_DefaultMobName()
+                    pcall(function() getgenv().SelectMob = mobName end)
+                    pcall(rawset, _G, "SelectMob", mobName)
+                end
+                if type(mobName) ~= "string" or mobName == "" then return end
                 local mob = GetConnectionEnemies(mobName)
                 if mob then
                     repeat
@@ -5669,8 +6055,8 @@ Tabs.Main:AddToggle({
     Callback = function(Value)
         _G.AutoDoughKing = (Value == true)
         if _G.AutoDoughKing then
-            shouldTween = true
-            pcall(__DIO_HlOn)
+            __DIO_TweenAllowT = tick()
+            __DIO_TweenBlockT = 0
         else
             StopTween(false)
             __DIO_CurTarget = nil
@@ -5687,13 +6073,17 @@ __DIO_SafeLoop(function()
                     repeat
                         __DIO_wait(0.25)
                         if not _G.AutoDoughKing then break end
+                        if not __bossDK.Parent or not __DIO_MobAliveRoot(__bossDK) then break end
                         Attack.Kill(__bossDK, true)
-                    until not _G.AutoDoughKing or not __bossDK.Parent or __bossDK.Humanoid.Health <= 0
+                    until not _G.AutoDoughKing or not __bossDK.Parent or not __DIO_MobAliveRoot(__bossDK)
                     return
                 end
                 local __mapDK = workspace:FindFirstChild("Map")
                 local __cakeLoaf = __mapDK and __mapDK:FindFirstChild("CakeLoaf")
-                if not __cakeLoaf then return end
+                if not __cakeLoaf then
+                    __DIO_TweenDrop()
+                    return
+                end
                 if not __cakeLoaf:FindFirstChild("RedDoor") then
                     if GetBP("Red Key") then
                         replicated.Remotes.CommF_:InvokeServer("CakeScientist", "Check")
@@ -5727,10 +6117,17 @@ __DIO_SafeLoop(function()
                         repeat
                             __DIO_wait(0.25)
                             if not _G.AutoDoughKing then break end
+                            if not v.Parent or not __DIO_MobAliveRoot(v) then break end
                             Attack.Kill(v, true)
-                        until _G.AutoDoughKing == false or not v.Parent or v.Humanoid.Health <= 0
+                        until _G.AutoDoughKing == false or not v.Parent or not __DIO_MobAliveRoot(v)
                     else
                         _tp(CFrame.new(402.7189025878906, 81.06050109863281, -12259.54296875))
+                    end
+                else
+                    local __waitDK = CFrame.new(-1943.6765, 251.5095, -12337.8809)
+                    local __hrpDK = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+                    if __hrpDK and (__waitDK.Position - __hrpDK.Position).Magnitude > 20 then
+                        _tp(__waitDK)
                     end
                 end
             end)
@@ -6278,6 +6675,8 @@ __DIO_SafeLoop(function()
           local v = GetConnectionEnemies(mastery1)
 		  if v then
 		    repeat __DIO_wait()
+		      if not v.Parent then break end
+		      if not __DIO_MobAliveRoot(v) then break end
 		      __DIO_EquipFarmWeapon(v)
 		      MousePos = v.HumanoidRootPart.Position
 		      Attack.Mas(v,_G.FarmMastery_Dev)
@@ -6289,6 +6688,8 @@ __DIO_SafeLoop(function()
           local v = GetConnectionEnemies(mastery2)
 		  if v then
 		    repeat __DIO_wait()
+		      if not v.Parent then break end
+		      if not __DIO_MobAliveRoot(v) then break end
 		      __DIO_EquipFarmWeapon(v)
 		      MousePos = v.HumanoidRootPart.Position
 		      Attack.Mas(v,_G.FarmMastery_Dev)
@@ -6317,11 +6718,15 @@ __DIO_SafeLoop(function()
           local v = GetConnectionEnemies(mastery1)
 		  if v then
 		    repeat __DIO_wait(0.1)
+		      if not v.Parent then break end
+		      if not __DIO_MobAliveRoot(v) then break end
 		      MousePos = v.HumanoidRootPart.Position
 		      Attack.Masgun(v,_G.FarmMastery_G)
               local __tool = plr.Character and plr.Character:FindFirstChildOfClass("Tool")
               local __hr = v:FindFirstChild("HumanoidRootPart")
-              if not __DIO_UseMasteryNow(v) then
+              if not __DIO_CanUseSkillOn(v, 100) then
+                __DIO_wait(0.05)
+              elseif not __DIO_UseMasteryNow(v) then
                 __DIO_wait(0.05)
               elseif not __tool or (__tool.ToolTip ~= "Gun" and __tool.Name ~= "Skull Guitar") then
                 weaponSc("Gun")
@@ -6354,11 +6759,15 @@ __DIO_SafeLoop(function()
           local v = GetConnectionEnemies(mastery2)
 		  if v then
 		    repeat __DIO_wait(0.1)
+		      if not v.Parent then break end
+		      if not __DIO_MobAliveRoot(v) then break end
 		      MousePos = v.HumanoidRootPart.Position
 		      Attack.Masgun(v,_G.FarmMastery_G)
               local __tool = plr.Character and plr.Character:FindFirstChildOfClass("Tool")
               local __hr = v:FindFirstChild("HumanoidRootPart")
-              if not __DIO_UseMasteryNow(v) then
+              if not __DIO_CanUseSkillOn(v, 100) then
+                __DIO_wait(0.05)
+              elseif not __DIO_UseMasteryNow(v) then
                 __DIO_wait(0.05)
               elseif not __tool or (__tool.ToolTip ~= "Gun" and __tool.Name ~= "Skull Guitar") then
                 weaponSc("Gun")
@@ -6414,7 +6823,10 @@ __DIO_SafeLoop(function()
                   local vm = GetConnectionEnemies(mastery1)
                   if GetBP(SwordName) then
                     if vm then
-                      repeat __DIO_wait(0.25) Attack.Sword(vm,_G.FarmMastery_S) until _G.FarmMastery_S == false or not vm.Parent or (vm:FindFirstChild("Humanoid") and vm.Humanoid.Health <= 0)
+                      repeat __DIO_wait(0.25)
+                        if not vm.Parent or not __DIO_MobAliveRoot(vm) then break end
+                        Attack.Sword(vm,_G.FarmMastery_S)
+                      until _G.FarmMastery_S == false or not vm.Parent or (vm:FindFirstChild("Humanoid") and vm.Humanoid.Health <= 0)
                     else
                       _tp(CFrame.new(-1943.676513671875, 251.5095672607422, -12337.880859375))
                     end
@@ -6436,7 +6848,10 @@ __DIO_SafeLoop(function()
                   local vm = GetConnectionEnemies(mastery2)
                   if GetBP(SwordName) then
                     if vm then
-                      repeat __DIO_wait(0.25) Attack.Sword(vm,_G.FarmMastery_S) until _G.FarmMastery_S == false or not vm.Parent or (vm:FindFirstChild("Humanoid") and vm.Humanoid.Health <= 0)
+                      repeat __DIO_wait(0.25)
+                        if not vm.Parent or not __DIO_MobAliveRoot(vm) then break end
+                        Attack.Sword(vm,_G.FarmMastery_S)
+                      until _G.FarmMastery_S == false or not vm.Parent or (vm:FindFirstChild("Humanoid") and vm.Humanoid.Health <= 0)
                     else
                       _tp(CFrame.new(-9495.6806640625, 453.58624267578125, 5977.3486328125))
                     end
@@ -6592,52 +7007,6 @@ end})
 FastAttackModule = FastAttackModule or {}
 Tabs.Settings:AddSection("Tween")
 Tabs.Settings:AddButton({
-    Name = "Check Tween|Flag If not tween",
-    Description = "Console F9",
-    Callback = function()
-        __DIO_TweenAllowT = tick()
-        local __on = {}
-        pcall(function()
-            for __i = 1, #__DIO_FarmFlagNames do
-                local __n = __DIO_FarmFlagNames[__i]
-                if __DIO_FlagGet(__n) == true then table.insert(__on, __n) end
-            end
-        end)
-        warn("[DIO V7] shouldTween=" .. tostring(shouldTween)
-            .. " | FlyBusy=" .. tostring(__DIO_FlyBusy)
-            .. " | target=" .. tostring(__DIO_TweenTarget ~= nil)
-            .. " | lease con " .. string.format("%.1f", (__DIO_TWEEN_LEASE or 10) - (tick() - (__DIO_TweenArmedT or 0))) .. "s"
-            .. " | FarmFlagsOn=" .. tostring(__DIO_AnyFarmFlag()))
-        warn("[DIO V7] Flag farm dang TRUE (" .. #__on .. "): " .. (#__on > 0 and table.concat(__on, ", ") or "(khong co)"))
-        local __w = {}
-        pcall(function()
-            for __fn, __bag in pairs(__DIO_FlagWant) do
-                local __os = {}
-                for __o in pairs(__bag) do table.insert(__os, __o) end
-                if #__os > 0 then table.insert(__w, __fn .. "<-" .. table.concat(__os, "+")) end
-            end
-        end)
-        warn("[DIO V7] Bang chu (owner dang MUON flag): " .. (#__w > 0 and table.concat(__w, " | ") or "(trong)"))
-        local __s = {}
-        pcall(function()
-            for __fn, __bag in pairs(__DIO_FlagSup) do
-                local __os = {}
-                for __o in pairs(__bag) do table.insert(__os, __o) end
-                if #__os > 0 then table.insert(__s, __fn .. "<-" .. table.concat(__os, "+")) end
-            end
-        end)
-        warn("[DIO V7] Bang CHAN (suppress): " .. (#__s > 0 and table.concat(__s, " | ") or "(trong)"))
-        local __pn = __DIO_PlayerNames()
-        warn("[DIO V7] Player trong server (" .. #__pn .. "): " .. (#__pn > 0 and table.concat(__pn, ", ") or "(khong co - ban dang 1 minh)"))
-        local __oc, __fc = 0, 0
-        pcall(function() __oc = #__DIO_OwnerDrop.DROPDOWN_OPTIONS end)
-        pcall(function() __fc = #__DIO_FriendDrop.DROPDOWN_OPTIONS end)
-        warn("[DIO V7] Dropdown 'Owners Boat Hunter' = " .. __oc .. " option | 'Friend Hunter Leviathan' = " .. __fc .. " option")
-        local __hl = plr.Character and plr.Character:FindFirstChild("highlight")
-        warn("[DIO V7] Highlight tren nhan vat: " .. tostring(__hl ~= nil))
-    end
-})
-Tabs.Settings:AddButton({
     Name = "Stop Tween",
     Description = "",
     Callback = function()
@@ -6652,7 +7021,7 @@ Tabs.Settings:AddButton({
         end)
         pcall(function() for __o in pairs(__DIO_OwnerAlive) do __DIO_ReleaseAll(__o) end end)
         pcall(__DIO_TweenKill, false)
-        warn("[DIO V7] Da tat cung tween + don flag. shouldTween=" .. tostring(shouldTween))
+        pcall(__DIO_TweenBlock, 0.6)
     end
 })
 Tabs.Settings:AddSlider({
@@ -8250,7 +8619,7 @@ __DIO_SafeLoop(function()
                      if Ex == 2 then
                        repeat __DIO_wait(0.25)
                          game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = workspace.Map.HeavenlyDimension.Exit.CFrame
-                         __DIO_TweenTarget = workspace.Map.HeavenlyDimension.Exit.CFrame __DIO_LastTpT = tick()
+                         __DIO_TweenSet(workspace.Map.HeavenlyDimension.Exit.CFrame)
                        until not _G.CDK_TS or tonumber(replicated.Remotes.CommF_:InvokeServer("CDKQuest","Progress")["Good"]) == 3
                     end
                    repeat __DIO_wait(0.25)
@@ -9120,12 +9489,12 @@ __DIO_SafeLoop(function()
             if KenTest then
               repeat __DIO_wait(0.25)
                 plr.Character.HumanoidRootPart.CFrame = workspace.Enemies:FindFirstChild("Galley Captain").HumanoidRootPart.CFrame * CFrame.new(3,0,0)
-                __DIO_TweenTarget = plr.Character.HumanoidRootPart.CFrame __DIO_LastTpT = tick()
+                __DIO_TweenSet(plr.Character.HumanoidRootPart.CFrame)
               until _G.obsFarm == false or KenTest == false
             else
               repeat __DIO_wait(0.25)
                 plr.Character.HumanoidRootPart.CFrame = workspace.Enemies:FindFirstChild("Galley Captain").HumanoidRootPart.CFrame * CFrame.new(0,50,0)
-                __DIO_TweenTarget = plr.Character.HumanoidRootPart.CFrame __DIO_LastTpT = tick()
+                __DIO_TweenSet(plr.Character.HumanoidRootPart.CFrame)
               until _G.obsFarm == false or KenTest
             end
           else
@@ -9136,12 +9505,12 @@ __DIO_SafeLoop(function()
             if KenTest then
               repeat __DIO_wait(0.25)
                 plr.Character.HumanoidRootPart.CFrame = workspace.Enemies:FindFirstChild("Lava Pirate").HumanoidRootPart.CFrame * CFrame.new(3,0,0)
-                __DIO_TweenTarget = plr.Character.HumanoidRootPart.CFrame __DIO_LastTpT = tick()
+                __DIO_TweenSet(plr.Character.HumanoidRootPart.CFrame)
               until _G.obsFarm == false or KenTest == false
             else
               repeat __DIO_wait(0.25)
                 plr.Character.HumanoidRootPart.CFrame = workspace.Enemies:FindFirstChild("Lava Pirate").HumanoidRootPart.CFrame * CFrame.new(0,50,0)
-                __DIO_TweenTarget = plr.Character.HumanoidRootPart.CFrame __DIO_LastTpT = tick()
+                __DIO_TweenSet(plr.Character.HumanoidRootPart.CFrame)
               until _G.obsFarm == false or KenTest
             end
           else
@@ -10344,7 +10713,7 @@ Tabs.Race:AddButton({
         local hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
         if hrp then
             hrp.CFrame = CFrame.new(28286.35546875, 14895.3017578125, 102.62469482421875)
-            __DIO_TweenTarget = hrp.CFrame __DIO_LastTpT = tick()
+            __DIO_TweenSet(hrp.CFrame)
         end
         local __mapTOT = __SVC_WS:FindFirstChild("Map")
         if __mapTOT and not __mapTOT:FindFirstChild("Temple of Time") and World3 then
@@ -10363,7 +10732,7 @@ Callback = function()
         local hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
         if hrp then
             hrp.CFrame = CFrame.new(28286.35546875, 14895.3017578125, 102.62469482421875)
-            __DIO_TweenTarget = hrp.CFrame __DIO_LastTpT = tick()
+            __DIO_TweenSet(hrp.CFrame)
         end
         local __mapTOT = __SVC_WS:FindFirstChild("Map")
         if __mapTOT and not __mapTOT:FindFirstChild("Temple of Time") and World3 then
@@ -10386,7 +10755,7 @@ Callback = function()
         local pos2 = CFrame.new(29549, 15069, -88)
         if hrp then
             hrp.CFrame = pos1
-            __DIO_TweenTarget = hrp.CFrame __DIO_LastTpT = tick()
+            __DIO_TweenSet(hrp.CFrame)
         end
         task.delay(2, function()
             __DIO_FlyTo(pos2, 15)
@@ -10691,7 +11060,7 @@ __DIO_SafeLoop(function()
       pcall(function()
         if workspace.EmberTemplate:FindFirstChild("Part") then
           game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = workspace.EmberTemplate.Part.CFrame
-          __DIO_TweenTarget = workspace.EmberTemplate.Part.CFrame __DIO_LastTpT = tick()
+          __DIO_TweenSet(workspace.EmberTemplate.Part.CFrame)
         end
       end)
     end
@@ -12003,9 +12372,11 @@ __DIO_SelUpdate = function(Value, gname)
     local __names = __DIO_PlayerNames()
     if #__names == 0 then
         if type(_G[gname]) ~= "table" then _G[gname] = {} end
+        pcall(__DIO_TweenDrop)
         return _G[gname]
     end
     _G[gname] = __DIO_SeaNormList(Value, __names)
+    pcall(__DIO_TweenDrop)
     return _G[gname]
 end
 _G.OwnersBoatList = (type(_G.OwnersBoatList) == "table") and _G.OwnersBoatList or __DIO_SavedSelList(__DIO_SelKeyOwner)
@@ -12162,12 +12533,25 @@ __DIO_SafeLoop(function()
     while __DIO_wait(0.5) do
         if _G.TweenBoatOwner then
             pcall(function()
-                local __owners = type(_G.OwnersBoatList) == "table" and _G.OwnersBoatList or {}
-                if #__owners == 0 then return end
+                local __selOwners = type(_G.OwnersBoatList) == "table" and _G.OwnersBoatList or {}
+                local __inServer = {}
+                for _, __pS in ipairs(__SVC_PLR:GetPlayers()) do __inServer[__pS.Name] = true end
+                local __owners = {}
+                for __iO, __onO in ipairs(__selOwners) do
+                    if type(__onO) == "string" and __inServer[__onO] then __owners[#__owners + 1] = __onO end
+                end
                 local __myChar = plr.Character
                 local __myHrp = __myChar and __myChar:FindFirstChild("HumanoidRootPart")
                 local __myHum = __myChar and __myChar:FindFirstChildOfClass("Humanoid")
                 if not __myHrp or not __myHum then return end
+                if __myHum.Sit and not __DIO_CanPivotBoat(__myHum) then
+                    __DIO_TweenDrop()
+                    return
+                end
+                if #__owners == 0 then
+                    __DIO_TweenDrop()
+                    return
+                end
                 local __bestBoat, __bestScore = nil, math.huge
                 for __i, __on in ipairs(__owners) do
                     local __b = __DIO_FindBoatOf(__on)
@@ -12180,7 +12564,10 @@ __DIO_SafeLoop(function()
                         end
                     end
                 end
-                if not __bestBoat then return end
+                if not __bestBoat then
+                    __DIO_TweenDrop()
+                    return
+                end
                 local __bestSeat, __bestSeatD = nil, math.huge
                 for __j, __st in ipairs(__DIO_BoatSeats(__bestBoat)) do
                     if __DIO_SeatFree(__st) then
@@ -13718,7 +14105,7 @@ __DIO_SafeLoop(function()
             if root then
                 root = root.CFrame * CFrame.new(0,3,0)
                 GetHRP().CFrame = root
-                __DIO_TweenTarget = GetHRP().CFrame __DIO_LastTpT = tick()
+                __DIO_TweenSet(GetHRP().CFrame)
                 tp1Done = true
             end
         end
@@ -13747,7 +14134,7 @@ __DIO_SafeLoop(function()
             if ent and ext and ent:FindFirstChild("Root") and ext:FindFirstChild("Root") then
                 if (hrp.Position - ent.Root.Position).Magnitude < 100 then
                     hrp.CFrame = ext.Root.CFrame * CFrame.new(0,3,0)
-                    __DIO_TweenTarget = hrp.CFrame __DIO_LastTpT = tick()
+                    __DIO_TweenSet(hrp.CFrame)
                     tp2Done = true
                     break
                 end
@@ -13785,7 +14172,7 @@ __DIO_SafeLoop(function()
             and floor.ExitTeleporter:FindFirstChild("Root") then
                 GetHRP().CFrame =
                     floor.ExitTeleporter.Root.CFrame * CFrame.new(0,3,0)
-                __DIO_TweenTarget = GetHRP().CFrame __DIO_LastTpT = tick()
+                __DIO_TweenSet(GetHRP().CFrame)
                 tp3Done = true
             end
         end
@@ -13825,7 +14212,7 @@ __DIO_SafeLoop(function()
             local root = GetNearestExit()
             if root then
                 GetHRP().CFrame = root.CFrame * CFrame.new(0,3,0)
-                __DIO_TweenTarget = GetHRP().CFrame __DIO_LastTpT = tick()
+                __DIO_TweenSet(GetHRP().CFrame)
                 tp4Done = true
             end
         end
