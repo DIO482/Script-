@@ -450,13 +450,13 @@ __DIO_Wake = function(force)
     __DIO_WakeT = __n
     return true
 end
--- Wake workers immediately when a toggle/target changes.  This deliberately
--- does not manufacture a _G flag from shouldTween; the worker's _G flag remains
--- the source of truth and _tp/__DIO_TweenSet arm movement when a target exists.
+-- Activates tween control immediately for a real UI toggle. This does not
+-- create or replace the feature's _G flag; _G remains the feature state.
 __DIO_TweenActivateImmediate = function()
     __DIO_TweenAllowT = tick()
     __DIO_TweenBlockT = 0
     __DIO_FalseSince = nil
+    shouldTween = true
     pcall(function() __DIO_Wake(true) end)
 end
 __DIO_wait = function(t)
@@ -551,7 +551,7 @@ __DIO_FarmFlagNames = {
     "AutoTP_Gift", "AutoTPGift", "AutoTPAndCollect", "MasterAutoLevel", "MasterAutoCandy", "TPFloor1", "TPFloor2", "TPFloor3",
     "TPFloor4", "FarmEliteH", "Safemode", "Greybeard", "ResetPH", "NextIs", "senth", "senth2",
 }
-__DIO_TWEEN_LEASE = 10
+__DIO_TWEEN_LEASE = 30
 __DIO_TweenKillT  = 0
 __DIO_TweenAllowT = 0
 __DIO_TweenArmedT = 0
@@ -617,9 +617,8 @@ __DIO_UIWant = function(name, key, on)
     if not __DIO_SharedFlags[name] then return end
     __DIO_SetFlag(name, "UI:" .. tostring(key), on and true or false)
 end
--- A feature can borrow a shared flag for a short time (for example,
--- AutoDoughKing borrowing AutoFarmChest). Do not convert that internal borrow
--- into a permanent UI owner when the generic toggle wrapper audits _G changes.
+-- Do not turn a temporary internal borrow (such as Dough King borrowing
+-- AutoFarmChest) into a permanent UI owner during toggle auditing.
 __DIO_HasNonUIFlagOwner = function(name)
     local owners = __DIO_FlagWant[name]
     if not owners then return false end
@@ -786,16 +785,18 @@ __DIO_TweenBlocked = function()
     return (tick() - bt) < (__DIO_TweenBlockDur or 0.5)
 end
 __DIO_TweenOwnerAlive = function()
-    local f = __DIO_TweenArmedFlags
-    if f == nil then return true end
-    for k in pairs(f) do
-        if k == "__DIO_BuyFlying" then
-            if __DIO_BuyFlying ~= true then return false end
-        elseif __DIO_FlagGet(k) ~= true then
-            return false
-        end
+    if __DIO_FlyBusy == true or __DIO_BuyFlying == true then
+        return true
     end
-    return true
+    -- Keep the target alive while any actual farm/raid _G flag is enabled.
+    -- The previous implementation required every flag captured at the exact
+    -- moment of _tp() to remain true, so internal flag hand-offs killed the
+    -- tween after a few seconds even though the feature was still enabled.
+    local ok, active = pcall(function()
+        return __DIO_AnyFarmFlag()
+    end)
+    if ok and active then return true end
+    return false
 end
 __DIO_DodgeStale = function()
     if __DIO_Dodging ~= true then return false end
@@ -838,11 +839,6 @@ __DIO_TweenSet = function(cf)
     local __ab = nil
     pcall(function() __ab = (__DIO_FarmFlagOnSet()) end)
     if type(__ab) == "table" then __DIO_TweenArmedFlags = __ab end
-    -- Arm immediately when a movement target is requested. Do not use this
-    -- assignment as the mechanism that turns _G feature flags on.
-    shouldTween = true
-    __DIO_FalseSince = nil
-    pcall(function() __DIO_Wake(true) end)
 end
 __DIO_TweenKill = function(keepHighlight)
     __DIO_TweenKillT  = tick()
@@ -3005,8 +3001,8 @@ __DIO_TweenOnIfAnyFlag = function()
         __on = true
     end
     if __on then
+        shouldTween = true
         __DIO_TweenBlockT = 0
-        pcall(function() __DIO_Wake(true) end)
     end
     return __on
 end
@@ -3151,6 +3147,10 @@ spawn(function()
       local __movingST = (__validST or __DIO_FlyBusy == true
           or (__DIO_CurTarget ~= nil and (__anyFlagST or __DIO_FlyBusy == true)))
       if __anyFlagST or __movingST or __DIO_FlyBusy == true then
+       shouldTween = true
+        if __DIO_TweenTarget ~= nil then
+            __DIO_TweenArmedT = tick()
+        end
         if __movingST then
             local __chHL = plr.Character
             if __chHL and tick() - (__DIO_LastHlDecor or 0) >= 0.25 then
@@ -3969,9 +3969,8 @@ do
                         end
                         __DIO_UIState[key] = (Value == true)
                         if Value == true then
-                            -- Interrupt any current __DIO_wait before the
-                            -- feature callback; this makes a newly enabled
-                            -- toggle observable in the same frame.
+                            -- Set tween control and wake active workers before
+                            -- running the feature callback.
                             __DIO_TweenActivateImmediate()
                             local __before = {}
                             pcall(function()
@@ -4020,6 +4019,7 @@ do
                             if __onNow then
                                 __DIO_FalseSince = nil
                                 __DIO_TweenBlockT = 0
+                                shouldTween = true
                                 pcall(function() __DIO_Wake(true) end)
                             end
                             if not __onNow and not __newFlag and getgenv().DIOAuditToggles == true then
@@ -4059,7 +4059,7 @@ do
                                 __DIO_TweenArmedT = 0
                                 __DIO_FalseSince = nil
                                 if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
-                                if __ownFarm and not __DIO_FlyBusy then
+                                if __ownFarm and not __DIO_FlyBusy and not __anyOn then
                                     pcall(__DIO_TweenBlock, 0.5)
                                 end
                                 if not __anyOn and not __DIO_FlyBusy then
@@ -4082,9 +4082,7 @@ do
                 end
                 local ctrl = _AddToggle(self, Setting)
                 if saved ~= nil and origCb then
-                    -- Restore saved toggles on the next scheduler slice, not
-                    -- after a fixed 3-second delay.
-                    task.defer(function()
+                    task.delay(3, function()
                         if not __userTouched then
                             pcall(Setting.Callback, saved)
                         end
@@ -6120,17 +6118,15 @@ __DIO_SafeLoop(function()
     end
 end, "L4825")
 local __dkWasHunting = false
--- Dough King preparation: when neither God's Chalice nor Sweet Chalice is in
--- the backpack/character, borrow AutoFarmChest so the normal chest worker
--- searches for the chalice instead of falling through to Cocoa farming.
+-- If neither chalice is in the backpack/character, Auto Dough King borrows
+-- AutoFarmChest so the normal chest worker searches for God's Chalice instead
+-- of entering the Cocoa branch too early.
 local function __DIO_DKHasItem(itemName)
     local ok, item = pcall(GetBP, itemName)
     return ok and item ~= nil
 end
 local function __DIO_DKSetChestSearch(enabled)
     if enabled then
-        -- __DIO_BorrowFlag applies _G.AutoFarmChest=true while this owner is
-        -- active, and preserves any UI/other owner that already uses the flag.
         pcall(__DIO_BorrowFlag, "AutoDoughKing", "AutoFarmChest")
     else
         pcall(__DIO_ReleaseFlag, "AutoDoughKing", "AutoFarmChest")
@@ -6220,13 +6216,11 @@ __DIO_SafeLoop(function()
                 local __hasChaliceDK = __DIO_DKHasChalice()
                 if not __hasChaliceDK then
                     if __eliteSpawnedDK then
-                        -- An Elite is available to obtain God's Chalice; give
-                        -- it priority over chest traversal.
                         pcall(function() __DIO_BorrowFlag("AutoDoughKing", "FarmEliteHunt") end)
                         __DIO_DKSetChestSearch(false)
                     else
-                        -- No chalice and no Elite: turn on AutoFarmChest now.
-                        -- This returns before the Cocoa branch below.
+                        -- Return before the Cocoa branch: chest search is the
+                        -- only fallback while God's Chalice is missing.
                         pcall(function() __DIO_ReleaseFlag("AutoDoughKing", "FarmEliteHunt") end)
                         __DIO_DKSetChestSearch(true)
                     end
