@@ -526,22 +526,9 @@ __DIO_UISetOn = function(name, key, on)
     __DIO_UIFlagOwner[name][key] = true
     if not __DIO_UIFlagOn[name] then __DIO_UIFlagOn[name] = {} end
     __DIO_UIFlagOn[name][key] = (on == true)
-    -- v8: dem so flag "tinh nang" dang duoc toggle UI bat.
-    -- Day la "UI truth": tinh nang con bat thi tween KHONG duoc phep tu tat.
-    local __isFeat = (type(__DIO_IsFarmFlag) == "function" and __DIO_IsFarmFlag(name))
-        or (type(__DIO_SharedFlags) == "table" and __DIO_SharedFlags[name] == true)
-    if __isFeat then
-        if __DIO_UISetOnMark == nil then __DIO_UISetOnMark = {} end
-        local __mk = tostring(key) .. "\1" .. name
-        local __was = (__DIO_UISetOnMark[__mk] == true)
-        if on == true and not __was then
-            __DIO_UISetOnMark[__mk] = true
-            __DIO_FeatOnN = (__DIO_FeatOnN or 0) + 1
-        elseif on ~= true and __was then
-            __DIO_UISetOnMark[__mk] = nil
-            __DIO_FeatOnN = math.max(0, (__DIO_FeatOnN or 1) - 1)
-        end
-    end
+    -- v9: dem theo TEN FLAG (khong theo key) -> "UI truth" cua tinh nang.
+    -- Tinh nang con bat thi tween khong duoc phep tu tat.
+    if type(__DIO_FeatMark2) == "function" then pcall(__DIO_FeatMark2, name, on) end
 end
 __DIO_FarmFlagNames = {
     "SailBoat_Hydra", "WardenBoss", "AutoFactory", "HighestMirage", "HCM", "PGB", "Leviathan1", "UPGDrago",
@@ -569,48 +556,42 @@ __DIO_FarmFlagNames = {
     "TPFloor4", "FarmEliteH", "Safemode", "Greybeard", "ResetPH", "NextIs", "senth", "senth2",
 }
 -- ==========================================================================
---  DIO TWEEN CORE v8  -  viet lai toan bo phan "tween tu tat"
+--  DIO TWEEN CORE v10
 -- --------------------------------------------------------------------------
---  Nguyen nhan bug cu:
---    * Tween bi khoa bang "lease" 30s + snapshot _G flag + OwnerAlive
---    * Watchdog (0.4s) TU TAT _G flag cua tinh nang khi khong tim thay "owner"
---    * _tp() bi chan boi __DIO_TweenAllowed() -> tinh nang goi _tp nhung khong bay
---    * Tat 1 toggle -> giet tween cua MOI tinh nang khac dang chay
---  ==> Tinh nang on nhung tween tat vai giay roi bat lai (giat, dung giua duong).
---
---  v8: chi con 3 dieu kien, khong the tu tat khi tinh nang dang bat:
---    1. Con IT NHAT 1 tinh nang dang bat (UI toggle dang bat hoac _G flag true)
---    2. Hoac vua co yeu cau bay (_tp trong __DIO_MOVE_GRACE giay)
---    3. Hoac __DIO_FlyBusy (bay toi NPC de mua)
---    Khong lease, khong snapshot flag, khong watchdog tat flag, khong kill cheo.
+--  v8 da bo: lease 30s, snapshot _G flag, watchdog tu tat flag.
+--  v10 them (theo phan hoi thuc te trong game):
+--    * Khong co bat ky output nao ra console.
+--    * Moi lenh __DIO_TweenDrop() (ke ca trong code cu con sot lai) tro thanh
+--      "drop co an han": tinh nang dang bat + co _tp moi trong 1.5s => HUY drop.
+--      => khong con canh "bay 1-2s roi dung 2-3s" do 1 dong drop le trong vong
+--      lap cua tinh nang (vi du vong Auto Dough King khi khong thay Map.CakeLoaf).
+--    * Highlight = "tinh nang dang bat", KHONG phu thuoc tween co target hay
+--      khong => het canh mat mau highlight khi dang farm / mode Obrit.
 -- ==========================================================================
-__DIO_TWEEN_LEASE = 30          -- giu ten cu cho tuong thich (v8 khong con dung)
-__DIO_MOVE_GRACE  = 12          -- "con nong": trong 12s ke tu _tp cuoi
-__DIO_KEEP_APPROACH = 90        -- dang bay toi dich thi giu target toi da 90s          -- sau lan _tp cuoi van bay tiep toi da 12s (cho cac doan bay dai)
-__DIO_TweenArmedT = 0
-__DIO_MoveT       = 0           -- thoi diem _tp gan nhat
-__DIO_Parked      = false       -- da toi noi -> dung yen, cho yeu cau moi
-__DIO_ParkT       = 0
-__DIO_FeatOnN     = 0           -- so flag "tinh nang" dang duoc UI toggle bat
-__DIO_UIOn        = {}
-__DIO_UIOnN       = 0
-__DIO_TweenDebug  = false
-__DIO_Log = function(...)
-    if __DIO_TweenDebug ~= true and getgenv().DIO_TweenDebug ~= true then return end
-    local __n = select("#", ...)
-    local __parts = {}
-    for __i = 1, __n do __parts[__i] = tostring((select(__i, ...))) end
-    pcall(function() print("[DIO TWEEN] " .. table.concat(__parts, " ")) end)
-end
--- _tp() goi ham nay: danh dau vua co yeu cau bay + bo trang thai "park"
+__DIO_TWEEN_LEASE  = 30         -- giu ten cu cho tuong thich (khong con dung)
+__DIO_MOVE_GRACE   = 12         -- "con nong": 12s ke tu _tp cuoi
+__DIO_KEEP_APPROACH = 90        -- dang bay toi dich thi giu target toi da 90s
+__DIO_SOFT_DROP    = 1.5        -- drop mem: cho 1.5s, co _tp moi thi huy drop
+__DIO_TweenArmedT  = 0
+__DIO_MoveT        = 0
+__DIO_Parked       = false
+__DIO_ParkT        = 0
+__DIO_DropPendT    = 0
+__DIO_DropPendReason = nil
+__DIO_FeatOnN      = 0
+__DIO_FeatMark     = {}
+__DIO_UIOn         = {}
+__DIO_UIOnN        = 0
+-- _tp() goi ham nay: danh dau vua co yeu cau bay, bo park, HUY drop cho
 __DIO_Move = function()
-    __DIO_MoveT  = tick()
-    __DIO_Parked = false
+    __DIO_MoveT    = tick()
+    __DIO_Parked   = false
+    __DIO_DropPendT = 0
+    __DIO_DropPendReason = nil
 end
 __DIO_MoveFresh = function()
     return (tick() - (__DIO_MoveT or 0)) <= (__DIO_MOVE_GRACE or 12)
 end
--- UI toggle nao dang bat (dung de chan viec tween bi tat oan)
 __DIO_UISetState = function(key, on)
     if key == nil then return end
     key = tostring(key)
@@ -624,6 +605,31 @@ __DIO_UISetState = function(key, on)
         __DIO_UIOn[key] = nil
         __DIO_UIOnN = math.max(0, (__DIO_UIOnN or 1) - 1)
     end
+end
+-- Dem flag "tinh nang" theo TEN FLAG (khong theo key) -> khong bao gio bi ket
+__DIO_FeatMark2 = function(name, on)
+    if type(name) ~= "string" then return end
+    local isFeat = false
+    pcall(function()
+        isFeat = (type(__DIO_IsFarmFlag) == "function" and __DIO_IsFarmFlag(name))
+            or (type(__DIO_SharedFlags) == "table" and __DIO_SharedFlags[name] == true)
+    end)
+    if not isFeat then return end
+    if not __DIO_FeatMark then __DIO_FeatMark = {} end
+    local was = (__DIO_FeatMark[name] == true)
+    if on == true then
+        if not was then
+            __DIO_FeatMark[name] = true
+            __DIO_FeatOnN = (__DIO_FeatOnN or 0) + 1
+        end
+    elseif was then
+        __DIO_FeatMark[name] = nil
+        __DIO_FeatOnN = math.max(0, (__DIO_FeatOnN or 1) - 1)
+    end
+end
+__DIO_FeatOn = function(name)
+    if type(name) ~= "string" then return false end
+    return (__DIO_FeatMark and __DIO_FeatMark[name] == true) or false
 end
 __DIO_TweenKillT  = 0
 __DIO_TweenAllowT = 0
@@ -772,7 +778,7 @@ __DIO_AnyFarmFlag = function()
     end)
     return (ok2 and any2) and true or false
 end
--- Tinh nang dang bat? (u tien trang thai UI, sau do moi toi _G)
+-- Tinh nang dang bat?
 __DIO_AnyFeatureOn = function()
     if __DIO_FlyBusy == true then return true end
     if (__DIO_FeatOnN or 0) > 0 then return true end
@@ -780,7 +786,6 @@ __DIO_AnyFeatureOn = function()
     if ok and r then return true end
     return false
 end
--- Co duoc bay hay khong? (chi con block that su va trang thai dodge chan duoc)
 __DIO_TweenAllowed = function()
     if __DIO_Dodging == true and type(__DIO_DodgeStale) == "function" then __DIO_DodgeStale() end
     if __DIO_Dodging == true then return false end
@@ -847,7 +852,6 @@ end
 __DIO_TweenBlock = function(dur)
     __DIO_TweenBlockT   = tick()
     __DIO_TweenBlockDur = tonumber(dur) or 0.5
-    __DIO_Log("block", __DIO_TweenBlockDur)
 end
 __DIO_TweenClearBlock = function()
     __DIO_TweenBlockT   = 0
@@ -860,7 +864,6 @@ __DIO_TweenBlocked = function()
     __DIO_TweenBlockT = 0
     return false
 end
--- v8: tween con song hay khong KHONG con phu thuoc vao snapshot flag / lease 30s
 __DIO_TweenOwnerAlive = function()
     if __DIO_FlyBusy == true then return true end
     return __DIO_AnyFeatureOn()
@@ -873,8 +876,6 @@ __DIO_DodgeStale = function()
     end
     return false
 end
--- dang tren duong bay toi dich (chua toi noi) - tranh truong hop feature chi
--- goi _tp 1 lan roi "repeat wait() until getdis <= 5" (bay xa mat > 12s)
 __DIO_Approaching = function()
     local tp = __DIO_TweenTarget
     if tp == nil then return false end
@@ -901,7 +902,6 @@ __DIO_TweenValid = function()
     end
     return false
 end
--- Mot cho duy nhat quyet dinh shouldTween (thay cho watchdog + stomper cu)
 __DIO_TweenSync = function()
     local on = false
     if __DIO_FlyBusy == true then
@@ -916,17 +916,42 @@ __DIO_TweenSync = function()
     shouldTween = on and true or false
     return on
 end
-__DIO_TweenDrop = function(reason)
-    if getgenv().DIO_TweenDebug == true then __DIO_Log("drop:", tostring(reason or "?")) end
+-- Xoa target NGAY (dung noi bo trong core)
+__DIO_TweenDropHard = function(reason)
     __DIO_TweenTarget      = nil
     __DIO_TweenArmedFlags  = nil
     __DIO_LastDist         = nil
     __DIO_LastHRPPos       = nil
     __DIO_Parked           = false
+    __DIO_DropPendT        = 0
+    __DIO_DropPendReason   = nil
     pcall(function()
         if __DIO_LastTween then __DIO_LastTween:Cancel() end
         __DIO_LastTween = nil
     end)
+end
+-- __DIO_TweenDrop() = phien ban MEM de tuong thich 100% code cu:
+--   * Tinh nang dang bat  -> hoan lai drop 1.5s, neu trong 1.5s co _tp moi thi HUY drop
+--   * Khong con tinh nang -> xoa ngay
+__DIO_TweenDrop = function(reason)
+    local __busy = __DIO_AnyFeatureOn() or __DIO_FlyBusy == true
+    if __busy then
+        __DIO_DropPendT = tick()
+        __DIO_DropPendReason = tostring(reason or "soft")
+        return
+    end
+    __DIO_TweenDropHard(reason)
+end
+__DIO_TweenDropPending = function()
+    if (__DIO_DropPendT or 0) > 0 and (tick() - __DIO_DropPendT) >= (__DIO_SOFT_DROP or 1.5) then
+        local __why = __DIO_DropPendReason or "soft"
+        __DIO_DropPendT = 0
+        __DIO_DropPendReason = nil
+        if not __DIO_AnyFeatureOn() then
+            __DIO_TweenDropHard("soft-expired:" .. tostring(__why))
+        end
+    end
+    return __DIO_DropPendT
 end
 __DIO_TweenSet = function(cf)
     if cf == nil then return end
@@ -940,8 +965,7 @@ __DIO_TweenSet = function(cf)
     shouldTween = true
     if type(__DIO_Move) == "function" then __DIO_Move() end
 end
--- force = true  -> tat tween ngay (nut "Stop Tween", panic)
--- force = false -> chi tat khi KHONG con tinh nang nao khac dang bat
+-- force = true -> tat ngay (nut Stop Tween / panic). force = false -> mem.
 __DIO_TweenKill = function(keepHighlight, force)
     if force ~= true and __DIO_AnyFeatureOn() then
         if type(__DIO_TweenSync) == "function" then pcall(__DIO_TweenSync) end
@@ -960,6 +984,7 @@ __DIO_TweenKill = function(keepHighlight, force)
     __DIO_CurTarget        = nil
     __DIO_LastDist         = nil
     __DIO_LastHRPPos       = nil
+    __DIO_DropPendT        = 0
     shouldTween = false
     pcall(function()
         if __DIO_LastTween then __DIO_LastTween:Cancel() end
@@ -970,19 +995,19 @@ __DIO_TweenKill = function(keepHighlight, force)
     end
 end
 __DIO_WatchdogReport = {}
--- Watchdog v8: KHONG con quet/tat _G flag cua tinh nang (day la bug "tu tat tinh nang")
 __DIO_Watchdog = function()
     pcall(__DIO_FlagPoll)
     pcall(__DIO_DodgeStale)
+    pcall(__DIO_TweenDropPending)
     if __DIO_FlyBusy == true and __DIO_FlyBusyT ~= nil and (tick() - __DIO_FlyBusyT) > 360 then
         __DIO_FlyBusy = false
     end
     if __DIO_TweenTarget ~= nil and not __DIO_TweenValid() then
-        __DIO_TweenDrop("invalid")
+        __DIO_TweenDropHard("invalid")
     end
     if __DIO_TweenTarget ~= nil and not __DIO_MoveFresh() and __DIO_FlyBusy ~= true
        and not __DIO_AnyFeatureOn() and (tick() - (__DIO_MoveT or 0)) > 90 then
-        __DIO_TweenDrop("idle")
+        __DIO_TweenDropHard("idle")
     end
     pcall(__DIO_TweenSync)
 end
@@ -990,7 +1015,19 @@ __DIO_SafeLoop(function()
     while __DIO_wait(0.4) do
         pcall(__DIO_Watchdog)
     end
-end, "V8Watchdog")
+end, "V10Watchdog")
+-- Highlight: bat khi co tinh nang chay (hoac dang bay), tat khi nghi han
+__DIO_HlSync = function(wantOn)
+    if wantOn then
+        local __ch = plr.Character
+        if __ch and tick() - (__DIO_LastHlDecor or 0) >= 0.25 then
+            __DIO_LastHlDecor = tick()
+            pcall(function() if type(__DIO_HlOn) == "function" then __DIO_HlOn() end end)
+        end
+    else
+        pcall(function() if type(__DIO_HlOff) == "function" then __DIO_HlOff() end end)
+    end
+end
 
 if getgenv().DIO_ToggleNotify == nil then getgenv().DIO_ToggleNotify = false end
 __DIO_TNotify = function(title, content, dur)
@@ -2658,9 +2695,8 @@ _tp = function(target)
         if type(__DIO_DodgeStale) == "function" then __DIO_DodgeStale() end
         if __DIO_Dodging == true then return end
     end
-    -- v8: block chi con tac dung khi KHONG con tinh nang nao bat.
-    -- Tinh nang dang bat thi moi yeu cau bay deu duoc uu tien (het canh
-    -- "tinh nang on ma _tp bi tu choi -> dung giua duong").
+    -- v9: KHONG tu choi yeu cau bay nua. Block chi co tac dung khi khong con
+    -- tinh nang nao bat; tinh nang dang bat thi _tp luon duoc thuc hien.
     if type(__DIO_TweenBlocked) == "function" and __DIO_TweenBlocked() then
         if not __DIO_AnyFeatureOn() then return end
         if type(__DIO_TweenClearBlock) == "function" then __DIO_TweenClearBlock() end
@@ -2680,6 +2716,18 @@ _tp = function(target)
     local character = plr.Character
     if not character or not character:FindFirstChild("HumanoidRootPart") then return end
     local rootPart = character.HumanoidRootPart
+    -- v9 BERRY: Auto Farm Berry / Berry + Hop KHONG phu thuoc vao tween nua.
+    -- Berry phai dung ngay tai bush de bom ProximityPrompt -> teleport thang,
+    -- khong bi bat ky logic tween / park / gating nao lam cham hay dung.
+    if _G.AutoBerry == true or _G.AutoBerryH == true then
+        pcall(function() rootPart.CFrame = gg end)
+        if __DIO_Block then pcall(function() __DIO_Block.CFrame = gg end) end
+        pcall(__DIO_TweenSet, gg)
+        pcall(__DIO_Move)
+        local __ftB = __DIO_NewFakeTween()
+        __DIO_LastTween = __ftB
+        return __ftB
+    end
     do
         local __needEnt = false
         pcall(function()
@@ -2742,9 +2790,7 @@ _tp = function(target)
     __DIO_LastTpT = tick()
     __DIO_TweenArmedT = tick()
     __DIO_LastTweenT = tick()
-    -- v8: bo snapshot flag (_G luc arm) - day chinh la thu lam tween "het han"
-    -- sau vai giay khi tinh nang ban flag qua lai (Dough King / FarmEliteHunt).
-    __DIO_TweenArmedFlags = nil
+    __DIO_TweenArmedFlags = nil       -- v9: bo snapshot flag (lam tween het han sai)
     shouldTween = true
     __DIO_FalseSince = nil
     if type(__DIO_Move) == "function" then __DIO_Move() end
@@ -2780,9 +2826,7 @@ if not __DIO_SmoothCtl then
                     if type(__DIO_TweenSync) == "function" then pcall(__DIO_TweenSync) end
                     return
                 end
-                -- v8: bo cong "shouldTween" o day. Tinh hop le cua tween gio chi
-                -- do __DIO_TweenValid() quyet dinh -> khong con canh tween tu tat
-                -- vai giay roi bat lai.
+                -- v9: khong con cong "shouldTween" o day (1 nguon duy nhat la TweenValid)
                 __DIO_FalseSince = nil
                 local target = __DIO_TweenTarget
                 if not target then
@@ -2832,8 +2876,6 @@ if not __DIO_SmoothCtl then
                 end
                 local delta = want - cur
                 local dist = delta.Magnitude
-                -- v8: da bay toi noi -> "park" (dung yen). Chi chay tiep khi co
-                -- yeu cau _tp moi, nho vay khong bi keo ve cho cu khi bi day/lag.
                 if __DIO_Parked and not __DIO_MoveFresh() then
                     __DIO_LastDist = dist
                     __DIO_LastHRPPos = cur
@@ -2859,7 +2901,6 @@ if not __DIO_SmoothCtl then
                     if jump > 80 then
                         __DIO_LastHRPPos = cur
                         __DIO_LastDist = dist
-                        -- v8: chi bo target khi that su khong con ai yeu cau bay
                         if not __DIO_MoveFresh() and not __DIO_AnyFeatureOn()
                            and __DIO_FlyBusy ~= true then
                             __DIO_Parked = false
@@ -3066,7 +3107,6 @@ __DIO_HlOff = function()
     if __hl then pcall(function() __hl:Destroy() end) end
 end
 __DIO_TweenOnIfAnyFlag = function()
-    -- v8: "bat tween" = co tinh nang dang bat (UI hoac _G) hoac vua co yeu cau bay
     local __on = __DIO_AnyFeatureOn()
     if (not __on) and __DIO_TweenTarget ~= nil and __DIO_MoveFresh() then
         __on = true
@@ -3208,25 +3248,22 @@ spawn(function()
       if __DIO_Block and __DIO_Block.Parent ~= workspace then
           pcall(function() __DIO_Block.Parent = workspace end)
       end
-      -- v8: 1 nguon duy nhat quyet dinh shouldTween (thay cho watchdog + stomper cu)
+      -- v9: 1 nguon duy nhat quyet dinh shouldTween
       local __validST = __DIO_TweenValid()
       local __anyF    = __DIO_AnyFeatureOn() or __DIO_FlyBusy == true
+      local __curT    = (__DIO_CurTarget ~= nil)
       if __DIO_TweenTarget ~= nil and not __validST then
-          __DIO_TweenDrop("decor-invalid")
+          -- v9: drop that su khi core xac nhan khong con hop le
+          if not __anyF and not __curT and not __DIO_MoveFresh() then
+              __DIO_TweenDropHard("decor-invalid")
+          end
       end
       pcall(__DIO_TweenSync)
-      local __onST = __validST or __anyF
-          or (__DIO_CurTarget ~= nil and (__anyF or __DIO_FlyBusy == true))
-      if __onST then
-        if __validST or __DIO_FlyBusy == true then
-            local __chHL = plr.Character
-            if __chHL and tick() - (__DIO_LastHlDecor or 0) >= 0.25 then
-                __DIO_LastHlDecor = tick()
-                pcall(__DIO_HlOn)
-            end
-        else
-            pcall(__DIO_HlOff)
-        end
+      -- v9: HIGHLIGHT = "tinh nang dang chay", khong phu thuoc tween co target
+      -- (truoc day mode Obrit / luc core xoa target lam mat mau highlight)
+      local __hlWant = (__anyF or __validST or __curT)
+      __DIO_HlSync(__hlWant)
+      if __hlWant then
         local __stompHum = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
         if __stompHum and __stompHum.Sit then
             return
@@ -3244,13 +3281,11 @@ spawn(function()
             local __hrpOFF = __chOFF and __chOFF:FindFirstChild("HumanoidRootPart")
             if __hrpOFF and __hrpOFF:FindFirstChild("BodyClip") then __hrpOFF:FindFirstChild("BodyClip"):Destroy() end
         end)
-        pcall(__DIO_HlOff)
       end
     end)
       end
     end)
-    if not __okST then warn("[DIO] tween decor loop died -> restart: " .. tostring(__errST)) end
-    task.wait(0.5)
+    task.wait(0.5) -- v10: im lang, khong in gi ra console
   end
 end)
 QuestB = function()
@@ -4104,8 +4139,7 @@ do
                                 end
                             end
                             pcall(function()
-                                -- v8: tat 1 tinh nang KHONG duoc giet tween cua tinh nang khac.
-                                -- Chi don dep khi THAT SU khong con tinh nang nao bat.
+                                -- v9: tat 1 tinh nang khong duoc giet tween cua tinh nang khac
                                 pcall(function() __DIO_UISetState(key, false) end)
                                 local __stillOn = (type(__DIO_AnyFeatureOn) == "function") and __DIO_AnyFeatureOn() or false
                                 if __stillOn or __DIO_FlyBusy == true then
@@ -4118,6 +4152,8 @@ do
                                 __DIO_TweenArmedT = 0
                                 __DIO_FalseSince = nil
                                 __DIO_Parked = false
+                                __DIO_DropPendT = 0
+                                __DIO_DropPendReason = nil
                                 if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
                                 pcall(__DIO_TweenBlock, 0.35)
                                 if not __DIO_FlyBusy then
@@ -6193,6 +6229,28 @@ end
 local function __DIO_DKHasChalice()
     return __DIO_DKHasItem("God's Chalice") or __DIO_DKHasItem("Sweet Chalice")
 end
+-- v9: vong lap Dough King chay moi 1 giay va dao qua lai giua "tim chest"
+-- (AutoFarmChest) va "elite" (FarmEliteHunt). Dao lien tuc lam worker doi
+-- huong lien tuc -> them tre 2s cho moi lan doi trang thai.
+-- (dung bien global, khong them "local" o main chunk -> tranh tran gioi han
+--  200 register cua Luau khi file qua lon)
+__DIO_DKMode, __DIO_DKModeT = nil, 0
+__DIO_DKSetMode = function(mode, force)
+    if mode == __DIO_DKMode and not force then return end
+    if not force and __DIO_DKMode ~= nil and (tick() - (__DIO_DKModeT or 0)) < 2 then return end
+    __DIO_DKMode  = mode
+    __DIO_DKModeT = tick()
+    if mode == "elite" then
+        pcall(function() __DIO_BorrowFlag("AutoDoughKing", "FarmEliteHunt") end)
+        __DIO_DKSetChestSearch(false)
+    elseif mode == "chest" then
+        pcall(function() __DIO_ReleaseFlag("AutoDoughKing", "FarmEliteHunt") end)
+        __DIO_DKSetChestSearch(true)
+    else
+        pcall(function() __DIO_ReleaseFlag("AutoDoughKing", "FarmEliteHunt") end)
+        __DIO_DKSetChestSearch(false)
+    end
+end
 Tabs.Main:AddToggle({
     Name = __DIO_T["Auto Dough King [Fully]"],
     Default = false,
@@ -6204,12 +6262,13 @@ Tabs.Main:AddToggle({
             __DIO_FalseSince = nil
             __dkWasHunting = false
             if not __DIO_DKHasChalice() then
-                __DIO_DKSetChestSearch(true)
+                __DIO_DKSetMode("chest", true)
             end
             pcall(function() __DIO_TweenOnIfAnyFlag() end)
             pcall(function() __DIO_Wake(true) end)
         else
             __dkWasHunting = false
+            pcall(function() __DIO_DKSetMode("off", true) end)
             pcall(function() __DIO_ReleaseAll("AutoDoughKing") end)
             StopTween(false)
             __DIO_CurTarget = nil
@@ -6273,25 +6332,21 @@ __DIO_SafeLoop(function()
                 end)
                 local __hasChaliceDK = __DIO_DKHasChalice()
                 if not __hasChaliceDK then
-                    if __eliteSpawnedDK then
-                        pcall(function() __DIO_BorrowFlag("AutoDoughKing", "FarmEliteHunt") end)
-                        __DIO_DKSetChestSearch(false)
-                    else
-                        -- Return before the Cocoa branch: chest search is the
-                        -- only fallback while God's Chalice is missing.
-                        pcall(function() __DIO_ReleaseFlag("AutoDoughKing", "FarmEliteHunt") end)
-                        __DIO_DKSetChestSearch(true)
-                    end
+                    -- v9: doi trang thai co tre (2s) -> khong con dao chest/elite moi giay
+                    __DIO_DKSetMode(__eliteSpawnedDK and "elite" or "chest")
                     if __dkWasHunting == false then
                         __dkWasHunting = true
-                        -- v8: BO __DIO_TweenDrop() o day. Chinh no lam Auto Dough King
-                        -- "bay 5-6s la dung tween" vi no xoa dich bay giua duong.
+                        -- v9: giu lai lam drop MEM (co an han). Khong con xoa target
+                        -- moi 1 giay lam Dough King bay 1-2s roi dung.
+                        __DIO_TweenDrop("dk-no-cakeloaf")
                         pcall(function() __DIO_Wake(true) end)
                     end
                     return
                 end
                 __dkWasHunting = false
-                pcall(function() __DIO_ReleaseFlag("AutoDoughKing", "FarmEliteHunt") end)
+                -- v9: dong bo ca trang thai mode (neu khong, tre 2s co the khoa
+                -- viec quay lai tim chest sau khi chalice da dung xong)
+                pcall(function() __DIO_DKSetMode("off") end)
                 __DIO_DKSetChestSearch(false)
                 if GetM("Conjured Cocoa") <= 10 then
                     local v = GetConnectionEnemies{"Cocoa Warrior", "Chocolate Bar Battler"}
