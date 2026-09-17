@@ -442,6 +442,23 @@ __DIO_BootT0 = tick()
 __DIO_BootN = 0
 __DIO_ThreadPhase = setmetatable({}, {__mode = "k"})
 local __DIO_BaseWait = task.wait
+__DIO_WakeT   = 0
+__DIO_WakeGap = 0.15
+__DIO_Wake = function(force)
+    local __n = tick()
+    if force ~= true and (__n - (__DIO_WakeT or 0)) < (__DIO_WakeGap or 0.15) then return false end
+    __DIO_WakeT = __n
+    return true
+end
+-- Wake workers immediately when a toggle/target changes.  This deliberately
+-- does not manufacture a _G flag from shouldTween; the worker's _G flag remains
+-- the source of truth and _tp/__DIO_TweenSet arm movement when a target exists.
+__DIO_TweenActivateImmediate = function()
+    __DIO_TweenAllowT = tick()
+    __DIO_TweenBlockT = 0
+    __DIO_FalseSince = nil
+    pcall(function() __DIO_Wake(true) end)
+end
 __DIO_wait = function(t)
     t = t or 0.03
     local __co = coroutine.running()
@@ -457,7 +474,21 @@ __DIO_wait = function(t)
             end
         end
     end
-    return __DIO_BaseWait(t + __ph)
+    local __total = t + __ph
+    if __total < 0.12 then return __DIO_BaseWait(__total) end
+    local __t0 = tick()
+    local __w0 = __DIO_WakeT
+    local __step = 0.05
+    while true do
+        local __left = __total - (tick() - __t0)
+        if __left <= 0 then break end
+        __DIO_BaseWait(__left > __step and __step or __left)
+        if __DIO_WakeT ~= __w0 then break end
+        if __step < 0.15 then __step = math.min(__step * 1.6, 0.15) end
+    end
+    local __el = tick() - __t0
+    if not (__el > 0) then __el = 0.001 end
+    return __el
 end
 spawn = function(f)
     if tick() - __DIO_BootT0 < 10 and __DIO_BootN < 200 then
@@ -543,9 +574,11 @@ __DIO_FlagGet = function(name)
     return v
 end
 __DIO_FlagSet = function(name, val)
+    local __prev = rawget(_G, name)
     pcall(rawset, _G, name, val)
     local g = __DIO_Genv()
     if g and rawget(g, name) ~= nil then pcall(rawset, g, name, val) end
+    if val == true and __prev ~= true and type(__DIO_Wake) == "function" then pcall(__DIO_Wake, true) end
 end
 __DIO_FlagApply = function(name)
     local w, s = __DIO_FlagWant[name], __DIO_FlagSup[name]
@@ -583,6 +616,19 @@ __DIO_SharedFlags = {
 __DIO_UIWant = function(name, key, on)
     if not __DIO_SharedFlags[name] then return end
     __DIO_SetFlag(name, "UI:" .. tostring(key), on and true or false)
+end
+-- A feature can borrow a shared flag for a short time (for example,
+-- AutoDoughKing borrowing AutoFarmChest). Do not convert that internal borrow
+-- into a permanent UI owner when the generic toggle wrapper audits _G changes.
+__DIO_HasNonUIFlagOwner = function(name)
+    local owners = __DIO_FlagWant[name]
+    if not owners then return false end
+    for owner in pairs(owners) do
+        if type(owner) ~= "string" or owner:sub(1, 3) ~= "UI:" then
+            return true
+        end
+    end
+    return false
 end
 __DIO_ValWant = {}
 __DIO_BorrowValue = function(owner, name, value)
@@ -792,6 +838,11 @@ __DIO_TweenSet = function(cf)
     local __ab = nil
     pcall(function() __ab = (__DIO_FarmFlagOnSet()) end)
     if type(__ab) == "table" then __DIO_TweenArmedFlags = __ab end
+    -- Arm immediately when a movement target is requested. Do not use this
+    -- assignment as the mechanism that turns _G feature flags on.
+    shouldTween = true
+    __DIO_FalseSince = nil
+    pcall(function() __DIO_Wake(true) end)
 end
 __DIO_TweenKill = function(keepHighlight)
     __DIO_TweenKillT  = tick()
@@ -2954,8 +3005,8 @@ __DIO_TweenOnIfAnyFlag = function()
         __on = true
     end
     if __on then
-        shouldTween = true
         __DIO_TweenBlockT = 0
+        pcall(function() __DIO_Wake(true) end)
     end
     return __on
 end
@@ -3100,7 +3151,6 @@ spawn(function()
       local __movingST = (__validST or __DIO_FlyBusy == true
           or (__DIO_CurTarget ~= nil and (__anyFlagST or __DIO_FlyBusy == true)))
       if __anyFlagST or __movingST or __DIO_FlyBusy == true then
-       shouldTween = true
         if __movingST then
             local __chHL = plr.Character
             if __chHL and tick() - (__DIO_LastHlDecor or 0) >= 0.25 then
@@ -3919,8 +3969,10 @@ do
                         end
                         __DIO_UIState[key] = (Value == true)
                         if Value == true then
-                            __DIO_TweenAllowT = tick()
-                            __DIO_TweenBlockT = 0
+                            -- Interrupt any current __DIO_wait before the
+                            -- feature callback; this makes a newly enabled
+                            -- toggle observable in the same frame.
+                            __DIO_TweenActivateImmediate()
                             local __before = {}
                             pcall(function()
                                 for k, v in pairs(_G) do
@@ -3937,10 +3989,12 @@ do
                                 end
                             end)
                             pcall(origCb, true)
+                            pcall(function() __DIO_Wake(true) end)
                             __ownedFlags = {}
                             pcall(function()
                                 for k, v in pairs(_G) do
-                                    if type(v) == "boolean" and v == true and __before[k] == nil then
+                                    if type(v) == "boolean" and v == true and __before[k] == nil
+                                       and not __DIO_HasNonUIFlagOwner(k) then
                                         __ownedFlags[k] = true
                                     end
                                 end
@@ -3949,7 +4003,8 @@ do
                                 local g = getgenv()
                                 if type(g) == "table" and g ~= _G then
                                     for k, v in pairs(g) do
-                                        if type(v) == "boolean" and v == true and __beforeG[k] == nil then
+                                        if type(v) == "boolean" and v == true and __beforeG[k] == nil
+                                       and not __DIO_HasNonUIFlagOwner(k) then
                                             __ownedFlags[k] = true
                                         end
                                     end
@@ -3962,6 +4017,11 @@ do
                             local __newFlag = false
                             for __k in pairs(__ownedFlags or {}) do __newFlag = true break end
                             local __onNow = __DIO_TweenOnIfAnyFlag()
+                            if __onNow then
+                                __DIO_FalseSince = nil
+                                __DIO_TweenBlockT = 0
+                                pcall(function() __DIO_Wake(true) end)
+                            end
                             if not __onNow and not __newFlag and getgenv().DIOAuditToggles == true then
                                 warn("[DIO AUDIT] Toggle '" .. tostring(Setting and Setting.Name)
                                     .. "' BAT nhung KHONG tao _G. flag nao -> kiem tra _G. / shouldTween cua toggle nay.")
@@ -4022,7 +4082,9 @@ do
                 end
                 local ctrl = _AddToggle(self, Setting)
                 if saved ~= nil and origCb then
-                    task.delay(3, function()
+                    -- Restore saved toggles on the next scheduler slice, not
+                    -- after a fixed 3-second delay.
+                    task.defer(function()
                         if not __userTouched then
                             pcall(Setting.Callback, saved)
                         end
@@ -4058,6 +4120,7 @@ do
                         end
                         __DIO_TweenAllowT = tick()
                         __DIO_TweenBlockT = 0
+                        __DIO_FalseSince = nil
                         local __beforeD = {}
                         pcall(function()
                             for k, v in pairs(_G) do
@@ -4065,11 +4128,18 @@ do
                             end
                         end)
                         pcall(origCb, Value)
+                        pcall(function() __DIO_Wake(true) end)
                         pcall(function()
                             for k, v in pairs(_G) do
                                 if type(v) == "boolean" and v == true and __beforeD[k] == nil then
                                     __DIO_UISetOn(k, key, true)
                                 end
+                            end
+                        end)
+                        pcall(function()
+                            if type(__DIO_TweenOnIfAnyFlag) == "function" and __DIO_TweenOnIfAnyFlag() then
+                                __DIO_FalseSince = nil
+                                pcall(function() __DIO_Wake(true) end)
                             end
                         end)
                         pcall(function()
@@ -4510,7 +4580,7 @@ Tabs.Status:AddSection("Status Boss")
 local CakePrinceStatus = Tabs.Status:AddParagraph("Cake Prince", "")
 __DIO_SafeLoop(function()
     local __prevCP = nil
-    while __DIO_wait(3) do
+    while __DIO_wait(1) do
         local cakePrince = __SVC_RS.Remotes.CommF_:InvokeServer("CakePrinceSpawner")
         local killStatus = "Cake Prince: ✅"
         if string.len(cakePrince) >= 86 then
@@ -6049,6 +6119,26 @@ __DIO_SafeLoop(function()
         end
     end
 end, "L4825")
+local __dkWasHunting = false
+-- Dough King preparation: when neither God's Chalice nor Sweet Chalice is in
+-- the backpack/character, borrow AutoFarmChest so the normal chest worker
+-- searches for the chalice instead of falling through to Cocoa farming.
+local function __DIO_DKHasItem(itemName)
+    local ok, item = pcall(GetBP, itemName)
+    return ok and item ~= nil
+end
+local function __DIO_DKSetChestSearch(enabled)
+    if enabled then
+        -- __DIO_BorrowFlag applies _G.AutoFarmChest=true while this owner is
+        -- active, and preserves any UI/other owner that already uses the flag.
+        pcall(__DIO_BorrowFlag, "AutoDoughKing", "AutoFarmChest")
+    else
+        pcall(__DIO_ReleaseFlag, "AutoDoughKing", "AutoFarmChest")
+    end
+end
+local function __DIO_DKHasChalice()
+    return __DIO_DKHasItem("God's Chalice") or __DIO_DKHasItem("Sweet Chalice")
+end
 Tabs.Main:AddToggle({
     Name = __DIO_T["Auto Dough King [Fully]"],
     Default = false,
@@ -6057,7 +6147,16 @@ Tabs.Main:AddToggle({
         if _G.AutoDoughKing then
             __DIO_TweenAllowT = tick()
             __DIO_TweenBlockT = 0
+            __DIO_FalseSince = nil
+            __dkWasHunting = false
+            if not __DIO_DKHasChalice() then
+                __DIO_DKSetChestSearch(true)
+            end
+            pcall(function() __DIO_TweenOnIfAnyFlag() end)
+            pcall(function() __DIO_Wake(true) end)
         else
+            __dkWasHunting = false
+            pcall(function() __DIO_ReleaseAll("AutoDoughKing") end)
             StopTween(false)
             __DIO_CurTarget = nil
             if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
@@ -6099,18 +6198,48 @@ __DIO_SafeLoop(function()
                 if GetBP("Sweet Chalice") then
                     replicated.Remotes.CommF_:InvokeServer("CakePrinceSpawner", true)
                     __DIO_ReleaseFlag("AutoDoughKing","FarmEliteHunt")
+                    pcall(function() __DIO_ReleaseFlag("AutoDoughKing","AutoFarmChest") end)
+                    __dkWasHunting = false
                     return
                 end
-                if GetBP("God's Chalice") and GetM("Conjured Cocoa") >= 10 then
-                    replicated.Remotes.CommF_:InvokeServer("SweetChaliceNpc")
+                pcall(function()
+                    if GetBP("God's Chalice") and GetM("Conjured Cocoa") >= 10 then
+                        replicated.Remotes.CommF_:InvokeServer("SweetChaliceNpc")
+                        __DIO_wait(0.5)
+                    end
+                end)
+                local __eliteSpawnedDK = false
+                pcall(function()
+                    __eliteSpawnedDK = (__SVC_RS:FindFirstChild("Diablo")
+                        or __SVC_RS:FindFirstChild("Deandre")
+                        or __SVC_RS:FindFirstChild("Urban")
+                        or __SVC_WS.Enemies:FindFirstChild("Diablo")
+                        or __SVC_WS.Enemies:FindFirstChild("Deandre")
+                        or __SVC_WS.Enemies:FindFirstChild("Urban")) ~= nil
+                end)
+                local __hasChaliceDK = __DIO_DKHasChalice()
+                if not __hasChaliceDK then
+                    if __eliteSpawnedDK then
+                        -- An Elite is available to obtain God's Chalice; give
+                        -- it priority over chest traversal.
+                        pcall(function() __DIO_BorrowFlag("AutoDoughKing", "FarmEliteHunt") end)
+                        __DIO_DKSetChestSearch(false)
+                    else
+                        -- No chalice and no Elite: turn on AutoFarmChest now.
+                        -- This returns before the Cocoa branch below.
+                        pcall(function() __DIO_ReleaseFlag("AutoDoughKing", "FarmEliteHunt") end)
+                        __DIO_DKSetChestSearch(true)
+                    end
+                    if __dkWasHunting == false then
+                        __dkWasHunting = true
+                        __DIO_TweenDrop()
+                        pcall(function() __DIO_Wake(true) end)
+                    end
+                    return
                 end
-                if not plr.Backpack:FindFirstChild("God's Chalice")
-                    or plr.Character:FindFirstChild("God's Chalice")
-                then
-                    __DIO_BorrowFlag("AutoDoughKing","FarmEliteHunt")
-                else
-                    __DIO_ReleaseFlag("AutoDoughKing","FarmEliteHunt")
-                end
+                __dkWasHunting = false
+                pcall(function() __DIO_ReleaseFlag("AutoDoughKing", "FarmEliteHunt") end)
+                __DIO_DKSetChestSearch(false)
                 if GetM("Conjured Cocoa") <= 10 then
                     local v = GetConnectionEnemies{"Cocoa Warrior", "Chocolate Bar Battler"}
                     if v then
@@ -9458,6 +9587,58 @@ Callback = function(Value)
   _G.GetQFast = Value
 end})
 Tabs.Quests:AddSection("Instinct / Observation")
+local KenCheck = Tabs.Quests:AddParagraph("Ken (Observation)", "0 / 5000")
+local __kenPrevTxt = ""
+local function __DIO_KenShow(val)
+    local v = tonumber(val) or 0
+    local txt = tostring(v) .. " / 5000"
+    if txt == __kenPrevTxt then return end
+    __kenPrevTxt = txt
+    pcall(function()
+        if KenCheck and type(KenCheck.SetText) == "function" then
+            KenCheck:SetText(txt)
+        elseif KenCheck and type(KenCheck.SetDesc) == "function" then
+            KenCheck:SetDesc(txt)
+        end
+    end)
+end
+local __DIO_KenRemote = nil
+pcall(function()
+    local __rmK = __SVC_RS:FindFirstChild("Remotes")
+    __DIO_KenRemote = __rmK and __rmK:FindFirstChild("CheckKenStatus")
+end)
+local function __DIO_KenLocal()
+    local okA, aA = pcall(function() return plr:GetAttribute("KenDodgesLeft") end)
+    __DIO_KenShow((okA and aA) or 0)
+end
+local function __DIO_KenFetch()
+    if __DIO_KenRemote == nil then
+        pcall(function()
+            local __rmK = __SVC_RS:FindFirstChild("Remotes")
+            __DIO_KenRemote = __rmK and __rmK:FindFirstChild("CheckKenStatus")
+        end)
+    end
+    if __DIO_KenRemote ~= nil then
+        local okK, resK = pcall(function() return __DIO_KenRemote:InvokeServer() end)
+        if okK and resK ~= nil then
+            __DIO_KenShow(resK)
+            return
+        end
+    end
+    __DIO_KenLocal()
+end
+pcall(function()
+    plr:GetAttributeChangedSignal("KenDodgesLeft"):Connect(function()
+        local okA2, aA2 = pcall(function() return plr:GetAttribute("KenDodgesLeft") end)
+        __DIO_KenShow((okA2 and aA2) or 0)
+    end)
+end)
+pcall(__DIO_KenFetch)
+__DIO_SafeLoop(function()
+    while __DIO_wait(3) do
+        pcall(__DIO_KenFetch)
+    end
+end, "KenCheck")
 Q = Tabs.Quests:AddToggle({
 Name = __DIO_T["Auto Farm Observation"],
 Description = "",
@@ -13343,7 +13524,7 @@ pcall(function()
 end)
 RandomFF = Tabs.Raids:AddToggle({
 Name = __DIO_T["Auto Random Fruit"],
-Description = "Roll trai ac quy qua he Gacha (ZiolesGacha). Tu mo cua so gacha roi bam nut Roll/Spin.",
+Description = "Drop FPS If you keep turning on the function",
 Default = false,
 Callback = function(Value)
   _G.Random_Auto = (Value == true)
@@ -13505,7 +13686,7 @@ __DIO_GachaRollOnce = function()
     return true
 end
 __DIO_SafeLoop(function()
-  while __DIO_wait(3) do
+  while __DIO_wait(1) do
     pcall(function()
       if _G.Random_Auto then __DIO_GachaRollOnce() end
     end)
