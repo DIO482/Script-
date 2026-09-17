@@ -453,10 +453,11 @@ end
 -- Activates tween control immediately for a real UI toggle. This does not
 -- create or replace the feature's _G flag; _G remains the feature state.
 __DIO_TweenActivateImmediate = function()
-    __DIO_TweenAllowT = tick()
     __DIO_TweenBlockT = 0
+    __DIO_TweenBlockDur = 0.5
     __DIO_FalseSince = nil
     shouldTween = true
+    if type(__DIO_Move) == "function" then pcall(__DIO_Move) end
     pcall(function() __DIO_Wake(true) end)
 end
 __DIO_wait = function(t)
@@ -525,6 +526,22 @@ __DIO_UISetOn = function(name, key, on)
     __DIO_UIFlagOwner[name][key] = true
     if not __DIO_UIFlagOn[name] then __DIO_UIFlagOn[name] = {} end
     __DIO_UIFlagOn[name][key] = (on == true)
+    -- v8: dem so flag "tinh nang" dang duoc toggle UI bat.
+    -- Day la "UI truth": tinh nang con bat thi tween KHONG duoc phep tu tat.
+    local __isFeat = (type(__DIO_IsFarmFlag) == "function" and __DIO_IsFarmFlag(name))
+        or (type(__DIO_SharedFlags) == "table" and __DIO_SharedFlags[name] == true)
+    if __isFeat then
+        if __DIO_UISetOnMark == nil then __DIO_UISetOnMark = {} end
+        local __mk = tostring(key) .. "\1" .. name
+        local __was = (__DIO_UISetOnMark[__mk] == true)
+        if on == true and not __was then
+            __DIO_UISetOnMark[__mk] = true
+            __DIO_FeatOnN = (__DIO_FeatOnN or 0) + 1
+        elseif on ~= true and __was then
+            __DIO_UISetOnMark[__mk] = nil
+            __DIO_FeatOnN = math.max(0, (__DIO_FeatOnN or 1) - 1)
+        end
+    end
 end
 __DIO_FarmFlagNames = {
     "SailBoat_Hydra", "WardenBoss", "AutoFactory", "HighestMirage", "HCM", "PGB", "Leviathan1", "UPGDrago",
@@ -551,7 +568,63 @@ __DIO_FarmFlagNames = {
     "AutoTP_Gift", "AutoTPGift", "AutoTPAndCollect", "MasterAutoLevel", "MasterAutoCandy", "TPFloor1", "TPFloor2", "TPFloor3",
     "TPFloor4", "FarmEliteH", "Safemode", "Greybeard", "ResetPH", "NextIs", "senth", "senth2",
 }
-__DIO_TWEEN_LEASE = 30
+-- ==========================================================================
+--  DIO TWEEN CORE v8  -  viet lai toan bo phan "tween tu tat"
+-- --------------------------------------------------------------------------
+--  Nguyen nhan bug cu:
+--    * Tween bi khoa bang "lease" 30s + snapshot _G flag + OwnerAlive
+--    * Watchdog (0.4s) TU TAT _G flag cua tinh nang khi khong tim thay "owner"
+--    * _tp() bi chan boi __DIO_TweenAllowed() -> tinh nang goi _tp nhung khong bay
+--    * Tat 1 toggle -> giet tween cua MOI tinh nang khac dang chay
+--  ==> Tinh nang on nhung tween tat vai giay roi bat lai (giat, dung giua duong).
+--
+--  v8: chi con 3 dieu kien, khong the tu tat khi tinh nang dang bat:
+--    1. Con IT NHAT 1 tinh nang dang bat (UI toggle dang bat hoac _G flag true)
+--    2. Hoac vua co yeu cau bay (_tp trong __DIO_MOVE_GRACE giay)
+--    3. Hoac __DIO_FlyBusy (bay toi NPC de mua)
+--    Khong lease, khong snapshot flag, khong watchdog tat flag, khong kill cheo.
+-- ==========================================================================
+__DIO_TWEEN_LEASE = 30          -- giu ten cu cho tuong thich (v8 khong con dung)
+__DIO_MOVE_GRACE  = 12          -- "con nong": trong 12s ke tu _tp cuoi
+__DIO_KEEP_APPROACH = 90        -- dang bay toi dich thi giu target toi da 90s          -- sau lan _tp cuoi van bay tiep toi da 12s (cho cac doan bay dai)
+__DIO_TweenArmedT = 0
+__DIO_MoveT       = 0           -- thoi diem _tp gan nhat
+__DIO_Parked      = false       -- da toi noi -> dung yen, cho yeu cau moi
+__DIO_ParkT       = 0
+__DIO_FeatOnN     = 0           -- so flag "tinh nang" dang duoc UI toggle bat
+__DIO_UIOn        = {}
+__DIO_UIOnN       = 0
+__DIO_TweenDebug  = false
+__DIO_Log = function(...)
+    if __DIO_TweenDebug ~= true and getgenv().DIO_TweenDebug ~= true then return end
+    local __n = select("#", ...)
+    local __parts = {}
+    for __i = 1, __n do __parts[__i] = tostring((select(__i, ...))) end
+    pcall(function() print("[DIO TWEEN] " .. table.concat(__parts, " ")) end)
+end
+-- _tp() goi ham nay: danh dau vua co yeu cau bay + bo trang thai "park"
+__DIO_Move = function()
+    __DIO_MoveT  = tick()
+    __DIO_Parked = false
+end
+__DIO_MoveFresh = function()
+    return (tick() - (__DIO_MoveT or 0)) <= (__DIO_MOVE_GRACE or 12)
+end
+-- UI toggle nao dang bat (dung de chan viec tween bi tat oan)
+__DIO_UISetState = function(key, on)
+    if key == nil then return end
+    key = tostring(key)
+    local was = (__DIO_UIOn[key] == true)
+    if on == true then
+        if not was then
+            __DIO_UIOn[key] = true
+            __DIO_UIOnN = (__DIO_UIOnN or 0) + 1
+        end
+    elseif was then
+        __DIO_UIOn[key] = nil
+        __DIO_UIOnN = math.max(0, (__DIO_UIOnN or 1) - 1)
+    end
+end
 __DIO_TweenKillT  = 0
 __DIO_TweenAllowT = 0
 __DIO_TweenArmedT = 0
@@ -699,15 +772,21 @@ __DIO_AnyFarmFlag = function()
     end)
     return (ok2 and any2) and true or false
 end
-__DIO_TweenAllowed = function()
-    if type(__DIO_TweenBlocked) == "function" and __DIO_TweenBlocked() then return false end
-    if __DIO_Dodging == true and type(__DIO_DodgeStale) == "function" then __DIO_DodgeStale() end
+-- Tinh nang dang bat? (u tien trang thai UI, sau do moi toi _G)
+__DIO_AnyFeatureOn = function()
     if __DIO_FlyBusy == true then return true end
-    if __DIO_TweenAllowT ~= nil and (tick() - __DIO_TweenAllowT) < 5 then return true end
-    if __DIO_AnyFarmFlag() then return true end
-    if shouldTween == true and __DIO_TweenTarget ~= nil
-       and (tick() - (__DIO_TweenArmedT or 0)) < (__DIO_TWEEN_LEASE or 10) then return true end
+    if (__DIO_FeatOnN or 0) > 0 then return true end
+    local ok, r = pcall(__DIO_AnyFarmFlag)
+    if ok and r then return true end
     return false
+end
+-- Co duoc bay hay khong? (chi con block that su va trang thai dodge chan duoc)
+__DIO_TweenAllowed = function()
+    if __DIO_Dodging == true and type(__DIO_DodgeStale) == "function" then __DIO_DodgeStale() end
+    if __DIO_Dodging == true then return false end
+    if __DIO_FlyBusy == true then return true end
+    if __DIO_AnyFeatureOn() then return true end
+    return __DIO_MoveFresh()
 end
 __DIO_TweenArmedFlags = nil
 __DIO_TweenBlockT     = 0
@@ -766,37 +845,25 @@ __DIO_FlagPoll = function()
     return on, any
 end
 __DIO_TweenBlock = function(dur)
-    __DIO_TweenBlockT = tick()
+    __DIO_TweenBlockT   = tick()
     __DIO_TweenBlockDur = tonumber(dur) or 0.5
-    __DIO_TweenTarget = nil
-    __DIO_TweenArmedFlags = nil
-    __DIO_TweenArmedT = 0
-    __DIO_LastDist = nil
-    __DIO_LastHRPPos = nil
-    __DIO_CurTarget = nil
-    pcall(function()
-        if __DIO_LastTween then __DIO_LastTween:Cancel() end
-        __DIO_LastTween = nil
-    end)
+    __DIO_Log("block", __DIO_TweenBlockDur)
+end
+__DIO_TweenClearBlock = function()
+    __DIO_TweenBlockT   = 0
+    __DIO_TweenBlockDur = 0.5
 end
 __DIO_TweenBlocked = function()
     local bt = __DIO_TweenBlockT or 0
     if bt <= 0 then return false end
-    return (tick() - bt) < (__DIO_TweenBlockDur or 0.5)
-end
-__DIO_TweenOwnerAlive = function()
-    if __DIO_FlyBusy == true or __DIO_BuyFlying == true then
-        return true
-    end
-    -- Keep the target alive while any actual farm/raid _G flag is enabled.
-    -- The previous implementation required every flag captured at the exact
-    -- moment of _tp() to remain true, so internal flag hand-offs killed the
-    -- tween after a few seconds even though the feature was still enabled.
-    local ok, active = pcall(function()
-        return __DIO_AnyFarmFlag()
-    end)
-    if ok and active then return true end
+    if (tick() - bt) < (__DIO_TweenBlockDur or 0.5) then return true end
+    __DIO_TweenBlockT = 0
     return false
+end
+-- v8: tween con song hay khong KHONG con phu thuoc vao snapshot flag / lease 30s
+__DIO_TweenOwnerAlive = function()
+    if __DIO_FlyBusy == true then return true end
+    return __DIO_AnyFeatureOn()
 end
 __DIO_DodgeStale = function()
     if __DIO_Dodging ~= true then return false end
@@ -806,23 +873,56 @@ __DIO_DodgeStale = function()
     end
     return false
 end
+-- dang tren duong bay toi dich (chua toi noi) - tranh truong hop feature chi
+-- goi _tp 1 lan roi "repeat wait() until getdis <= 5" (bay xa mat > 12s)
+__DIO_Approaching = function()
+    local tp = __DIO_TweenTarget
+    if tp == nil then return false end
+    local __ok, __far = pcall(function()
+        local ch = plr.Character
+        local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+        if not hrp then return false end
+        return (tp.Position - hrp.Position).Magnitude > 6
+    end)
+    return (__ok and __far) and true or false
+end
 __DIO_TweenValid = function()
     if __DIO_TweenTarget == nil then return false end
+    if __DIO_TweenBlocked() then return false end
     if __DIO_Dodging == true then
         __DIO_DodgeStale()
         if __DIO_Dodging == true then return false end
     end
-    if __DIO_TweenBlocked() then return false end
-    if not __DIO_TweenOwnerAlive() then return false end
-    if (tick() - (__DIO_TweenArmedT or 0)) > (__DIO_TWEEN_LEASE or 10) then return false end
-    return true
+    if __DIO_FlyBusy == true then return true end
+    if __DIO_AnyFeatureOn() then return true end
+    if __DIO_MoveFresh() then return true end
+    if __DIO_Approaching() and (tick() - (__DIO_MoveT or 0)) < (__DIO_KEEP_APPROACH or 90) then
+        return true
+    end
+    return false
 end
-__DIO_TweenDrop = function()
-    __DIO_TweenTarget = nil
-    __DIO_TweenArmedFlags = nil
-    __DIO_TweenArmedT = 0
-    __DIO_LastDist = nil
-    __DIO_LastHRPPos = nil
+-- Mot cho duy nhat quyet dinh shouldTween (thay cho watchdog + stomper cu)
+__DIO_TweenSync = function()
+    local on = false
+    if __DIO_FlyBusy == true then
+        on = true
+    elseif __DIO_TweenTarget ~= nil and __DIO_TweenValid() then
+        on = true
+    elseif __DIO_AnyFeatureOn() then
+        on = true
+    elseif __DIO_MoveFresh() then
+        on = true
+    end
+    shouldTween = on and true or false
+    return on
+end
+__DIO_TweenDrop = function(reason)
+    if getgenv().DIO_TweenDebug == true then __DIO_Log("drop:", tostring(reason or "?")) end
+    __DIO_TweenTarget      = nil
+    __DIO_TweenArmedFlags  = nil
+    __DIO_LastDist         = nil
+    __DIO_LastHRPPos       = nil
+    __DIO_Parked           = false
     pcall(function()
         if __DIO_LastTween then __DIO_LastTween:Cancel() end
         __DIO_LastTween = nil
@@ -832,100 +932,66 @@ __DIO_TweenSet = function(cf)
     if cf == nil then return end
     local ok = pcall(function() return cf.Position end)
     if not ok then return end
-    __DIO_TweenTarget = cf
-    __DIO_LastTweenTarget = cf
-    __DIO_LastTpT = tick()
-    __DIO_TweenArmedT = tick()
-    local __ab = nil
-    pcall(function() __ab = (__DIO_FarmFlagOnSet()) end)
-    if type(__ab) == "table" then __DIO_TweenArmedFlags = __ab end
+    __DIO_TweenTarget      = cf
+    __DIO_LastTweenTarget  = cf
+    __DIO_LastTpT          = tick()
+    __DIO_TweenArmedT      = tick()
+    __DIO_TweenArmedFlags  = nil
+    shouldTween = true
+    if type(__DIO_Move) == "function" then __DIO_Move() end
 end
-__DIO_TweenKill = function(keepHighlight)
-    __DIO_TweenKillT  = tick()
-    __DIO_TweenAllowT = 0
-    __DIO_TweenArmedT = 0
-    __DIO_TweenTarget = nil
-    __DIO_TweenArmedFlags = nil
-    __DIO_LastTweenTarget = nil
-    __DIO_LastTpT = 0
-    __DIO_FalseSince = nil
-    __DIO_CurTarget = nil
-    __DIO_LastDist = nil
-    __DIO_LastHRPPos = nil
+-- force = true  -> tat tween ngay (nut "Stop Tween", panic)
+-- force = false -> chi tat khi KHONG con tinh nang nao khac dang bat
+__DIO_TweenKill = function(keepHighlight, force)
+    if force ~= true and __DIO_AnyFeatureOn() then
+        if type(__DIO_TweenSync) == "function" then pcall(__DIO_TweenSync) end
+        return
+    end
+    __DIO_TweenKillT       = tick()
+    __DIO_TweenAllowT      = 0
+    __DIO_TweenArmedT      = 0
+    __DIO_TweenArmedFlags  = nil
+    __DIO_TweenTarget      = nil
+    __DIO_LastTweenTarget  = nil
+    __DIO_LastTpT          = 0
+    __DIO_MoveT            = 0
+    __DIO_Parked           = false
+    __DIO_FalseSince       = nil
+    __DIO_CurTarget        = nil
+    __DIO_LastDist         = nil
+    __DIO_LastHRPPos       = nil
     shouldTween = false
     pcall(function()
         if __DIO_LastTween then __DIO_LastTween:Cancel() end
         __DIO_LastTween = nil
     end)
-    if keepHighlight ~= true then pcall(function()
-        if type(__DIO_HlOff) == "function" then __DIO_HlOff() end
-    end) end
+    if keepHighlight ~= true then
+        pcall(function() if type(__DIO_HlOff) == "function" then __DIO_HlOff() end end)
+    end
 end
 __DIO_WatchdogReport = {}
+-- Watchdog v8: KHONG con quet/tat _G flag cua tinh nang (day la bug "tu tat tinh nang")
 __DIO_Watchdog = function()
     pcall(__DIO_FlagPoll)
     pcall(__DIO_DodgeStale)
-    for owner, oflag in pairs(__DIO_OwnerAlive) do
-        local alive = (__DIO_FlagGet(oflag) == true)
-        if not alive then
-            __DIO_ReleaseAll(owner)
-            __DIO_WatchdogReport[owner] = (__DIO_WatchdogReport[owner] or 0) + 1
-        end
-    end
-    local swept = 0
-    for i = 1, #__DIO_FarmFlagNames do
-        local name = __DIO_FarmFlagNames[i]
-        if __DIO_FlagGet(name) == true then
-            local wanted = false
-            local w = __DIO_FlagWant[name]
-            if w then for _ in pairs(w) do wanted = true break end end
-            local uiOn = false
-            local uiKey = nil
-            local owners = __DIO_UIFlagOwner[name]
-            local onTab  = __DIO_UIFlagOn[name]
-            if onTab then
-                for key, v in pairs(onTab) do
-                    if v == true then uiOn = true uiKey = key break end
-                end
-            end
-            if uiOn and uiKey and __DIO_SharedFlags[name] and not wanted then
-                __DIO_SetFlag(name, "UI:" .. tostring(uiKey), true)
-                wanted = true
-            end
-            if (not wanted) and (not uiOn) and (owners ~= nil) then
-                __DIO_FlagSet(name, false)
-                swept = swept + 1
-                __DIO_WatchdogReport[name] = (__DIO_WatchdogReport[name] or 0) + 1
-            end
-        end
-    end
     if __DIO_FlyBusy == true and __DIO_FlyBusyT ~= nil and (tick() - __DIO_FlyBusyT) > 360 then
         __DIO_FlyBusy = false
     end
-    local anyF = __DIO_AnyFarmFlag()
     if __DIO_TweenTarget ~= nil and not __DIO_TweenValid() then
-        __DIO_TweenDrop()
+        __DIO_TweenDrop("invalid")
     end
-    if not anyF and __DIO_FlyBusy ~= true then
-        local fresh = (__DIO_TweenTarget ~= nil) and ((tick() - (__DIO_TweenArmedT or 0)) < (__DIO_TWEEN_LEASE or 10))
-        if not fresh and (shouldTween == true or swept > 0) then
-            shouldTween = false
-            __DIO_TweenTarget = nil
-            __DIO_TweenArmedFlags = nil
-            __DIO_TweenArmedT = 0
-            __DIO_FalseSince = nil
-            pcall(function() if type(__DIO_HlOff) == "function" then __DIO_HlOff() end end)
-        end
+    if __DIO_TweenTarget ~= nil and not __DIO_MoveFresh() and __DIO_FlyBusy ~= true
+       and not __DIO_AnyFeatureOn() and (tick() - (__DIO_MoveT or 0)) > 90 then
+        __DIO_TweenDrop("idle")
     end
-    if __DIO_TweenTarget == nil and __DIO_CurTarget == nil and __DIO_FlyBusy ~= true then
-        pcall(function() if type(__DIO_HlOff) == "function" then __DIO_HlOff() end end)
-    end
+    pcall(__DIO_TweenSync)
 end
 __DIO_SafeLoop(function()
     while __DIO_wait(0.4) do
         pcall(__DIO_Watchdog)
     end
-end, "V7Watchdog")
+end, "V8Watchdog")
+
 if getgenv().DIO_ToggleNotify == nil then getgenv().DIO_ToggleNotify = false end
 __DIO_TNotify = function(title, content, dur)
     if getgenv().DIO_ToggleNotify ~= true then return end
@@ -2592,8 +2658,16 @@ _tp = function(target)
         if type(__DIO_DodgeStale) == "function" then __DIO_DodgeStale() end
         if __DIO_Dodging == true then return end
     end
-    if type(__DIO_TweenBlocked) == "function" and __DIO_TweenBlocked() then return end
-    if type(__DIO_TweenAllowed) == "function" and not __DIO_TweenAllowed() then return end
+    -- v8: block chi con tac dung khi KHONG con tinh nang nao bat.
+    -- Tinh nang dang bat thi moi yeu cau bay deu duoc uu tien (het canh
+    -- "tinh nang on ma _tp bi tu choi -> dung giua duong").
+    if type(__DIO_TweenBlocked) == "function" and __DIO_TweenBlocked() then
+        if not __DIO_AnyFeatureOn() then return end
+        if type(__DIO_TweenClearBlock) == "function" then __DIO_TweenClearBlock() end
+    end
+    if type(__DIO_TweenAllowed) == "function" and not __DIO_TweenAllowed() then
+        if type(__DIO_TweenClearBlock) == "function" then __DIO_TweenClearBlock() end
+    end
     local gg
     if typeof(target) == "Vector3" then
         gg = CFrame.new(target)
@@ -2668,11 +2742,13 @@ _tp = function(target)
     __DIO_LastTpT = tick()
     __DIO_TweenArmedT = tick()
     __DIO_LastTweenT = tick()
-    local __armedBy = nil
-    pcall(function() __armedBy = (__DIO_FarmFlagOnSet()) end)
-    if type(__armedBy) == "table" then __DIO_TweenArmedFlags = __armedBy end
+    -- v8: bo snapshot flag (_G luc arm) - day chinh la thu lam tween "het han"
+    -- sau vai giay khi tinh nang ban flag qua lai (Dough King / FarmEliteHunt).
+    __DIO_TweenArmedFlags = nil
     shouldTween = true
     __DIO_FalseSince = nil
+    if type(__DIO_Move) == "function" then __DIO_Move() end
+    if type(__DIO_TweenClearBlock) == "function" and __DIO_AnyFeatureOn() then __DIO_TweenClearBlock() end
     local __ft = __DIO_NewFakeTween()
     __DIO_LastTween = __ft
     return __ft
@@ -2699,37 +2775,15 @@ if not __DIO_SmoothCtl then
                     __DIO_TweenArmedFlags = nil
                     __DIO_TweenArmedT = 0
                     __DIO_FalseSince = nil
+                    __DIO_Parked = false
                     __DIO_LastDist = nil __DIO_LastHRPPos = nil
-                    if __DIO_FlyBusy ~= true and shouldTween == true then
-                        local __anyF = false
-                        pcall(function()
-                            __anyF = (type(__DIO_FarmFlagsOn) == "function") and __DIO_FarmFlagsOn() or false
-                        end)
-                        if not __anyF then
-                            shouldTween = false
-                            pcall(function() if type(__DIO_HlOff) == "function" then __DIO_HlOff() end end)
-                        end
-                    end
+                    if type(__DIO_TweenSync) == "function" then pcall(__DIO_TweenSync) end
                     return
                 end
-                local __st = shouldTween
-                if not __st then
-                    if __DIO_FlyBusy == true then
-                        __st = true
-                    else
-                        if __DIO_FalseSince == nil then __DIO_FalseSince = tick() end
-                        if tick() - __DIO_FalseSince < 0.05 then __st = true end
-                    end
-                else
-                    __DIO_FalseSince = nil
-                end
-                if not __st then
-                    __DIO_TweenTarget = nil
-                    __DIO_TweenArmedFlags = nil
-                    __DIO_TweenArmedT = 0
-                    __DIO_LastDist = nil __DIO_LastHRPPos = nil
-                    return
-                end
+                -- v8: bo cong "shouldTween" o day. Tinh hop le cua tween gio chi
+                -- do __DIO_TweenValid() quyet dinh -> khong con canh tween tu tat
+                -- vai giay roi bat lai.
+                __DIO_FalseSince = nil
                 local target = __DIO_TweenTarget
                 if not target then
                     __DIO_LastDist = nil __DIO_LastHRPPos = nil
@@ -2778,6 +2832,16 @@ if not __DIO_SmoothCtl then
                 end
                 local delta = want - cur
                 local dist = delta.Magnitude
+                -- v8: da bay toi noi -> "park" (dung yen). Chi chay tiep khi co
+                -- yeu cau _tp moi, nho vay khong bi keo ve cho cu khi bi day/lag.
+                if __DIO_Parked and not __DIO_MoveFresh() then
+                    __DIO_LastDist = dist
+                    __DIO_LastHRPPos = cur
+                    return
+                end
+                if __DIO_Parked and dist > 25 and __DIO_MoveFresh() then
+                    __DIO_Parked = false
+                end
                 local __fm = _G.ModeFarm
                 if __fm == "Obrit" or __fm == "Dodge" then
                     if dist <= 250 or (tick() - (__DIO_LastTpT or 0)) > 1.5 then
@@ -2795,7 +2859,10 @@ if not __DIO_SmoothCtl then
                     if jump > 80 then
                         __DIO_LastHRPPos = cur
                         __DIO_LastDist = dist
-                        if (tick() - (__DIO_LastTpT or 0)) > 0.8 then
+                        -- v8: chi bo target khi that su khong con ai yeu cau bay
+                        if not __DIO_MoveFresh() and not __DIO_AnyFeatureOn()
+                           and __DIO_FlyBusy ~= true then
+                            __DIO_Parked = false
                             __DIO_TweenTarget = nil
                             return
                         end
@@ -2835,6 +2902,8 @@ if not __DIO_SmoothCtl then
                     hrp.AssemblyLinearVelocity = Vector3.zero
                     hrp.AssemblyAngularVelocity = Vector3.zero
                     if block then block.CFrame = hrp.CFrame end
+                    __DIO_Parked = true
+                    __DIO_ParkT  = tick()
                     __DIO_LastDist = 0 __DIO_LastHRPPos = want
                     return
                 end
@@ -2908,9 +2977,11 @@ topos = function(...) return _tp(...) end
 StopTween = function(state)
     if state then
         shouldTween = true
-        __DIO_TweenAllowT = tick()
         __DIO_TweenBlockT = 0
+        __DIO_TweenBlockDur = 0.5
         __DIO_FalseSince = nil
+        if type(__DIO_Move) == "function" then pcall(__DIO_Move) end
+        if type(__DIO_TweenSync) == "function" then pcall(__DIO_TweenSync) end
         return
     end
     if type(__DIO_TweenKill) == "function" then
@@ -2995,14 +3066,16 @@ __DIO_HlOff = function()
     if __hl then pcall(function() __hl:Destroy() end) end
 end
 __DIO_TweenOnIfAnyFlag = function()
-    local __on = false
-    pcall(function() __on = __DIO_FarmFlagsOn() and true or false end)
-    if not __on and __DIO_TweenTarget ~= nil and __DIO_LastTpT ~= nil and (tick() - __DIO_LastTpT) < 30 then
+    -- v8: "bat tween" = co tinh nang dang bat (UI hoac _G) hoac vua co yeu cau bay
+    local __on = __DIO_AnyFeatureOn()
+    if (not __on) and __DIO_TweenTarget ~= nil and __DIO_MoveFresh() then
         __on = true
     end
     if __on then
         shouldTween = true
         __DIO_TweenBlockT = 0
+        __DIO_TweenBlockDur = 0.5
+        if type(__DIO_TweenSync) == "function" then pcall(__DIO_TweenSync) end
     end
     return __on
 end
@@ -3135,23 +3208,17 @@ spawn(function()
       if __DIO_Block and __DIO_Block.Parent ~= workspace then
           pcall(function() __DIO_Block.Parent = workspace end)
       end
-      local __anyFlagST = __DIO_FarmFlagsOn()
-      local __validST   = __DIO_TweenValid()
+      -- v8: 1 nguon duy nhat quyet dinh shouldTween (thay cho watchdog + stomper cu)
+      local __validST = __DIO_TweenValid()
+      local __anyF    = __DIO_AnyFeatureOn() or __DIO_FlyBusy == true
       if __DIO_TweenTarget ~= nil and not __validST then
-          __DIO_TweenTarget = nil
-          __DIO_TweenArmedFlags = nil
-          __DIO_TweenArmedT = 0
-          __DIO_LastDist = nil
-          __DIO_LastHRPPos = nil
+          __DIO_TweenDrop("decor-invalid")
       end
-      local __movingST = (__validST or __DIO_FlyBusy == true
-          or (__DIO_CurTarget ~= nil and (__anyFlagST or __DIO_FlyBusy == true)))
-      if __anyFlagST or __movingST or __DIO_FlyBusy == true then
-       shouldTween = true
-        if __DIO_TweenTarget ~= nil then
-            __DIO_TweenArmedT = tick()
-        end
-        if __movingST then
+      pcall(__DIO_TweenSync)
+      local __onST = __validST or __anyF
+          or (__DIO_CurTarget ~= nil and (__anyF or __DIO_FlyBusy == true))
+      if __onST then
+        if __validST or __DIO_FlyBusy == true then
             local __chHL = plr.Character
             if __chHL and tick() - (__DIO_LastHlDecor or 0) >= 0.25 then
                 __DIO_LastHlDecor = tick()
@@ -3170,9 +3237,7 @@ spawn(function()
         if tick() - (__DIO_LastNoclipDecor or 0) < 0.25 then return end
         __DIO_LastNoclipDecor = tick()
         if __chST then for _, no in pairs(__chST:GetDescendants()) do if no:IsA("BasePart") and no.CanCollide then no.CanCollide = false end end end
-      elseif not __DIO_FlyBusy then
-        shouldTween = false
-        __DIO_TweenArmedFlags = nil
+      else
         __DIO_FalseSince = nil
         pcall(function()
             local __chOFF = plr.Character
@@ -3180,18 +3245,11 @@ spawn(function()
             if __hrpOFF and __hrpOFF:FindFirstChild("BodyClip") then __hrpOFF:FindFirstChild("BodyClip"):Destroy() end
         end)
         pcall(__DIO_HlOff)
-        pcall(function()
-            local __chOFF = plr.Character
-            if __chOFF then
-                local __hl = __chOFF:FindFirstChild('highlight')
-                if __hl then __hl:Destroy() end
-            end
-        end)
       end
     end)
       end
     end)
-    if not __okST then warn("[DIO] shouldTween stomper died -> restart: " .. tostring(__errST)) end
+    if not __okST then warn("[DIO] tween decor loop died -> restart: " .. tostring(__errST)) end
     task.wait(0.5)
   end
 end)
@@ -3968,6 +4026,7 @@ do
                             SetSetting(key, Value)
                         end
                         __DIO_UIState[key] = (Value == true)
+                        pcall(function() __DIO_UISetState(key, Value == true) end)
                         if Value == true then
                             -- Set tween control and wake active workers before
                             -- running the feature callback.
@@ -4045,26 +4104,25 @@ do
                                 end
                             end
                             pcall(function()
-                                local __anyOn = (type(__DIO_FarmFlagsOn) == "function") and __DIO_FarmFlagsOn() or false
-                                local __ownFarm = false
-                                for __k in pairs(__ownedFlags or {}) do
-                                    if type(__DIO_IsFarmFlag) == "function" and __DIO_IsFarmFlag(__k) then
-                                        __ownFarm = true
-                                        break
-                                    end
+                                -- v8: tat 1 tinh nang KHONG duoc giet tween cua tinh nang khac.
+                                -- Chi don dep khi THAT SU khong con tinh nang nao bat.
+                                pcall(function() __DIO_UISetState(key, false) end)
+                                local __stillOn = (type(__DIO_AnyFeatureOn) == "function") and __DIO_AnyFeatureOn() or false
+                                if __stillOn or __DIO_FlyBusy == true then
+                                    if type(__DIO_TweenSync) == "function" then pcall(__DIO_TweenSync) end
+                                    return
                                 end
                                 __DIO_TweenTarget = nil
                                 __DIO_TweenArmedFlags = nil
                                 __DIO_LastTweenTarget = nil
                                 __DIO_TweenArmedT = 0
                                 __DIO_FalseSince = nil
+                                __DIO_Parked = false
                                 if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
-                                if __ownFarm and not __DIO_FlyBusy and not __anyOn then
-                                    pcall(__DIO_TweenBlock, 0.5)
-                                end
-                                if not __anyOn and not __DIO_FlyBusy then
+                                pcall(__DIO_TweenBlock, 0.35)
+                                if not __DIO_FlyBusy then
                                     if type(__DIO_TweenKill) == "function" then
-                                        __DIO_TweenKill(false)
+                                        __DIO_TweenKill(false, true)
                                     else
                                         shouldTween = false
                                         __DIO_TweenTarget = nil
@@ -6226,7 +6284,8 @@ __DIO_SafeLoop(function()
                     end
                     if __dkWasHunting == false then
                         __dkWasHunting = true
-                        __DIO_TweenDrop()
+                        -- v8: BO __DIO_TweenDrop() o day. Chinh no lam Auto Dough King
+                        -- "bay 5-6s la dung tween" vi no xoa dich bay giua duong.
                         pcall(function() __DIO_Wake(true) end)
                     end
                     return
@@ -7143,7 +7202,7 @@ Tabs.Settings:AddButton({
             end
         end)
         pcall(function() for __o in pairs(__DIO_OwnerAlive) do __DIO_ReleaseAll(__o) end end)
-        pcall(__DIO_TweenKill, false)
+        pcall(__DIO_TweenKill, false, true)
         pcall(__DIO_TweenBlock, 0.6)
     end
 })
