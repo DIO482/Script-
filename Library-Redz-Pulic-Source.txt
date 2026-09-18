@@ -184,7 +184,7 @@ GitHubOwner="tlredz"
 Default={
 Theme="Darker",
 UISize=UDim2.fromOffset(550,380),
-TabSize=160
+SidebarWidth=160
 },
 
 Themes=r,
@@ -920,6 +920,19 @@ end
 am.Set=am.SetText
 an.Set=an.SetValue
 ao.Set=ao.SetValue
+end
+-- Loại emoji/ký hiệu khỏi CHỮ HIỂN THỊ của tab (trình execute mobile hay render
+-- emoji thành glyph đơn sắc đè lên chữ). .Title gốc vẫn giữ nguyên cho API/search.
+local function aCleanTitle(t)
+if type(t)~="string" then return t end
+local out=table.create(#t)
+for p,c in utf8.codes(t) do
+local drop=(c>=0x2100 and c<=0x2BFF)or(c>=0x1F000)or(c==0xFE0F)or(c==0x200D)or(c>=0x200 and c<0x400)
+if not drop then
+table.insert(out,utf8.char(c))
+end
+end
+return table.concat(out)
 end local al=function(
 
 al, am, an)
@@ -927,7 +940,7 @@ al, am, an)
 local ao=E("TextButton","Button",an,{
 Size=UDim2.new(1,0,0,26),
 AutoButtonColor=false,
-Text=am.Title,
+Text=aCleanTitle(am.Title),
 TextSize=11,
 TextXAlignment=Enum.TextXAlignment.Left,
 TextYAlignment=Enum.TextYAlignment.Center,
@@ -1011,6 +1024,12 @@ Image=am.Icon or""
 
 local as=string.sub(ar.Image,1,13)=="rbxassetid://"
 ar.Visible=as
+-- tự chữa: icon LUÔN ở ô trái 8px, chữ LUÔN canh trái sau icon -> không thể đè lên nhau
+ar.Position=UDim2.new(0,8,0.5)
+ar.AnchorPoint=Vector2.new(0,0.5)
+ar.Size=UDim2.new(0,14,0,14)
+ao.TextXAlignment=Enum.TextXAlignment.Left
+ao.TextTruncate=Enum.TextTruncate.AtEnd
 ao.UIPadding.PaddingLeft=UDim.new(0,as and 30 or 12)end
 
 
@@ -3797,7 +3816,7 @@ end local aa=function(
 aa, ab)
 local ac=ab.Size.Y.Offset
 -- Bề ngang sidebar tab (lưu trong LibrarySettings.json, mặc định 160)
-local aT=(aa~=nil and type(aa.TabSize)=="number")and math.clamp(aa.TabSize,96,240)or 160
+local aT=(aa~=nil and type(aa.SidebarWidth)=="number")and math.clamp(aa.SidebarWidth,120,240)or 160
 
 local ad=UDim2.new(0,aT,1,-ac)
 local ae=UDim2.new(1,-(aT+12),1,-(ac+12))
@@ -4244,16 +4263,37 @@ Elements={
 Corner=UDim.new(0.2,0)
 }
 }),
+-- Nút mở/thu UI: viên bi tròn LIQUID GLASS phát sáng
 E("ImageButton","Minimize",{
-Size=UDim2.new(0,18,0,18),
-Position=UDim2.new(1,-35,0.5),
+Size=UDim2.new(0,24,0,24),
+Position=UDim2.new(1,-38,0.5),
 AnchorPoint=Vector2.new(1,0.5),
-BackgroundTransparency=1,
-BackgroundColor3=Color3.new(1,1,1),
+BackgroundColor3=Color3.fromRGB(120,255,180),
+BackgroundTransparency=0.62,
 Image="rbxassetid://10734896206",
+ImageColor3=Color3.fromRGB(238,255,246),
+ScaleType=Enum.ScaleType.Fit,
 AutoButtonColor=false,
 Elements={
-Corner=UDim.new(0.2,0)
+Corner=UDim.new(1,0),
+Padding={
+PaddingLeft=UDim.new(0,5),
+PaddingRight=UDim.new(0,5),
+PaddingTop=UDim.new(0,5),
+PaddingBottom=UDim.new(0,5)
+},
+Gradient={
+Rotation=90,
+ThemeTag={Color="Glass.TabSheen"}
+},
+Stroke={
+ThemeTag={Color="Glass.Neon"},
+Thickness=1,
+Transparency=0.25
+}
+},
+ThemeTag={
+BackgroundColor3="Glass.Tab"
 }
 })
 }
@@ -4261,6 +4301,25 @@ Corner=UDim.new(0.2,0)
 
 local aq=ap.Minimize
 local ar=ap.Close
+
+-- Quầng sáng mềm sau viên bi mở UI
+E("Frame","MinimizeGlow",an,{
+Size=UDim2.new(0,34,0,34),
+Position=UDim2.new(1,-33,0.5),
+AnchorPoint=Vector2.new(1,0.5),
+BackgroundTransparency=0.55,
+BackgroundColor3=Color3.fromRGB(126,255,182),
+BorderSizePixel=0,
+ZIndex=0,
+Elements={
+Corner=UDim.new(1,0),
+Gradient={
+Rotation=90,
+ThemeTag={Color="Glass.LineGradient",Transparency="Glass.LineTransparency"}
+}
+}
+})
+aq.ZIndex=1
 
 local as=setmetatable(ae,{
 __index=R.Window
@@ -4380,7 +4439,7 @@ local aB=math.clamp(az.X.Offset-3,96,240)
 at.Size=UDim2.new(0,aB,1,-an.Size.Y.Offset)
 au.Size=UDim2.new(1,-(aB+12),1,-(an.Size.Y.Offset+12))
 au.Position=UDim2.new(0,aB+6,0,an.Size.Y.Offset+6)
-af.TabSize=aB
+af.SidebarWidth=aB
 local aC=al.TabBarSeparator
 if aC then
 aC.Position=UDim2.new(0,aB,0,an.Size.Y.Offset+5)
@@ -4409,8 +4468,8 @@ Title="NO"
 }
 }
 
-u(aq.MouseEnter,function()aq.BackgroundTransparency=0.65 end)
-u(aq.MouseLeave,function()aq.BackgroundTransparency=1.00 end)
+u(aq.MouseEnter,function()aq.BackgroundTransparency=0.38 end)
+u(aq.MouseLeave,function()aq.BackgroundTransparency=0.62 end)
 
 u(ar.MouseEnter,function()ar.BackgroundTransparency=0.65 end)
 u(ar.MouseLeave,function()ar.BackgroundTransparency=1.00 end)
