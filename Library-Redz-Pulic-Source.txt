@@ -79,6 +79,75 @@ Dropdown={
 Holder=Color3.fromRGB(30,30,30),
 }
 },
+Glass={
+-- ===== Bảng màu LIQUID GLASS XANH LÁ =====
+Base=Color3.fromRGB(9,44,31),
+Deep=Color3.fromRGB(5,28,20),
+Tint=Color3.fromRGB(18,92,60),
+Bright=Color3.fromRGB(52,226,126),
+Neon=Color3.fromRGB(126,255,182),
+Edge=Color3.fromRGB(206,255,228),
+White=Color3.fromRGB(255,255,255),
+Text=Color3.fromRGB(238,255,246),
+TextDim=Color3.fromRGB(178,238,206),
+Card=Color3.fromRGB(16,78,52),
+CardHover=Color3.fromRGB(26,116,76),
+Tab=Color3.fromRGB(56,224,126),
+Scrim=Color3.fromRGB(4,26,18),
+-- Nền kính (Window / Dialog / Notification)
+Window=ColorSequence.new{
+ColorSequenceKeypoint.new(0.00,Color3.fromRGB(28,132,86)),
+ColorSequenceKeypoint.new(0.32,Color3.fromRGB(12,68,46)),
+ColorSequenceKeypoint.new(0.66,Color3.fromRGB(7,40,29)),
+ColorSequenceKeypoint.new(1.00,Color3.fromRGB(20,110,72))
+},
+Panel=ColorSequence.new{
+ColorSequenceKeypoint.new(0.00,Color3.fromRGB(24,116,76)),
+ColorSequenceKeypoint.new(0.55,Color3.fromRGB(9,52,36)),
+ColorSequenceKeypoint.new(1.00,Color3.fromRGB(14,84,56))
+},
+-- Lớp bóng (sheen) + vệt sáng
+Sheen=ColorSequence.new{
+ColorSequenceKeypoint.new(0.00,Color3.fromRGB(255,255,255)),
+ColorSequenceKeypoint.new(0.50,Color3.fromRGB(214,255,232)),
+ColorSequenceKeypoint.new(1.00,Color3.fromRGB(180,255,214))
+},
+SheenTransparency=NumberSequence.new{
+NumberSequenceKeypoint.new(0.00,0.930),
+NumberSequenceKeypoint.new(0.26,0.965),
+NumberSequenceKeypoint.new(0.42,0.855),
+NumberSequenceKeypoint.new(0.58,0.930),
+NumberSequenceKeypoint.new(0.78,0.975),
+NumberSequenceKeypoint.new(1.00,0.940)
+},
+-- Bóng cho card (option)
+CardSheen=ColorSequence.new{
+ColorSequenceKeypoint.new(0.00,Color3.fromRGB(255,255,255)),
+ColorSequenceKeypoint.new(1.00,Color3.fromRGB(198,255,222))
+},
+CardSheenTransparency=NumberSequence.new{
+NumberSequenceKeypoint.new(0.00,0.900),
+NumberSequenceKeypoint.new(0.55,0.955),
+NumberSequenceKeypoint.new(1.00,0.995)
+},
+-- Bóng cho tab
+TabSheen=ColorSequence.new{
+ColorSequenceKeypoint.new(0.00,Color3.fromRGB(255,255,255)),
+ColorSequenceKeypoint.new(0.45,Color3.fromRGB(206,255,228)),
+ColorSequenceKeypoint.new(1.00,Color3.fromRGB(150,244,196))
+},
+-- Vạch sáng (gạch chân tab, đường kẻ phân cách)
+LineGradient=ColorSequence.new{
+ColorSequenceKeypoint.new(0.00,Color3.fromRGB(150,255,200)),
+ColorSequenceKeypoint.new(0.50,Color3.fromRGB(250,255,252)),
+ColorSequenceKeypoint.new(1.00,Color3.fromRGB(150,255,200))
+},
+LineTransparency=NumberSequence.new{
+NumberSequenceKeypoint.new(0.00,0.550),
+NumberSequenceKeypoint.new(0.50,0.050),
+NumberSequenceKeypoint.new(1.00,0.550)
+}
+},
 Icons={
 Error="rbxassetid://10709752996",
 Button="rbxassetid://10709791437",
@@ -863,17 +932,23 @@ TextSize=11,
 TextXAlignment=Enum.TextXAlignment.Center,
 TextYAlignment=Enum.TextYAlignment.Center,
 TextTransparency=0,
+TextStrokeColor3=Color3.fromRGB(3,32,20),
+TextStrokeTransparency=0.7,
 BackgroundTransparency=1,
 Elements={
-Corner=UDim.new(0,4),
+Corner=UDim.new(0,7),
 Padding={
 PaddingLeft=UDim.new(0,12),
 PaddingRight=UDim.new(0,12)
+},
+Gradient={
+Rotation=0,
+ThemeTag={Color="Glass.TabSheen"}
 }
 },
 ThemeTag={
-BackgroundColor3="Colors.Buttons.Holding",
-TextColor3="Colors.Text.Default",
+BackgroundColor3="Glass.Tab",
+TextColor3="Glass.Text",
 Font="Font.Medium"
 }
 })
@@ -883,8 +958,15 @@ Position=UDim2.new(0,0,1,2),
 AnchorPoint=Vector2.new(0,0),
 Size=UDim2.new(1,0,0,2),
 BackgroundTransparency=1,
+Elements={
+Corner=UDim.new(1,0),
+Gradient={
+Rotation=90,
+ThemeTag={Color="Glass.LineGradient",Transparency="Glass.LineTransparency"}
+}
+},
 ThemeTag={
-BackgroundColor3="Colors.Primary"
+BackgroundColor3="Glass.White"
 }
 })
 
@@ -894,13 +976,13 @@ Position=UDim2.new(0,0,1),
 AnchorPoint=Vector2.new(0,1),
 ScrollBarThickness=1.5,
 BackgroundTransparency=1,
-ScrollBarImageTransparency=0.2,
+ScrollBarImageTransparency=0.35,
 AutomaticCanvasSize=Enum.AutomaticSize.Y,
 ScrollingDirection=Enum.ScrollingDirection.Y,
 BorderSizePixel=0,
 CanvasSize=UDim2.new(),
 ThemeTag={
-ScrollBarImageColor3="Colors.ScrollBar"
+ScrollBarImageColor3="Glass.Neon"
 },
 Elements={
 Padding={
@@ -974,7 +1056,7 @@ Font="Font.Normal"
 
 local au={
 OBJECTS=ar,
-BackgroundColor3="Colors.Buttons.Default"
+BackgroundColor3="Glass.Card"
 }
 
 local av=E("TextButton","Option",{
@@ -982,9 +1064,19 @@ AutomaticSize=Enum.AutomaticSize.Y,
 Size=UDim2.new(1,0,0,25),
 AutoButtonColor=false,
 Text="",
+BackgroundTransparency=0.25,
 ThemeTag=au,
 Elements={
-Corner=UDim.new(0,6)
+Corner=UDim.new(0,8),
+Stroke={
+ThemeTag={Color="Glass.Edge"},
+Thickness=1,
+Transparency=0.86
+},
+Gradient={
+Rotation=115,
+ThemeTag={Color="Glass.CardSheen",Transparency="Glass.CardSheenTransparency"}
+}
 },
 Childs={
 E("Frame","Holder",{
@@ -1012,8 +1104,8 @@ local aw=av.Holder local ax=function(
 ax, ay)
 if ay then
 if _ then
-local az=w(s.CurrentTheme,"Colors.Buttons.Default")
-_.Theme.BackgroundColor3="Colors.Buttons.Default"
+local az=w(s.CurrentTheme,"Glass.Card")
+_.Theme.BackgroundColor3="Glass.Card"
 J(_.Button,"BackgroundColor3",az,0.2):Play()
 end
 
@@ -1027,8 +1119,8 @@ au.BackgroundColor3=ax
 J(av,"BackgroundColor3",w(s.CurrentTheme,ax),0.2):Play()end
 
 
-u(av.MouseLeave,function()ax("Colors.Buttons.Default",false)end)
-u(av.MouseEnter,function()ax("Colors.Buttons.Holding",true)end)
+u(av.MouseLeave,function()ax("Glass.Card",false)end)
+u(av.MouseEnter,function()ax("Glass.CardHover",true)end)
 
 u(at:GetPropertyChangedSignal"Text",function()
 local ay=#at.Text>0
@@ -1598,7 +1690,7 @@ function ah:AddSection(av)
         Text=av,
         ThemeTag={
             OBJECTS=aw,
-            TextColor3="Colors.Text.Default",
+            TextColor3="Glass.Text",
             Font="Font.ExtraBold"
         }
     })
@@ -1609,10 +1701,16 @@ function ah:AddSection(av)
         Position=UDim2.new(0,5,1,-1),
         AnchorPoint=Vector2.new(0,1),
         BorderSizePixel=0,
-        BackgroundTransparency=0.6,
+        BackgroundTransparency=0.35,
+        Elements={
+            Gradient={
+                Rotation=90,
+                ThemeTag={Color="Glass.LineGradient",Transparency="Glass.LineTransparency"}
+            }
+        },
         ThemeTag={
             OBJECTS=aw,
-            BackgroundColor3="Colors.Primary"
+            BackgroundColor3="Glass.White"
         }
     })
 
@@ -3002,7 +3100,7 @@ end end local aM=function()
 
 
 aL(aI)
-J(aC,"BackgroundTransparency",0.5,aH):Play()
+J(aC,"BackgroundTransparency",0.32,aH):Play()
 ay.Selected=true
 aK:changeRendering(true)
 aK:update()
@@ -3124,11 +3222,11 @@ Padding=UDim.new(0,20)
 
 aa=E("TextButton","OutBox",{
 Size=UDim2.fromScale(1,1),
-BackgroundTransparency=0.3,
+BackgroundTransparency=0.35,
 AutoButtonColor=false,
 Text="",
 ThemeTag={
-BackgroundColor3="Colors.Buttons.Default"
+BackgroundColor3="Glass.Scrim"
 },
 Childs={
 ax:FindFirstChildOfClass"UICorner":Clone(),
@@ -3137,16 +3235,36 @@ Size=UDim2.new(0.35,60,0.20,80),
 Position=UDim2.fromScale(0.5,0.5),
 AnchorPoint=Vector2.new(0.5,0.5),
 Active=true,
+BackgroundColor3=Color3.new(1,1,1),
+BackgroundTransparency=0.06,
 Elements={
-Corner=UDim.new(0,6),
+Corner=UDim.new(0,14),
+Stroke={
+ThemeTag={Color="Glass.Edge"},
+Thickness=1.5,
+Transparency=0.22
+},
 Gradient={
-Rotation=45,
+Rotation=125,
 ThemeTag={
-Color="Colors.Background"
+Color="Glass.Panel"
 }
 }
 },
 Childs={
+-- Lớp bóng loáng liquid glass cho dialog
+E("Frame","GlassSheen",{
+Size=UDim2.fromScale(1,1),
+BackgroundColor3=Color3.fromRGB(230,255,242),
+BorderSizePixel=0,
+ZIndex=0,
+Elements={
+Gradient={
+Rotation=118,
+ThemeTag={Color="Glass.Sheen",Transparency="Glass.SheenTransparency"}
+}
+}
+}),
 E("TextLabel","Title",{
 Size=UDim2.new(1,-20,0,20),
 TextTruncate=Enum.TextTruncate.AtEnd,
@@ -3381,15 +3499,19 @@ AutomaticSize=Enum.AutomaticSize.Y,
 Size=UDim2.fromScale(1,1),
 AutoButtonColor=false,
 Text="",
-ThemeTag={
-BackgroundTransparency="BackgroundTransparency"
-},
+BackgroundColor3=Color3.new(1,1,1),
+BackgroundTransparency=0.06,
 Elements={
-Corner=UDim.new(0,9),
+Corner=UDim.new(0,10),
+Stroke={
+ThemeTag={Color="Glass.Edge"},
+Thickness=1,
+Transparency=0.35
+},
 Gradient={
-Rotation=45,
+Rotation=125,
 ThemeTag={
-Color="Colors.Background"
+Color="Glass.Panel"
 }
 }
 }
@@ -3690,13 +3812,14 @@ AutomaticCanvasSize=Enum.AutomaticSize.X,
 ScrollingDirection=Enum.ScrollingDirection.X,
 Position=UDim2.new(0,0,0,ac),
 ScrollBarThickness=0,
-BackgroundTransparency=1,
+BackgroundColor3=Color3.fromRGB(120,255,180),
+BackgroundTransparency=0.93,
 ScrollBarImageTransparency=0.2,
 CanvasSize=UDim2.new(),
 BorderSizePixel=0,
 Size=ad,
 ThemeTag={
-ScrollBarImageColor3="Colors.ScrollBar"
+ScrollBarImageColor3="Glass.Neon"
 },
 Elements={
 Padding={
@@ -3718,8 +3841,12 @@ Padding=UDim.new(0,6)
 local ag=E("Frame","Containers",{
 Size=ae,
 Position=UDim2.new(0,0,0,ac+34),
-BackgroundTransparency=1,
-ClipsDescendants=true
+BackgroundColor3=Color3.fromRGB(150,255,200),
+BackgroundTransparency=0.945,
+ClipsDescendants=true,
+Elements={
+Corner=UDim.new(0,8)
+}
 })
 
 return af,ag end
@@ -3992,22 +4119,66 @@ Position=UDim2.new(0.5,-ah.X.Offset/2,0.5,-ah.Y.Offset/2),
 Active=true,
 Size=ah,
 ClipsDescendants=true,
-ThemeTag={
-BackgroundTransparency="BackgroundTransparency"
-},
+BackgroundColor3=Color3.new(1,1,1),
+BackgroundTransparency=0.1,
 Elements={
-Corner=UDim.new(0,8),
+Corner=UDim.new(0,14),
 Stroke={
-ThemeTag={Color="Colors.Primary"},
-Thickness=1.5
+ThemeTag={Color="Glass.Edge"},
+Thickness=1.5,
+Transparency=0.22
 },
 Gradient={
-Rotation=45,
+Rotation=125,
 ThemeTag={
-Color="Colors.Background"
+Color="Glass.Window"
+}
+}
+},
+Childs={
+-- Vệt sáng chéo (sheen) - linh hồn của liquid glass
+E("Frame","GlassSheen",{
+Size=UDim2.fromScale(1,1),
+BackgroundColor3=Color3.fromRGB(230,255,242),
+BorderSizePixel=0,
+ZIndex=0,
+Elements={
+Gradient={
+Rotation=118,
+ThemeTag={Color="Glass.Sheen",Transparency="Glass.SheenTransparency"}
+}
+}
+}),
+-- Viền sáng mảnh ở cạnh trên khung kính
+E("Frame","GlassRimLight",{
+Size=UDim2.new(1,0,0,1),
+BackgroundColor3=Color3.fromRGB(240,255,248),
+BorderSizePixel=0,
+ZIndex=0,
+Elements={
+Gradient={
+Rotation=90,
+Color=ColorSequence.new{
+ColorSequenceKeypoint.new(0,Color3.fromRGB(255,255,255)),
+ColorSequenceKeypoint.new(1,Color3.fromRGB(170,255,210))
+},
+Transparency=NumberSequence.new{
+NumberSequenceKeypoint.new(0.00,0.30),
+NumberSequenceKeypoint.new(0.45,0.75),
+NumberSequenceKeypoint.new(1.00,1.00)
 }
 }
 }
+})
+}
+}
+)
+
+-- Quầng sáng neon mềm bao quanh khung kính
+E("UIStroke","GlassGlow",ak,{
+ThemeTag={Color="Glass.Neon"},
+Thickness=4,
+Transparency=0.88
 })
 
 u(ak.Destroying,function()
@@ -4038,7 +4209,7 @@ Text=ae.Title,
 TextSize=13,
 BackgroundTransparency=1,
 ThemeTag={
-TextColor3="Colors.Text.Default",
+TextColor3="Glass.Text",
 Font="Font.ExtraBold"
 },
 Childs={
@@ -4053,7 +4224,7 @@ TextXAlignment="Left",
 TextYAlignment="Bottom",
 TextSize=9,
 ThemeTag={
-TextColor3="Colors.Text.Darker",
+TextColor3="Glass.TextDim",
 Font="Font.Normal"
 }
 })
@@ -4105,30 +4276,43 @@ local at,au=aa(af,an)
 at.Parent=al
 au.Parent=al
 
--- Viền xanh bao quanh panel Content
+-- Viền kính phát sáng bao quanh panel Content
 E("UIStroke","ContentStroke",au,{
-ThemeTag={Color="Colors.Primary"},
+ThemeTag={Color="Glass.Neon"},
 Thickness=1,
+Transparency=0.4,
 ApplyStrokeMode=Enum.ApplyStrokeMode.Border
 })
 
--- Đường kẻ ngang màu xanh dưới TopBar (ngăn header với thanh tab)
+-- Đường kẻ phát sáng dưới TopBar (ngăn header với thanh tab)
 E("Frame","TopBarSeparator",an,{
 Size=UDim2.new(1,0,0,1),
 Position=UDim2.new(0,0,1,-1),
 AnchorPoint=Vector2.new(0,1),
 BorderSizePixel=0,
-BackgroundTransparency=0.3,
-ThemeTag={BackgroundColor3="Colors.Primary"}
+BackgroundTransparency=0.25,
+Elements={
+Gradient={
+Rotation=90,
+ThemeTag={Color="Glass.LineGradient",Transparency="Glass.LineTransparency"}
+}
+},
+ThemeTag={BackgroundColor3="Glass.White"}
 })
 
--- Đường kẻ ngang màu xanh dưới thanh tab (giống ảnh)
+-- Đường kẻ phát sáng dưới thanh tab
 E("Frame","TabBarSeparator",al,{
 Size=UDim2.new(1,0,0,1),
 Position=UDim2.new(0,0,0,at.Position.Y.Offset+at.Size.Y.Offset-1),
 BorderSizePixel=0,
-BackgroundTransparency=0.3,
-ThemeTag={BackgroundColor3="Colors.Primary"}
+BackgroundTransparency=0.25,
+Elements={
+Gradient={
+Rotation=90,
+ThemeTag={Color="Glass.LineGradient",Transparency="Glass.LineTransparency"}
+}
+},
+ThemeTag={BackgroundColor3="Glass.White"}
 })
 
 local av=table.freeze{
@@ -4152,7 +4336,7 @@ Elements={
 Corner=UDim.new(0,6)
 },
 ThemeTag={
-BackgroundColor3="Colors.OnPrimary"
+BackgroundColor3="Glass.Neon"
 }
 })
 
@@ -4166,7 +4350,7 @@ Elements={
 Corner=UDim.new(0,6)
 },
 ThemeTag={
-BackgroundColor3="Colors.OnPrimary"
+BackgroundColor3="Glass.Neon"
 }
 })local ay=function(
 
