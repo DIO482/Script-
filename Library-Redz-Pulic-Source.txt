@@ -2991,13 +2991,67 @@ ai.SetContent=ai.SetDescription
 ai.SetDesc=ai.SetDescription
 
 function aj:CreateMobileMinimizer(av)
-local aw=E("ImageButton",I,{
-Size=UDim2.fromOffset(35,35),
+-- Quầng sáng mềm phía sau viên bi (tạo trước để nằm dưới nút)
+local aH=E("Frame","MobileMinimizerGlow",I,{
+Size=UDim2.fromOffset(62,62),
+Position=UDim2.fromScale(0.17,0.28),
+AnchorPoint=Vector2.new(0.5,0.5),
+BackgroundColor3=Color3.fromRGB(126,255,182),
+BackgroundTransparency=0.5,
+BorderSizePixel=0,
+ZIndex=0,
+Elements={
+Corner=UDim.new(1,0),
+Gradient={
+Rotation=90,
+ThemeTag={Color="Glass.LineGradient",Transparency="Glass.LineTransparency"}
+}
+}
+})
+
+-- Viên bi TRÒN LIQUID GLASS: nút đóng/mở UI nổi trên màn hình (kéo được)
+local aw=E("ImageButton","MobileMinimizer",I,{
+Size=UDim2.fromOffset(46,46),
 Position=UDim2.fromScale(0.17,0.28),
 AnchorPoint=Vector2.new(0.5,0.5),
 AutoButtonColor=false,
-ThemeTag={
-BackgroundColor3="Colors.Buttons.Default"
+BackgroundColor3=Color3.fromRGB(120,255,180),
+BackgroundTransparency=0.45,
+ScaleType=Enum.ScaleType.Fit,
+ZIndex=1,
+Elements={
+Corner=UDim.new(1,0),
+Padding={
+PaddingLeft=UDim.new(0,9),
+PaddingRight=UDim.new(0,9),
+PaddingTop=UDim.new(0,9),
+PaddingBottom=UDim.new(0,9)
+},
+Gradient={
+Rotation=90,
+ThemeTag={Color="Glass.TabSheen"}
+},
+Stroke={
+ThemeTag={Color="Glass.Neon"},
+Thickness=1.5,
+Transparency=0.2
+}
+},
+Childs={
+E("Frame","Sheen",{
+Size=UDim2.new(1,-10,0,15),
+Position=UDim2.new(0,5,0,4),
+BackgroundColor3=Color3.fromRGB(255,255,255),
+BackgroundTransparency=0.35,
+BorderSizePixel=0,
+Elements={
+Corner=UDim.new(1,0),
+Gradient={
+Rotation=90,
+ThemeTag={Color="Glass.Sheen",Transparency="Glass.SheenTransparency"}
+}
+}
+})
 }
 })
 
@@ -3005,20 +3059,46 @@ u(aw.Activated,function()
 ag:Minimize()
 end)
 
+-- halo bám theo viên bi khi kéo + nhuộm theo màu BackgroundColor3 người dùng truyền
+u(aw:GetPropertyChangedSignal("Position"),function()
+aH.Position=aw.Position
+end)
+u(aw:GetPropertyChangedSignal("BackgroundColor3"),function()
+aH.BackgroundColor3=aw.BackgroundColor3
+end)
+
+-- halo "thở": mờ rồi sáng tuần hoàn bằng 1 tween lặp, không tốn thread
+local aP=j:Create(aH,TweenInfo.new(1.8,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut,-1,true),{
+BackgroundTransparency=0.72
+})
+aP:Play()
+
 av.Elements={}
 
 if av.Corner then
+local aQ=aw:FindFirstChildOfClass("UICorner")
+if aQ then
+aQ.CornerRadius=av.Corner
+else
 av.Elements.Corner=av.Corner
+end
 av.Corner=nil
 end
 
 if av.Stroke then
+local aQ=aw:FindFirstChildOfClass("UIStroke")
+if aQ then
+D.SetProperties(aQ,av.Stroke)
+else
 av.Elements.Stroke=av.Stroke
+end
 av.Stroke=nil
 end
 
 D.Draggable(aw,ad,0.5)
 D.SetProperties(aw,av)
+aH.Position=aw.Position
+aH.BackgroundColor3=aw.BackgroundColor3
 
 return aw
 end
