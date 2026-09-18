@@ -4941,7 +4941,6 @@ function __DIO_FarmHardStop()
         if rawget(_G, __DIO_OwnFarmFlag) == true then rawset(_G, __DIO_OwnFarmFlag, false) end
         __DIO_OwnFarmFlag = nil
     end
-    _G.StartFarm = false
     _G.Level = false
     _G.AutoFarm_Bone = false
     _G.Auto_Cake_Prince = false
@@ -4950,21 +4949,12 @@ function __DIO_FarmHardStop()
     __DIO_LvlReset()
     pcall(__DIO_GhostReset)
     __DIO_CakeBoss = nil
-    if type(__DIO_TweenKill) == "function" then
-        __DIO_TweenKill(false, true)
-    else
-        StopTween(false)
-    end
 end
 function __DIO_ApplyFarmMode()
     __DIO_FarmHardStop()
     if not _G.StartFarm then
         StopTween(false)
         return
-    end
-    if __DIO_OwnFarmFlag then
-        pcall(__DIO_SetFlag, __DIO_OwnFarmFlag, "StartFarm", false)
-        __DIO_OwnFarmFlag = nil
     end
     local __mode = _G.FarmMode
     if __mode == "Farm Level" then
@@ -4980,6 +4970,7 @@ function __DIO_ApplyFarmMode()
     end
     if __DIO_OwnFarmFlag then
         pcall(__DIO_SetFlag, __DIO_OwnFarmFlag, "StartFarm", true)
+        _G[__DIO_OwnFarmFlag] = true
     end
     shouldTween = true
     __DIO_TweenAllowT = tick()
@@ -5023,6 +5014,7 @@ StartFarmToggle = Tabs.Main:AddToggle({
         if Value then
             __DIO_ApplyFarmMode()
         else
+            _G.StartFarm = false
             __DIO_FarmHardStop()
             StopTween(false)
         end
