@@ -531,7 +531,7 @@ __DIO_UISetOn = function(name, key, on)
     if type(__DIO_FeatMark2) == "function" then pcall(__DIO_FeatMark2, name, on) end
 end
 __DIO_FarmFlagNames = {
-    "SailBoat_Hydra", "WardenBoss", "AutoFactory", "HighestMirage", "HCM", "PGB", "Leviathan1", "UPGDrago",
+    "StartFarm", "SailBoat_Hydra", "WardenBoss", "AutoFactory", "HighestMirage", "HCM", "PGB", "Leviathan1", "UPGDrago",
     "Complete_Trials", "TpDrago_Prehis", "BuyDrago", "BuyMelee_BuyBlackLeg", "BuyMelee_BuyElectro", "BuyMelee_BuyFishmanKarate", "BuyMelee_BuyDragonClaw", "AutoFireFlowers",
     "DT_Uzoth", "AutoBerry", "Prefully", "Prehis_Find", "Prehis_Skills", "Prehis_DB", "Prehis_DE", "FarmBlazeEM",
     "Dojoo", "CollectPresent", "AutoLawKak", "TpLab", "AutoPhoenixF", "AutoFarmChest", "AutoHytHallow", "LongsWord",
@@ -684,7 +684,7 @@ __DIO_SetFlag = function(name, owner, on, suppress)
     return __DIO_FlagApply(name)
 end
 __DIO_SharedFlags = {
-    Level = true, AutoFarm_Bone = true, Auto_Cake_Prince = true,
+    StartFarm = true, Level = true, AutoFarm_Bone = true, Auto_Cake_Prince = true,
     FarmTyrant = true, AutoFarmNear = true,
     Prehis_Find = true, Prehis_Skills = true, Prehis_DB = true, Prehis_DE = true,
     SailBoats = true, FishBoat = true, SeaBeast1 = true, Shark = true,
@@ -781,9 +781,26 @@ end
 -- Tinh nang dang bat?
 __DIO_AnyFeatureOn = function()
     if __DIO_FlyBusy == true then return true end
-    if (__DIO_FeatOnN or 0) > 0 then return true end
+    if _G.StartFarm == true then return true end
     local ok, r = pcall(__DIO_AnyFarmFlag)
     if ok and r then return true end
+    if (__DIO_FeatOnN or 0) > 0 then
+        local anyReal = false
+        if type(__DIO_FeatMark) == "table" then
+            for k, v in pairs(__DIO_FeatMark) do
+                if v == true and __DIO_FlagGet(k) == true then
+                    anyReal = true
+                    break
+                end
+            end
+        end
+        if not anyReal then
+            __DIO_FeatOnN = 0
+            __DIO_FeatMark = {}
+        else
+            return true
+        end
+    end
     return false
 end
 __DIO_TweenAllowed = function()
@@ -801,7 +818,7 @@ __DIO_FlagOnT         = {}
 __DIO_FlagOffT        = {}
 __DIO_DodgeT0         = 0
 __DIO_DODGE_MAX       = 8
-__DIO_ExtraFarmFlags  = { "AutoMaterial", "NextIs", "senth", "senth2", "KillAuraFull", "AcceptQuestBoss", "GetQFast" }
+__DIO_ExtraFarmFlags  = { "AutoMaterial", "StartFarm", "NextIs", "senth", "senth2" }
 __DIO_FarmFlagList    = nil
 __DIO_FarmFlagAll = function()
     if __DIO_FarmFlagList ~= nil then return __DIO_FarmFlagList end
@@ -895,23 +912,26 @@ __DIO_TweenValid = function()
         if __DIO_Dodging == true then return false end
     end
     if __DIO_FlyBusy == true then return true end
-    if __DIO_AnyFeatureOn() then return true end
+    local featOn = __DIO_AnyFeatureOn()
+    if not featOn then return false end
     if __DIO_MoveFresh() then return true end
     if __DIO_Approaching() and (tick() - (__DIO_MoveT or 0)) < (__DIO_KEEP_APPROACH or 90) then
         return true
     end
-    return false
+    return true
 end
 __DIO_TweenSync = function()
     local on = false
     if __DIO_FlyBusy == true then
         on = true
-    elseif __DIO_TweenTarget ~= nil and __DIO_TweenValid() then
-        on = true
     elseif __DIO_AnyFeatureOn() then
-        on = true
-    elseif __DIO_MoveFresh() then
-        on = true
+        if __DIO_TweenTarget ~= nil and __DIO_TweenValid() then
+            on = true
+        elseif __DIO_MoveFresh() then
+            on = true
+        else
+            on = true
+        end
     end
     shouldTween = on and true or false
     return on
@@ -989,6 +1009,14 @@ __DIO_TweenKill = function(keepHighlight, force)
     pcall(function()
         if __DIO_LastTween then __DIO_LastTween:Cancel() end
         __DIO_LastTween = nil
+    end)
+    pcall(function()
+        local char = plr.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            local bc = hrp:FindFirstChild("BodyClip")
+            if bc then bc:Destroy() end
+        end
     end)
     if keepHighlight ~= true then
         pcall(function() if type(__DIO_HlOff) == "function" then __DIO_HlOff() end end)
@@ -2716,18 +2744,7 @@ _tp = function(target)
     local character = plr.Character
     if not character or not character:FindFirstChild("HumanoidRootPart") then return end
     local rootPart = character.HumanoidRootPart
-    -- v9 BERRY: Auto Farm Berry / Berry + Hop KHONG phu thuoc vao tween nua.
-    -- Berry phai dung ngay tai bush de bom ProximityPrompt -> teleport thang,
-    -- khong bi bat ky logic tween / park / gating nao lam cham hay dung.
-    if _G.AutoBerry == true or _G.AutoBerryH == true then
-        pcall(function() rootPart.CFrame = gg end)
-        if __DIO_Block then pcall(function() __DIO_Block.CFrame = gg end) end
-        pcall(__DIO_TweenSet, gg)
-        pcall(__DIO_Move)
-        local __ftB = __DIO_NewFakeTween()
-        __DIO_LastTween = __ftB
-        return __ftB
-    end
+
     do
         local __needEnt = false
         pcall(function()
@@ -3026,7 +3043,7 @@ StopTween = function(state)
         return
     end
     if type(__DIO_TweenKill) == "function" then
-        __DIO_TweenKill(false)
+        __DIO_TweenKill(false, true)
         return
     end
     shouldTween = false
@@ -3038,6 +3055,9 @@ StopTween = function(state)
             __DIO_LastTween:Cancel()
             __DIO_LastTween = nil
         end
+    end)
+    pcall(function()
+        if type(__DIO_HlOff) == "function" then __DIO_HlOff() end
     end)
 end
 AutoHaki = function()
@@ -3084,7 +3104,7 @@ function BTP(p)
     until (p.Position - humanoidRootPart.Position).Magnitude <= 2000
 end
 __DIO_FarmFlagsOn = function()
-    return (_G.SailBoat_Hydra or _G.WardenBoss or _G.AutoFactory or _G.HighestMirage or _G.HCM or _G.PGB or _G.Leviathan1 or _G.UPGDrago or _G.Complete_Trials or _G.TpDrago_Prehis or _G.BuyDrago or __DIO_BuyFlying or _G.BuyMelee_BuyBlackLeg or _G.BuyMelee_BuyElectro or _G.BuyMelee_BuyFishmanKarate or _G.BuyMelee_BuyDragonClaw or _G.AutoFireFlowers or _G.DT_Uzoth or _G.AutoBerry or _G.Prefully or _G.Prehis_Find or _G.Prehis_Skills or _G.Prehis_DB or _G.Prehis_DE or _G.FarmBlazeEM or _G.Dojoo or _G.CollectPresent or _G.AutoLawKak or _G.TpLab or _G.AutoPhoenixF or _G.AutoFarmChest or _G.AutoHytHallow or _G.LongsWord or _G.BlackSpikey or _G.AutoHolyTorch or _G.TrainDrago  or _G.AutoSaber or _G.FarmMastery_Dev or _G.CitizenQuest or _G.AutoEctoplasm or _G.KeysRen or _G.Auto_Rainbow_Haki or _G.obsFarm or _G.AutoBigmom or _G.Doughv2 or _G.AuraBoss or _G.Raiding or _G.Auto_Cavender or _G.TpPly or _G.Bartilo_Quest or _G.Level or _G.FarmEliteHunt or _G.AutoZou or _G.AutoFarm_Bone or getgenv().AutoMaterial or _G.CraftVM or _G.FrozenTP or _G.ShotHL or _G.TPDoor or _G.AcientOne or _G.AutoFarmNear or _G.AutoRaidCastle or _G.DarkBladev3 or _G.AutoFarmRaid or _G.Auto_Cake_Prince or _G.Addealer or _G.TPNpc or _G.TwinHook or _G.FindMirage or _G.FrozenDimension or _G.FarmChestM or _G.Shark or _G.TerrorShark or _G.Piranha or _G.MobCrew or _G.SeaBeast1 or _G.FishBoat or _G.AutoPole or _G.AutoPoleV2 or _G.Auto_SuperHuman or _G.AutoDeathStep or _G.Auto_SharkMan_Karate or _G.Auto_Electric_Claw or _G.AutoDragonTalon or _G.Auto_Def_DarkCoat or _G.Auto_God_Human or _G.Auto_Tushita or _G.AutoMatSoul or _G.AutoKenVTWO or _G.AutoSerpentBow or _G.AutoFMon or _G.Auto_Soul_Guitar or _G.TPGEAR or _G.AutoSaw or _G.AutoTridentW2 or _G.AutoEvoRace or _G.AutoGetQuestBounty or _G.MarinesCoat or _G.TravelDres or _G.Defeating or _G.DummyMan or _G.Auto_Yama or _G.Auto_SwanGG or _G.SwanCoat or _G.AutoEcBoss or _G.Auto_Mink or _G.Auto_Human or _G.Auto_Skypiea or _G.Auto_Fish or _G.CDK_TS or _G.CDK_YM or _G.CDK or _G.AutoFarmGodChalice or _G.AutoFistDarkness or _G.AutoMiror or _G.Teleport or _G.AutoKilo or _G.AutoGetUsoap or _G.Praying or _G.TryLucky or _G.AutoColShad or _G.AutoUnHaki or _G.Auto_DonAcces or _G.AutoRipIngay or _G.DragoV3 or _G.DragoV1 or _G.SailBoats or NextIs or _G.FarmGodChalice or _G.IceBossRen or senth or senth2 or _G.Lvthan or _G.beasthunter or _G.DangerLV or _G.Relic123 or _G.tweenKitsune or _G.Collect_Ember or _G.AutofindKitIs or _G.Snaguine or _G.TwFruits or _G.tweenKitShrine or _G.Tp_LgS or _G.Tp_MasterA or _G.tweenShrine or _G.FarmMastery_G or _G.FarmMastery_S or _G.FarmBoss or _G.AutoFarmAllBoss or _G.AutoFishSlap or _G.TweenBoatOwner or _G.FarmTyrant or _G.FarmPhaBinh or _G.AutoSpawnCP or _G.AutoBerryH or _G.AutoChestBP or _G.FarmEliteHop or _G.AutoHop_Dough or _G.AutoDoughKing or _G.AutoAttackDoughKing or _G.AutoChipFruit or _G.AutoChipBeli or _G.Auto_StartRaid or _G.StartEvent or _G.AutoMysticIsland or _G.AutoPlayerHunter or _G.SafeMode or _G.AutoKillMob or _G.AutoStartPrehistoric or _G.AutoUnHaki or _G.AutoFarmIsland or _G.AutoFarmDungeon or _G.AutoFarmCandy or _G.AutoTP_Gift or _G.AutoTPGift or _G.AutoTPAndCollect or _G.MasterAutoLevel or _G.MasterAutoCandy or _G.TPFloor1 or _G.TPFloor2 or _G.TPFloor3 or _G.TPFloor4 or _G.FarmEliteH or _G.Safemode or _G.Greybeard or _G.ResetPH) and true or false
+    return (_G.StartFarm or _G.SailBoat_Hydra or _G.WardenBoss or _G.AutoFactory or _G.HighestMirage or _G.HCM or _G.PGB or _G.Leviathan1 or _G.UPGDrago or _G.Complete_Trials or _G.TpDrago_Prehis or _G.BuyDrago or __DIO_BuyFlying or _G.BuyMelee_BuyBlackLeg or _G.BuyMelee_BuyElectro or _G.BuyMelee_BuyFishmanKarate or _G.BuyMelee_BuyDragonClaw or _G.AutoFireFlowers or _G.DT_Uzoth or _G.AutoBerry or _G.Prefully or _G.Prehis_Find or _G.Prehis_Skills or _G.Prehis_DB or _G.Prehis_DE or _G.FarmBlazeEM or _G.Dojoo or _G.CollectPresent or _G.AutoLawKak or _G.TpLab or _G.AutoPhoenixF or _G.AutoFarmChest or _G.AutoHytHallow or _G.LongsWord or _G.BlackSpikey or _G.AutoHolyTorch or _G.TrainDrago  or _G.AutoSaber or _G.FarmMastery_Dev or _G.CitizenQuest or _G.AutoEctoplasm or _G.KeysRen or _G.Auto_Rainbow_Haki or _G.obsFarm or _G.AutoBigmom or _G.Doughv2 or _G.AuraBoss or _G.Raiding or _G.Auto_Cavender or _G.TpPly or _G.Bartilo_Quest or _G.Level or _G.FarmEliteHunt or _G.AutoZou or _G.AutoFarm_Bone or getgenv().AutoMaterial or _G.CraftVM or _G.FrozenTP or _G.ShotHL or _G.TPDoor or _G.AcientOne or _G.AutoFarmNear or _G.AutoRaidCastle or _G.DarkBladev3 or _G.AutoFarmRaid or _G.Auto_Cake_Prince or _G.Addealer or _G.TPNpc or _G.TwinHook or _G.FindMirage or _G.FrozenDimension or _G.FarmChestM or _G.Shark or _G.TerrorShark or _G.Piranha or _G.MobCrew or _G.SeaBeast1 or _G.FishBoat or _G.AutoPole or _G.AutoPoleV2 or _G.Auto_SuperHuman or _G.AutoDeathStep or _G.Auto_SharkMan_Karate or _G.Auto_Electric_Claw or _G.AutoDragonTalon or _G.Auto_Def_DarkCoat or _G.Auto_God_Human or _G.Auto_Tushita or _G.AutoMatSoul or _G.AutoKenVTWO or _G.AutoSerpentBow or _G.AutoFMon or _G.Auto_Soul_Guitar or _G.TPGEAR or _G.AutoSaw or _G.AutoTridentW2 or _G.AutoEvoRace or _G.AutoGetQuestBounty or _G.MarinesCoat or _G.TravelDres or _G.Defeating or _G.DummyMan or _G.Auto_Yama or _G.Auto_SwanGG or _G.SwanCoat or _G.AutoEcBoss or _G.Auto_Mink or _G.Auto_Human or _G.Auto_Skypiea or _G.Auto_Fish or _G.CDK_TS or _G.CDK_YM or _G.CDK or _G.AutoFarmGodChalice or _G.AutoFistDarkness or _G.AutoMiror or _G.Teleport or _G.AutoKilo or _G.AutoGetUsoap or _G.Praying or _G.TryLucky or _G.AutoColShad or _G.AutoUnHaki or _G.Auto_DonAcces or _G.AutoRipIngay or _G.DragoV3 or _G.DragoV1 or _G.SailBoats or NextIs or _G.FarmGodChalice or _G.IceBossRen or senth or senth2 or _G.Lvthan or _G.beasthunter or _G.DangerLV or _G.Relic123 or _G.tweenKitsune or _G.Collect_Ember or _G.AutofindKitIs or _G.Snaguine or _G.TwFruits or _G.tweenKitShrine or _G.Tp_LgS or _G.Tp_MasterA or _G.tweenShrine or _G.FarmMastery_G or _G.FarmMastery_S or _G.FarmBoss or _G.AutoFarmAllBoss or _G.AutoFishSlap or _G.TweenBoatOwner or _G.FarmTyrant or _G.FarmPhaBinh or _G.AutoSpawnCP or _G.AutoBerryH or _G.AutoChestBP or _G.FarmEliteHop or _G.AutoHop_Dough or _G.AutoDoughKing or _G.AutoAttackDoughKing or _G.AutoChipFruit or _G.AutoChipBeli or _G.Auto_StartRaid or _G.StartEvent or _G.AutoMysticIsland or _G.AutoPlayerHunter or _G.SafeMode or _G.AutoKillMob or _G.AutoStartPrehistoric or _G.AutoUnHaki or _G.AutoFarmIsland or _G.AutoFarmDungeon or _G.AutoFarmCandy or _G.AutoTP_Gift or _G.AutoTPGift or _G.AutoTPAndCollect or _G.MasterAutoLevel or _G.MasterAutoCandy or _G.TPFloor1 or _G.TPFloor2 or _G.TPFloor3 or _G.TPFloor4 or _G.FarmEliteH or _G.Safemode or _G.Greybeard or _G.ResetPH) and true or false
 end
 __DIO_HlOn = function()
     local __ch = plr.Character
@@ -3251,17 +3271,16 @@ spawn(function()
       -- v9: 1 nguon duy nhat quyet dinh shouldTween
       local __validST = __DIO_TweenValid()
       local __anyF    = __DIO_AnyFeatureOn() or __DIO_FlyBusy == true
-      local __curT    = (__DIO_CurTarget ~= nil)
+      local __curT    = (__DIO_CurTarget ~= nil and __anyF)
       if __DIO_TweenTarget ~= nil and not __validST then
           -- v9: drop that su khi core xac nhan khong con hop le
-          if not __anyF and not __curT and not __DIO_MoveFresh() then
+          if not __anyF and not __curT then
               __DIO_TweenDropHard("decor-invalid")
           end
       end
       pcall(__DIO_TweenSync)
-      -- v9: HIGHLIGHT = "tinh nang dang chay", khong phu thuoc tween co target
-      -- (truoc day mode Obrit / luc core xoa target lam mat mau highlight)
-      local __hlWant = (__anyF or __validST or __curT)
+      -- HIGHLIGHT = "tinh nang dang chay", tat ngay khi khong con tinh nang chay
+      local __hlWant = (__anyF or (__validST and __anyF))
       __DIO_HlSync(__hlWant)
       if __hlWant then
         local __stompHum = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
@@ -4922,9 +4941,20 @@ function __DIO_FarmHardStop()
         if rawget(_G, __DIO_OwnFarmFlag) == true then rawset(_G, __DIO_OwnFarmFlag, false) end
         __DIO_OwnFarmFlag = nil
     end
+    _G.StartFarm = false
+    _G.Level = false
+    _G.AutoFarm_Bone = false
+    _G.Auto_Cake_Prince = false
+    _G.FarmTyrant = false
+    _G.AutoFarmNear = false
     __DIO_LvlReset()
     pcall(__DIO_GhostReset)
     __DIO_CakeBoss = nil
+    if type(__DIO_TweenKill) == "function" then
+        __DIO_TweenKill(false, true)
+    else
+        StopTween(false)
+    end
 end
 function __DIO_ApplyFarmMode()
     __DIO_FarmHardStop()
@@ -5464,70 +5494,161 @@ __DIO_BerryBushPass = function(Bush)
     return false
 end
 __DIO_BerryBushes = function()
-    local __okBB, __list = pcall(function() return __SVC_CS:GetTagged("BerryBush") end)
-    if __okBB and type(__list) == "table" then return __list end
-    return {}
+    local list = {}
+    local seen = {}
+    local function add(inst)
+        if inst and not seen[inst] then
+            seen[inst] = true
+            table.insert(list, inst)
+        end
+    end
+    pcall(function()
+        for _, tag in ipairs({"BerryBush", "Berry", "_BerryBush", "Bush"}) do
+            for _, inst in ipairs(__SVC_CS:GetTagged(tag)) do
+                add(inst)
+            end
+        end
+    end)
+    pcall(function()
+        for _, obj in ipairs(workspace:GetChildren()) do
+            local name = obj.Name:lower()
+            if name:find("berry") or name:find("bush") then
+                add(obj)
+            end
+        end
+    end)
+    pcall(function()
+        local map = workspace:FindFirstChild("Map")
+        if map then
+            for _, obj in ipairs(map:GetChildren()) do
+                local name = obj.Name:lower()
+                if name:find("berry") or name:find("bush") then
+                    add(obj)
+                end
+            end
+        end
+    end)
+    return list
 end
-__DIO_FarmBerryStep = function()
-    local BerryBush = __DIO_BerryBushes()
-    local __char = plr.Character
-    local __hrp = __char and __char:FindFirstChild("HumanoidRootPart")
-    local myPos = __hrp and __hrp.Position
-    local bestCF, bestPrompt, bestDist = nil, nil, math.huge
-    for i = 1, #BerryBush do
-        local Bush = BerryBush[i]
-        if Bush and __DIO_BerryBushPass(Bush) then
-            for _, BerryChild in ipairs(Bush:GetChildren()) do
-                pcall(function()
-                    local pp = BerryChild:FindFirstChildOfClass("ProximityPrompt")
-                    if pp and pp.Enabled ~= false then
-                        local cf = __DIO_GetInstCF(BerryChild)
-                        if cf then
-                            local d = myPos and (cf.Position - myPos).Magnitude or 0
-                            if d < bestDist then
-                                bestDist = d bestCF = cf bestPrompt = pp
-                            end
-                        end
-                    end
-                end)
+__DIO_FindAllBerryPrompts = function()
+    local prompts = {}
+    local seen = {}
+    local function checkPrompt(pp, fallbackCF)
+        if not pp or not pp:IsA("ProximityPrompt") then return end
+        if pp.Enabled == false then return end
+        if seen[pp] then return end
+        seen[pp] = true
+        local cf = nil
+        local parent = pp.Parent
+        if parent then
+            if parent:IsA("BasePart") then
+                cf = parent.CFrame
+            elseif parent:IsA("Model") then
+                cf = parent:GetPivot()
+            elseif parent.Parent and parent.Parent:IsA("BasePart") then
+                cf = parent.Parent.CFrame
+            elseif parent.Parent and parent.Parent:IsA("Model") then
+                cf = parent.Parent:GetPivot()
+            end
+        end
+        cf = cf or fallbackCF
+        if cf then
+            table.insert(prompts, { prompt = pp, cf = cf })
+        end
+    end
+    local bushes = __DIO_BerryBushes()
+    for _, bush in ipairs(bushes) do
+        if bush and __DIO_BerryBushPass(bush) then
+            local bushCF = __DIO_GetInstCF(bush)
+            local pDirect = bush:FindFirstChildOfClass("ProximityPrompt")
+            if pDirect then checkPrompt(pDirect, bushCF) end
+            for _, desc in ipairs(bush:GetDescendants()) do
+                if desc:IsA("ProximityPrompt") then
+                    checkPrompt(desc, bushCF)
+                end
             end
         end
     end
-    if bestCF and bestPrompt then
-        _tp(bestCF)
-        if bestDist <= 15 then
-            pcall(fireproximityprompt, bestPrompt, math.huge)
+    pcall(function()
+        for _, pp in ipairs(workspace:GetDescendants()) do
+            if pp:IsA("ProximityPrompt") and pp.Enabled ~= false and not seen[pp] then
+                local act = (pp.ActionText or ""):lower()
+                local obj = (pp.ObjectText or ""):lower()
+                local pName = (pp.Name or ""):lower()
+                local parentName = pp.Parent and pp.Parent.Name:lower() or ""
+                if act:find("berry") or obj:find("berry") or pName:find("berry") or parentName:find("berry") then
+                    checkPrompt(pp, nil)
+                end
+            end
         end
-        return #BerryBush, true
+    end)
+    return prompts
+end
+__DIO_FarmBerryStep = function()
+    local char = plr.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return 0, false end
+    local myPos = hrp.Position
+    local prompts = __DIO_FindAllBerryPrompts()
+    if #prompts == 0 then
+        return 0, false
     end
-    return #BerryBush, false
+    local bestEntry, bestDist = nil, math.huge
+    for _, entry in ipairs(prompts) do
+        local d = (entry.cf.Position - myPos).Magnitude
+        if d < bestDist then
+            bestDist = d
+            bestEntry = entry
+        end
+    end
+    if bestEntry then
+        local targetCF = bestEntry.cf * CFrame.new(0, 2, 0)
+        _tp(targetCF)
+        if bestDist <= 25 then
+            pcall(fireproximityprompt, bestEntry.prompt, 0)
+            pcall(fireproximityprompt, bestEntry.prompt, 1)
+            pcall(fireproximityprompt, bestEntry.prompt, math.huge)
+        end
+        return #prompts, true
+    end
+    return #prompts, false
 end
 __DIO_BerryHopT = 0
 __DIO_SafeLoop(function()
-    while __DIO_wait(1) do
+    while __DIO_wait(0.3) do
         if _G.AutoBerryH then
             local __okH, __nH, __hasH = pcall(__DIO_FarmBerryStep)
-            if __okH and not __hasH and tick() - __DIO_BerryHopT > 6 then
-                __DIO_BerryHopT = tick()
-                pcall(function()
-                    if Window and Window.Notify then
-                        __DIO_TNotify("Auto Farm Berry + Hop", "Het berry trong server -> Hop server khac...", 4)
-                    end
-                end)
-                pcall(function()
-                    local ServerList = {}
-                    local Success = pcall(function()
-                        ServerList = __SVC_HTTP:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"))
+            if __okH and not __hasH then
+                if __DIO_BerryHopT == 0 then
+                    __DIO_BerryHopT = tick()
+                elseif tick() - __DIO_BerryHopT > 5 then
+                    __DIO_BerryHopT = 0
+                    pcall(function()
+                        if Window and Window.Notify then
+                            __DIO_TNotify("Auto Farm Berry + Hop", "Het berry trong server -> Hop server khac...", 4)
+                        end
                     end)
-                    if Success and ServerList.data then
-                        for _, Server in pairs(ServerList.data) do
-                            if Server.playing < Server.maxPlayers and Server.id ~= game.JobId then
-                                __SVC_TP:TeleportToPlaceInstance(game.PlaceId, Server.id, __SVC_PLR.LocalPlayer)
-                                break
+                    pcall(function()
+                        if type(Hop) == "function" then
+                            Hop()
+                        else
+                            local ServerList = {}
+                            local Success = pcall(function()
+                                ServerList = __SVC_HTTP:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"))
+                            end)
+                            if Success and ServerList.data then
+                                for _, Server in pairs(ServerList.data) do
+                                    if Server.playing < Server.maxPlayers and Server.id ~= game.JobId then
+                                        __SVC_TP:TeleportToPlaceInstance(game.PlaceId, Server.id, __SVC_PLR.LocalPlayer)
+                                        break
+                                    end
+                                end
                             end
                         end
-                    end
-                end)
+                    end)
+                end
+            else
+                __DIO_BerryHopT = 0
             end
         end
     end
@@ -9570,9 +9691,12 @@ Description = "",
 Default = false,
 Callback = function(Value)
   _G.AutoBerry = Value
+  if not Value then
+    StopTween(false)
+  end
 end})
 __DIO_SafeLoop(function()
-  while __DIO_wait(Sec) do
+  while __DIO_wait(0.3) do
     if _G.AutoBerry then
       pcall(__DIO_FarmBerryStep)
     end
@@ -9584,6 +9708,9 @@ Description = "",
 Default = false,
 Callback = function(Value)
   _G.AutoBerryH = Value
+  if not Value then
+    StopTween(false)
+  end
 end})
 Tabs.Quests:AddSection("Buso/Aura Colours")
 Q = Tabs.Quests:AddToggle({
@@ -15232,7 +15359,7 @@ __DIO_FlyTo = function(targetCF, arriveDist, cancelFn)
         shouldTween = true
     else
         shouldTween = __old
-        if __old ~= true then pcall(function() if type(__DIO_TweenKill) == "function" then __DIO_TweenKill(false) end end) end
+        if __old ~= true then pcall(function() if type(__DIO_TweenKill) == "function" then __DIO_TweenKill(false, true) end end) end
     end
     if not __okFly then warn("[DIO] FlyTo error: " .. tostring(__errFly)) end
     return __ok
