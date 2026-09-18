@@ -923,26 +923,27 @@ ao.Set=ao.SetValue
 end local al=function(
 
 al, am, an)
+-- Nút tab kiểu sidebar dọc: bề ngang full, chữ canh trái, icon nằm trước chữ
 local ao=E("TextButton","Button",an,{
-AutomaticSize=Enum.AutomaticSize.X,
-Size=UDim2.new(0,0,0,22),
+Size=UDim2.new(1,0,0,26),
 AutoButtonColor=false,
 Text=am.Title,
 TextSize=11,
-TextXAlignment=Enum.TextXAlignment.Center,
+TextXAlignment=Enum.TextXAlignment.Left,
 TextYAlignment=Enum.TextYAlignment.Center,
+TextTruncate=Enum.TextTruncate.AtEnd,
 TextTransparency=0,
 TextStrokeColor3=Color3.fromRGB(3,32,20),
-TextStrokeTransparency=0.7,
+TextStrokeTransparency=0.75,
 BackgroundTransparency=1,
 Elements={
 Corner=UDim.new(0,7),
 Padding={
 PaddingLeft=UDim.new(0,12),
-PaddingRight=UDim.new(0,12)
+PaddingRight=UDim.new(0,8)
 },
 Gradient={
-Rotation=0,
+Rotation=90,
 ThemeTag={Color="Glass.TabSheen"}
 }
 },
@@ -953,10 +954,11 @@ Font="Font.Medium"
 }
 })
 
+-- Vạch neon dọc bên trái tab đang chọn
 local ap=E("Frame","Indicator",ao,{
-Position=UDim2.new(0,0,1,2),
-AnchorPoint=Vector2.new(0,0),
-Size=UDim2.new(1,0,0,2),
+Position=UDim2.new(0,0,0.5),
+AnchorPoint=Vector2.new(0,0.5),
+Size=UDim2.new(0,2.5,0.62,0),
 BackgroundTransparency=1,
 Elements={
 Corner=UDim.new(1,0),
@@ -998,8 +1000,8 @@ Padding=UDim.new(0,5)
 })
 
 local ar=E("ImageLabel","Icon",ao,{
-Position=UDim2.new(0,6,0.5),
-Size=UDim2.new(0,13,0,13),
+Position=UDim2.new(0,8,0.5),
+Size=UDim2.new(0,14,0,14),
 AnchorPoint=Vector2.new(0,0.5),
 BackgroundTransparency=1,
 ImageTransparency=0.3,
@@ -1009,7 +1011,7 @@ Image=am.Icon or""
 
 local as=string.sub(ar.Image,1,13)=="rbxassetid://"
 ar.Visible=as
-ao.UIPadding.PaddingLeft=UDim.new(0,as and 24 or 12)end
+ao.UIPadding.PaddingLeft=UDim.new(0,as and 30 or 12)end
 
 
 u(ar:GetPropertyChangedSignal"Image",as)
@@ -1704,7 +1706,7 @@ function ah:AddSection(av)
         BackgroundTransparency=0.35,
         Elements={
             Gradient={
-                Rotation=90,
+                Rotation=0,
                 ThemeTag={Color="Glass.LineGradient",Transparency="Glass.LineTransparency"}
             }
         },
@@ -2890,30 +2892,28 @@ ax.Visible=av
 end
 end
 
+-- Chọn tab: LUÔN chỉ 1 tab hiển thị (đã bỏ chế độ chọn 2 tab)
 function ah:Select()
 local aw=self.Parent
 local ax=aw.SelectedTabs or{}
 
-for ay=1,#ax do
-if ax[ay]==self then
-if #ax==2 then
-table.remove(ax,ay)
-U[self].Unselect()
-ac=ax[1]
-aw:RefreshSplit()
-else
+if #ax==1 and ax[1]==self then
 return nil
-end
-return nil
-end
 end
 
-if #ax==2 then
-local az=table.remove(ax,1)
+for ay=#ax,1,-1 do
+local az=ax[ay]
+
+if az~=self then
+table.remove(ax,ay)
 U[az].Unselect()
 end
+end
 
+if #ax==0 then
 table.insert(ax,self)
+end
+
 ac=self
 U[self].Select()
 aw:RefreshSplit()
@@ -3032,25 +3032,20 @@ function ag:Minimize()
 ab.Visible=not ab.Visible
 end
 
+-- Mỗi lúc chỉ 1 container tab được hiển thị, luôn full panel
 function ag:RefreshSplit()
 local aw=self.SelectedTabs or{}
-local ax=#aw
 local ay=self:GetElements().ContainerHolder
 
-for az=1,ax do
+for az=1,#aw do
 local aA=aw[az]
 local aB=T[aA]and T[aA].Container
 
 if aB then
 aB.Parent=ay
 aB.AnchorPoint=Vector2.new(0,0)
-if ax==2 then
-aB.Position=UDim2.new(az==2 and 0.5 or 0,0,0,0)
-aB.Size=UDim2.new(0.5,0,1,0)
-else
 aB.Position=UDim2.new(0,0,0,0)
 aB.Size=UDim2.new(1,0,1,0)
-end
 end
 end
 end
@@ -3076,9 +3071,6 @@ local aA=az.TabsContainer
 local aB=az.ContainerHolder
 
 local aC,aD,aE=al(self,ay,aA)
-
-local aF=J(aD,"Size",UDim2.new(1,0,1,0),0.3)
-local aG=UDim2.new(1,0,1,150)
 
 local aH=0.45
 
@@ -3804,14 +3796,18 @@ end local aa=function(
  
 aa, ab)
 local ac=ab.Size.Y.Offset
-local ad=UDim2.new(1,0,0,34)
-local ae=UDim2.new(1,0,1,-(ac+34))
+-- Bề ngang sidebar tab (lưu trong LibrarySettings.json, mặc định 160)
+local aT=(aa~=nil and type(aa.TabSize)=="number")and math.clamp(aa.TabSize,96,240)or 160
 
+local ad=UDim2.new(0,aT,1,-ac)
+local ae=UDim2.new(1,-(aT+12),1,-(ac+12))
+
+-- Danh sách tab: cột dọc bên trái, cuộn được
 local af=E("ScrollingFrame","TabsScroll",{
-AutomaticCanvasSize=Enum.AutomaticSize.X,
-ScrollingDirection=Enum.ScrollingDirection.X,
+AutomaticCanvasSize=Enum.AutomaticSize.Y,
+ScrollingDirection=Enum.ScrollingDirection.Y,
 Position=UDim2.new(0,0,0,ac),
-ScrollBarThickness=0,
+ScrollBarThickness=2,
 BackgroundColor3=Color3.fromRGB(120,255,180),
 BackgroundTransparency=0.93,
 ScrollBarImageTransparency=0.2,
@@ -3823,24 +3819,25 @@ ScrollBarImageColor3="Glass.Neon"
 },
 Elements={
 Padding={
-PaddingLeft=UDim.new(0,12),
-PaddingRight=UDim.new(0,12),
-PaddingTop=UDim.new(0,5),
-PaddingBottom=UDim.new(0,5)
+PaddingLeft=UDim.new(0,8),
+PaddingRight=UDim.new(0,8),
+PaddingTop=UDim.new(0,8),
+PaddingBottom=UDim.new(0,8)
 },
 ListLayout={
-FillDirection=Enum.FillDirection.Horizontal,
+FillDirection=Enum.FillDirection.Vertical,
 HorizontalAlignment=Enum.HorizontalAlignment.Left,
-VerticalAlignment=Enum.VerticalAlignment.Center,
+VerticalAlignment=Enum.VerticalAlignment.Top,
 SortOrder=Enum.SortOrder.LayoutOrder,
-Padding=UDim.new(0,6)
+Padding=UDim.new(0,4)
 }
 }
 })
 
+-- Panel nội dung bên phải
 local ag=E("Frame","Containers",{
 Size=ae,
-Position=UDim2.new(0,0,0,ac+34),
+Position=UDim2.new(0,aT+6,0,ac+6),
 BackgroundColor3=Color3.fromRGB(150,255,200),
 BackgroundTransparency=0.945,
 ClipsDescendants=true,
@@ -4157,7 +4154,7 @@ BorderSizePixel=0,
 ZIndex=0,
 Elements={
 Gradient={
-Rotation=90,
+Rotation=0,
 Color=ColorSequence.new{
 ColorSequenceKeypoint.new(0,Color3.fromRGB(255,255,255)),
 ColorSequenceKeypoint.new(1,Color3.fromRGB(170,255,210))
@@ -4293,17 +4290,18 @@ BorderSizePixel=0,
 BackgroundTransparency=0.25,
 Elements={
 Gradient={
-Rotation=90,
+Rotation=0,
 ThemeTag={Color="Glass.LineGradient",Transparency="Glass.LineTransparency"}
 }
 },
 ThemeTag={BackgroundColor3="Glass.White"}
 })
 
--- Đường kẻ phát sáng dưới thanh tab
+-- Đường kẻ phát sáng DỌC ngăn cách sidebar tab và panel Content
 E("Frame","TabBarSeparator",al,{
-Size=UDim2.new(1,0,0,1),
-Position=UDim2.new(0,0,0,at.Position.Y.Offset+at.Size.Y.Offset-1),
+Size=UDim2.new(0,1,1,-(an.Size.Y.Offset+13)),
+Position=UDim2.new(0,at.Size.X.Offset,0,an.Size.Y.Offset+5),
+AnchorPoint=Vector2.new(0.5,0),
 BorderSizePixel=0,
 BackgroundTransparency=0.25,
 Elements={
@@ -4340,14 +4338,15 @@ BackgroundColor3="Glass.Neon"
 }
 })
 
+-- Tay nắm DỌC: kéo ngang để đổi bề rộng sidebar tab
 local ax=E("Frame","ControlTabsSize",ak,{
-Size=UDim2.new(0,14,0,6),
-Position=UDim2.new(0.5,0,0,an.Size.Y.Offset+at.Size.Y.Offset),
-AnchorPoint=Vector2.new(0.5,0.5),
+Size=UDim2.new(0,6,1,-(an.Size.Y.Offset+16)),
+Position=UDim2.new(0,at.Size.X.Offset+3,0,an.Size.Y.Offset+8),
+AnchorPoint=Vector2.new(0.5,0),
 BackgroundTransparency=1,
 Active=true,
 Elements={
-Corner=UDim.new(0,6)
+Corner=UDim.new(1,0)
 },
 ThemeTag={
 BackgroundColor3="Glass.Neon"
@@ -4377,14 +4376,14 @@ end)
 u(ax:GetPropertyChangedSignal"Position",function()
 ay(ax)
 local az=ax.Position
-local aB=math.clamp(az.Y.Offset-an.Size.Y.Offset,26,60)
-at.Size=UDim2.new(1,0,0,aB)
-au.Size=UDim2.new(1,0,1,-(an.Size.Y.Offset+aB))
-au.Position=UDim2.new(0,0,0,an.Size.Y.Offset+aB)
+local aB=math.clamp(az.X.Offset-3,96,240)
+at.Size=UDim2.new(0,aB,1,-an.Size.Y.Offset)
+au.Size=UDim2.new(1,-(aB+12),1,-(an.Size.Y.Offset+12))
+au.Position=UDim2.new(0,aB+6,0,an.Size.Y.Offset+6)
 af.TabSize=aB
 local aC=al.TabBarSeparator
 if aC then
-aC.Position=UDim2.new(0,0,0,an.Size.Y.Offset+aB-1)
+aC.Position=UDim2.new(0,aB,0,an.Size.Y.Offset+5)
 end
 end)
 
@@ -4393,7 +4392,7 @@ return UDim2.fromOffset(math.clamp(aA,430,1000),math.clamp(aC,200,500))
 end)
 
 D.Draggable(ax,ad,0.68,function(aA,aB,aC,aD)
-return UDim2.new(0.5,0,0,math.clamp(aD,an.Size.Y.Offset+26,an.Size.Y.Offset+60))
+return UDim2.new(0,math.clamp(aB,99,243),aC,aD)
 end)
 
 local aA={
