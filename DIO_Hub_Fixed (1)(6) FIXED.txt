@@ -39,41 +39,141 @@ local _DIO_KeyConfig = {
 local SAVE_FOLDER = "DIOHub_V3"
 local KEY_FILE = SAVE_FOLDER .. "/KeyCache.json"
 local SETTINGS_FILE = SAVE_FOLDER .. "/Settings.json"
+
+-- [KEY-FIX] Trang thai goi Api: de biet dang ONLINE hay OFFLINE ma xu ly cho dung
+local _DIO_KeyDiag   = ""     -- [KEY-4] chan doan loi doc Api
+local _DIO_ApiOnline = false  -- lan goi Api gan nhat co doc duoc khong
+local _DIO_ApiKeys   = {}     -- danh sach key hop le lay tu Api (da chuan hoa)
+local _DIO_ApiLink   = ""     -- Linkgetkey lay tu Api
+local _DIO_ApiRaw    = ""     -- noi dung tho Api tra ve (debug)
+-- [KEY-FIX] (tuy chon) Key dung khi may KHONG goi duoc Api. De trong = offline thi khong cho qua.
+local _DIO_OfflineKeys = {
+    -- "DIOHUB", -- <-- bo comment va dien key cua ban vao day neu may ban khong goi duoc Api
+}
+
 local function _DIO_CleanJSON(str)
     if type(str) ~= "string" then return "" end
-    if str:sub(1, 3) == "\239\187\191" then str = str:sub(4) end
-    str = str:gsub("%-%-[^\r\n]*", "")
-    str = str:gsub(",%s*}", "}")
-    str = str:gsub(",%s*]", "]")
+    str = str:gsub("\239\187\191", "")       -- BOM UTF-8 dau file
+    str = str:gsub("\226\128\139", "")       -- zero width space
+    str = str:gsub("\226\128\140", "")       -- zero width non-joiner
+    str = str:gsub("\226\128\141", "")       -- zero width joiner
+    str = str:gsub("%-%-[^\r\n]*", "")       -- comment kieu Lua
+    str = str:gsub(",%s*}", "}")             -- bo dau phay thua cuoi object
+    str = str:gsub(",%s*]", "]")             -- bo dau phay thua cuoi array
     str = str:gsub("^%s+", ""):gsub("%s+$", "")
     return str
 end
-local _DIO_KeyDiag = "" -- [KEY-4] chan doan loi doc Api
+
+-- [KEY-FIX] Chuan hoa key: bo ky tu vo hinh, \r \n \t, gop khoang trang
+local function _DIO_NormKey(s)
+    if type(s) ~= "string" then return "" end
+    local t = s
+    t = t:gsub("\239\187\191", "")
+    t = t:gsub("\226\128\139", "")
+    t = t:gsub("\226\128\140", "")
+    t = t:gsub("\226\128\141", "")
+    t = t:gsub("\194\160", " ")
+    t = t:gsub("[\r\n\t]", " ")
+    t = t:gsub("^%s+", "")
+    t = t:gsub("%s+$", "")
+    t = t:gsub("%s+", " ")
+    return t
+end
+
+-- [KEY-FIX] So sanh key KHONG phan biet hoa/thuong (ban cu so sanh tung byte -> 'diohub' bi tu choi)
+local function _DIO_KeyEq(a, b)
+    local x, y = _DIO_NormKey(a), _DIO_NormKey(b)
+    if #x == 0 or #y == 0 then return false end
+    return x:lower() == y:lower()
+end
+
+-- [KEY-FIX] Them tham so chong cache: pastefy / executor co the cache URL /raw
+local function _DIO_Bust(url)
+    if type(url) ~= "string" or #url == 0 then return url end
+    local sep = url:find("?", 1, true) and "&" or "?"
+    return url .. sep .. "t=" .. tostring(os.time()) .. "&r=" .. tostring(math.random(100000, 999999))
+end
+
+-- [KEY-FIX] Lay du lieu Api bang nhieu cach: game:HttpGet -> request/http_request -> HttpGetAsync
+local function _DIO_HttpGet(url)
+    local out = nil
+    pcall(function()
+        local raw = _DIO_RawHttpGet(game, url, true)
+        if type(raw) == "string" and #raw > 0 then out = raw end
+    end)
+    if type(out) == "string" and #out > 0 then return out end
+    pcall(function()
+        local reqFn = (syn and syn.request) or (http and http.request) or http_request or request
+        if type(reqFn) == "function" then
+            local res = reqFn({ Url = url, Method = "GET" })
+            local body = nil
+            if type(res) == "table" then body = res.Body or res.body end
+            if type(body) == "string" and #body > 0 then out = body end
+        end
+    end)
+    if type(out) == "string" and #out > 0 then return out end
+    pcall(function()
+        if type(game.HttpGetAsync) == "function" then
+            local raw = game:HttpGetAsync(url)
+            if type(raw) == "string" and #raw > 0 then out = raw end
+        end
+    end)
+    if type(out) == "string" and #out > 0 then return out end
+    return nil
+end
+
 local function _DIO_TryPastefy(url, tag)
-    local raw = nil
-    local okH = pcall(function() raw = _DIO_RawHttpGet(game, url, true) end)
-    if (not okH) or type(raw) ~= "string" or #raw == 0 then
-        _DIO_KeyDiag = tag .. ": HTTP that bai / khong tra text (404? mang? executor chan?)"
+    local raw = _DIO_HttpGet(_DIO_Bust(url))
+    if type(raw) ~= "string" or #raw == 0 then
+        _DIO_KeyDiag = tag .. ": HTTP that bai / khong tra text (404? mang? executor chan? Cloudflare?)"
         return nil
     end
+    _DIO_ApiRaw = raw
     local okJ, dec = pcall(function() return HttpService:JSONDecode(_DIO_CleanJSON(raw)) end)
     if (not okJ) or type(dec) ~= "table" then
-        _DIO_KeyDiag = tag .. ": JSON khong hop le -> " .. tostring(dec):sub(1, 80)
+        _DIO_KeyDiag = tag .. ": JSON khong hop le -> " .. tostring(dec):sub(1, 60) .. " | raw: " .. tostring(raw):sub(1, 60)
         return nil
     end
     return dec
 end
+
+-- [KEY-FIX] Key co the la: "Key" (string), "Keys"/"keys" (mang), "key", "key_list" -> gom het lai
+local function _DIO_KeyListFrom(data)
+    local out = {}
+    local function push(v)
+        if type(v) == "string" then
+            local t = _DIO_NormKey(v)
+            if #t > 0 then table.insert(out, t) end
+        elseif type(v) == "table" then
+            for _, e in ipairs(v) do push(e) end
+        end
+    end
+    if type(data) == "table" then
+        push(data.Key); push(data.Keys); push(data.keys); push(data.key); push(data.key_list)
+    end
+    return out
+end
+
 local function _DIO_ResolvePendingFromPastefy()
     local data = _DIO_TryPastefy(PASTEFY_PRIMARY_URL, "primary")
     if type(data) ~= "table" then
         data = _DIO_TryPastefy(PASTEFY_FALLBACK_URL, "fallback")
     end
     if type(data) ~= "table" then
+        _DIO_ApiOnline = false
         warn("[DIO KEY] Khong doc duoc du lieu Api (ca link chinh va link du phong). " .. _DIO_KeyDiag)
         return nil
     end
+    _DIO_ApiOnline = true
+    _DIO_ApiKeys   = _DIO_KeyListFrom(data)
+    if data.Linkgetkey and #tostring(data.Linkgetkey) > 12 then
+        _DIO_ApiLink = tostring(data.Linkgetkey)
+        _DIO_KeyConfig.Linkgetkey = _DIO_ApiLink
+    end
+    _DIO_KeyConfig.Loaded = true
     return data
 end
+
 local function _DIO_ResolveLinkgetkey(force)
     if (not force) and _DIO_KeyConfig.Loaded then
         return _DIO_KeyConfig.Linkgetkey or ""
@@ -88,6 +188,7 @@ local function _DIO_ResolveLinkgetkey(force)
     end
     return _DIO_KeyConfig.Linkgetkey or ""
 end
+
 local _DIO_EnvGet = getgenv
 local function _DIO_GetEnvString(name)
     local v = nil
@@ -96,14 +197,14 @@ local function _DIO_GetEnvString(name)
         if v == nil or v == "" then v = _G[name] end
     end)
     if type(v) == "string" then
-        return (v:gsub("^%s+", ""):gsub("%s+$", ""))
+        return _DIO_NormKey(v)
     end
     return ""
 end
 local _DIO_PendingKey = ""
 local _DIO_SessionKey = nil
 local function _DIO_SetKey(k)
-    _DIO_SessionKey = tostring(k or "")
+    _DIO_SessionKey = _DIO_NormKey(tostring(k or ""))
     local ok = pcall(function()
         getgenv().Key = _DIO_SessionKey
     end)
@@ -115,23 +216,53 @@ local function _DIO_KeyLabel()
     end
     return "(chua co - hay bam Check Key)"
 end
-local function _DIO_KeyListFrom(data) -- [KEY-3] Key co the la string HOAC mang string
-    local out = {}
-    if type(data) ~= "table" then return out end
-    local arr = (type(data.Key) == "table") and data.Key or { data.Key }
-    for _, e in ipairs(arr) do
-        if type(e) == "string" then
-            local t = e:gsub("^%s+", ""):gsub("%s+$", "")
-            if #t > 0 then table.insert(out, t) end
-        end
-    end
-    return out
+
+-- ===== [KEY-FIX] Cache file key =====
+local function _DIO_ReadKeyCache()
+    if not (isfile and readfile) then return nil end
+    local ok, data = pcall(function()
+        if not isfile(KEY_FILE) then return nil end
+        return HttpService:JSONDecode(readfile(KEY_FILE))
+    end)
+    if ok and type(data) == "table" then return data end
+    return nil
 end
+local function _DIO_ClearKeyCache(reason)
+    pcall(function()
+        if delfile and isfile and isfile(KEY_FILE) then delfile(KEY_FILE) end
+    end)
+    _DIO_PendingKey = ""
+    if reason then warn("[DIO KEY] Xoa cache key cu: " .. tostring(reason)) end
+end
+-- [KEY-FIX] Api la nguon chan ly: key trong cache / getgenv() ma khong con tren Api thi phai bi xoa
+local function _DIO_InvalidateStaleCache()
+    if not _DIO_ApiOnline then return end
+    local function inApi(k)
+        if type(k) ~= "string" or #k == 0 then return false end
+        for _, official in ipairs(_DIO_ApiKeys) do
+            if _DIO_KeyEq(k, official) then return true end
+        end
+        return false
+    end
+    local data = _DIO_ReadKeyCache()
+    if data and type(data.key) == "string" and not inApi(data.key) then
+        _DIO_ClearKeyCache("key trong cache khong con nam trong danh sach Api")
+    end
+    pcall(function()
+        local gk = getgenv().Key
+        if type(gk) == "string" and #gk > 0 and not inApi(gk) then
+            getgenv().Key = ""
+            _DIO_SessionKey = nil
+            warn("[DIO KEY] getgenv().Key cu (" .. tostring(gk):sub(1, 40) .. ") khong con hop le -> da xoa.")
+        end
+    end)
+end
+
 local function _SEC_VerifyKey(inputKey)
     if type(inputKey) ~= "string" then return false end
-    inputKey = inputKey:gsub("^%s+", ""):gsub("%s+$", "")
-    if #inputKey == 0 then return false end
-    if type(_DIO_SessionKey) == "string" and #_DIO_SessionKey > 0 and inputKey == _DIO_SessionKey then
+    local key = _DIO_NormKey(inputKey)
+    if #key == 0 then return false end
+    if type(_DIO_SessionKey) == "string" and #_DIO_SessionKey > 0 and _DIO_KeyEq(key, _DIO_SessionKey) then
         return true
     end
     local data = _DIO_ResolvePendingFromPastefy()
@@ -144,31 +275,48 @@ local function _SEC_VerifyKey(inputKey)
             return false
         end
         for _, official in ipairs(list) do
-            if #inputKey == #official then
-                local diff = 0
-                for i = 1, #inputKey do
-                    if inputKey:byte(i) ~= official:byte(i) then diff = 1 break end
-                end
-                if diff == 0 then
-                    _DIO_SetKey(inputKey)
-                    if data.Linkgetkey and #tostring(data.Linkgetkey) > 12 then
-                        _DIO_KeyConfig.Linkgetkey = tostring(data.Linkgetkey)
-                    end
-                    _DIO_KeyConfig.Loaded = true
+            if _DIO_KeyEq(key, official) then
+                _DIO_SetKey(official) -- luu dung chinh ta cua Api
+                print("[DIO KEY] Key hop le (khop voi Api).")
+                return true
+            end
+        end
+        -- [KEY-FIX] Chua thay key -> doc lai Api 1 lan voi URL moi (chong ban cache cu cua
+        -- executor / pastefy / Cloudflare lam script van doc phai key cu)
+        warn("[DIO KEY] Lan doc dau khong thay key nay -> doc lai Api (chong cache)...")
+        local data2 = _DIO_ResolvePendingFromPastefy()
+        if type(data2) == "table" then
+            for _, official in ipairs(_DIO_KeyListFrom(data2)) do
+                if _DIO_KeyEq(key, official) then
+                    _DIO_SetKey(official)
+                    print("[DIO KEY] Key hop le (khop voi Api sau khi doc lai).")
                     return true
                 end
             end
         end
+        -- [KEY-FIX] key nay khong con dung voi Api -> don cache / getgenv() cu di
+        _DIO_InvalidateStaleCache()
+        warn("[DIO KEY] Key vua nhap KHONG nam trong danh sach key cua Api hien tai.")
         return false
     end
-    -- OFFLINE (khong toi duoc Pastefy): chap nhan key cau hinh / cache de khong khoa nguoi dung
-    if _DIO_PendingKey ~= "" and inputKey == _DIO_PendingKey then
-        _DIO_SetKey(inputKey)
+    -- OFFLINE (khong toi duoc Api): chap nhan key cau hinh / cache de khong khoa nguoi dung
+    if #_DIO_PendingKey > 0 and _DIO_KeyEq(key, _DIO_PendingKey) then
+        _DIO_SetKey(_DIO_PendingKey)
+        warn("[DIO KEY] OFFLINE: cho qua bang key cau hinh/cache cua may nay.")
         return true
+    end
+    -- [KEY-FIX] OFFLINE: danh sach key du phong khai bao trong script (neu co)
+    for _, k in ipairs(_DIO_OfflineKeys) do
+        if _DIO_KeyEq(key, k) then
+            _DIO_SetKey(_DIO_NormKey(k))
+            warn("[DIO KEY] OFFLINE: cho qua bang danh sach key du phong trong script.")
+            return true
+        end
     end
     warn("[DIO KEY] Offline va key khong khop cache. Chi tiet: " .. _DIO_KeyDiag)
     return false
 end
+
 _DIO_PendingKey = _DIO_GetEnvString("Key")
 local function _DIO_AddCachedPendingKey()
     if #_DIO_PendingKey > 0 then return end
@@ -178,7 +326,7 @@ local function _DIO_AddCachedPendingKey()
         local data = HttpService:JSONDecode(readfile(KEY_FILE))
         if type(data) == "table" and type(data.key) == "string" then
             if data.time and (os.time() - tonumber(data.time) > 36000) then return end -- [KEY-1]
-            local k = data.key:gsub("^%s+", ""):gsub("%s+$", "")
+            local k = _DIO_NormKey(data.key)
             if #k > 0 then
                 _DIO_PendingKey = k
                 local ok = pcall(function()
@@ -196,9 +344,27 @@ local function _DIO_AutoValidateConfiguredKey()
         print("[DIO KEY] Key cau hinh san HOP LE -> tu dong vao hub, bo qua cua so nhap key.")
         return true
     end
-    warn("[DIO KEY] Key cau hinh san KHONG khop voi key cua he thong -> se hien cua so nhap key.")
+    warn("[DIO KEY] Key cau hinh san KHONG khop voi key cua he thong -> se hien cua so nhap key. " .. _DIO_KeyDiag)
     return false
 end
+-- [KEY-FIX] Text chan doan de hien thi ngay trong cua so nhap key
+local function _DIO_KeyStatusText()
+    local st = _DIO_ApiOnline and "ONLINE (doc duoc Api)" or "OFFLINE / LOI DOC API"
+    local keys = (#_DIO_ApiKeys > 0) and table.concat(_DIO_ApiKeys, " | ") or "(chua doc duoc)"
+    local cache = "(khong co)"
+    local data = _DIO_ReadKeyCache()
+    if data and data.key then
+        local age = data.time and math.floor((os.time() - tonumber(data.time)) / 60) or -1
+        cache = tostring(data.key) .. (age >= 0 and (" - " .. tostring(age) .. " phut truoc") or "")
+    end
+    local out = "Trang thai Api: " .. st .. "\n"
+        .. "Key hop le tren Api: " .. keys .. "\n"
+        .. "Key trong cache may nay: " .. cache .. "\n"
+        .. "getgenv().Key: " .. tostring(getgenv().Key or "")
+    if _DIO_KeyDiag ~= "" then out = out .. "\nGhi chu loi: " .. _DIO_KeyDiag end
+    return out
+end
+
 pcall(function()
     local _cloneref = cloneref or function(o) return o end
     HttpService       = _cloneref(game:GetService("HttpService"))
@@ -342,7 +508,7 @@ local function isKeyCacheValid()
         return HttpService:JSONDecode(readfile(KEY_FILE))
     end)
     if not ok or type(data) ~= "table" then return false end
-    if type(data.key) ~= "string" or #data.key == 0 then return false end
+    if type(data.key) ~= "string" or #_DIO_NormKey(data.key) == 0 then return false end
     if not data.time then return false end
     if os.time() - tonumber(data.time) > 36000 then
         pcall(function() if delfile then delfile(KEY_FILE) end end)
@@ -364,11 +530,31 @@ local function isKeyValid()
         saveKeyCache()
         return true
     end
+    -- [KEY-FIX] Neu doc duoc Api ma key cua may nay khong con hop le -> DON cache cu,
+    -- khong cho key cu "song" them 10 tieng nua (truoc day isKeyCacheValid() van cho vao).
+    if _DIO_ApiOnline then
+        _DIO_InvalidateStaleCache()
+        warn("[DIO KEY] Api doc duoc nhung key cua may nay khong con hop le -> hien cua so nhap key.")
+        return false
+    end
     if isKeyCacheValid() then
+        warn("[DIO KEY] OFFLINE (khong goi duoc Api) -> tam cho qua bang cache con han 10h.")
         return true
     end
     return false
 end
+-- [KEY-FIX] Cho UI goi: xoa cache + key cu de nhap lai key moi
+local function _DIO_ResetKeyCache()
+    _DIO_ClearKeyCache("nguoi dung bam Reset cache")
+    pcall(function() getgenv().Key = "" end)
+    pcall(function() _G.Key = "" end)
+    _DIO_SessionKey = nil
+    _DIO_PendingKey = ""
+    _DIO_KeyConfig.Loaded = false
+    _DIO_ApiOnline = false
+    _DIO_ApiKeys = {}
+end
+
 local function StartDioHub()
 local tick = tick
 local __SVC_RS   = game:GetService("ReplicatedStorage")
@@ -16782,7 +16968,8 @@ else
         Content = "Click the button below to get your key, then paste it into the text box.\n"
             .. "Link lay key: " .. tostring(_DIO_ResolveLinkgetkey(false)) .. "\n"
             .. "Key cua ban: " .. _DIO_KeyLabel() .. "\n"
-            .. "Cache lasts 10 hours."
+            .. "Cache lasts 10 hours.\n\n"
+            .. "----- CHAN DOAN KEY -----\n" .. _DIO_KeyStatusText()
     })
     Tabs.GetKey:AddButton({
         Title = "Get Key Link",
@@ -16829,7 +17016,9 @@ else
                 warn("[DIO KEY] Key nhap tay khong khop. Bam 'Get Key Link' de lay key moi (key cu co the da doi/het han).")
                 Fluent:Notify({
                     Title = "Error",
-                    Content = "Invalid Key! Please get key from link.",
+                    Content = "Invalid Key! " .. (_DIO_ApiOnline
+                        and ("Key tren Api: " .. table.concat(_DIO_ApiKeys, ", "))
+                        or "Khong doc duoc Api (bam Test Api / xem console F9)"),
                     Duration = 3
                 })
             end
@@ -16851,7 +17040,38 @@ else
             end
         end
     })
-    pcall(function() Window:SelectTab(2) end) 
+
+    -- [KEY-FIX] 2 nut tien ich: xoa cache key + test Api (in log ra console F9)
+    Tabs.GetKey:AddButton({
+        Title = "Xoa cache Key (Reset)",
+        Description = "Xoa KeyCache.json + getgenv().Key de nhap lai key moi",
+        Callback = function()
+            _DIO_ResetKeyCache()
+            Fluent:Notify({
+                Title = "Da xoa cache key",
+                Content = "Nhap key moi roi bam Check Key.",
+                Duration = 5
+            })
+        end
+    })
+    Tabs.GetKey:AddButton({
+        Title = "Test Api (xem log F9)",
+        Description = "In ra console: Api tra ve gi, cache dang luu gi",
+        Callback = function()
+            local data = _DIO_ResolvePendingFromPastefy()
+            print("[DIO KEY][TEST] Online=" .. tostring(_DIO_ApiOnline)
+                .. " | Keys=" .. table.concat(_DIO_ApiKeys, " | ")
+                .. " | Pending=" .. tostring(_DIO_PendingKey))
+            print("[DIO KEY][TEST] Raw=" .. tostring(_DIO_ApiRaw):sub(1, 300))
+            print("[DIO KEY][TEST] " .. _DIO_KeyStatusText():gsub("\n", " | "))
+            Fluent:Notify({
+                Title = "Test Api xong",
+                Content = _DIO_ApiOnline and "Api doc duoc - xem console (F9)" or "KHONG doc duoc Api - xem console (F9)",
+                Duration = 6
+            })
+        end
+    })
+    pcall(function() Window:SelectTab(2) end)
     pcall(function()
         Fluent:Notify({
             Title = "DIO Hub",
