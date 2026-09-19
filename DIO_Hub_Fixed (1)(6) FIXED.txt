@@ -36,6 +36,9 @@ local _DIO_KeyConfig = {
     Linkgetkey = "https://link4sub.com/notes/eRcc",
     Loaded     = false,
 }
+local SAVE_FOLDER = "DIOHub_V3"
+local KEY_FILE = SAVE_FOLDER .. "/KeyCache.json"
+local SETTINGS_FILE = SAVE_FOLDER .. "/Settings.json"
 local function _DIO_CleanJSON(str)
     if type(str) ~= "string" then return "" end
     if str:sub(1, 3) == "\239\187\191" then str = str:sub(4) end
@@ -251,20 +254,19 @@ end)
 pcall(function()
     if table.freeze then
         table.freeze(_SPY_TARGETS)
-        table.freeze(_DIO_SecKey)
+        if _DIO_SecKey ~= nil then table.freeze(_DIO_SecKey) end 
     end
 end)
 getgenv().Team = getgenv().Team or "Pirates"
 getgenv().SaveSettings = (getgenv().SaveSettings == nil) and true or getgenv().SaveSettings
 getgenv().Key = getgenv().Key or ""
-getgenv().AutoExecutor = (getgenv().AutoExecutor == nil) and false or getgenv().AutoExecutor
-getgenv().HideUi = (getgenv().HideUi == nil) and false or getgenv().HideUi
-local SAVE_FOLDER = "DIOHub_V3"
-local KEY_FILE = SAVE_FOLDER .. "/KeyCache.json"
-local SETTINGS_FILE = SAVE_FOLDER .. "/Settings.json"
+if getgenv().AutoExecutor == nil then getgenv().AutoExecutor = false end
+if getgenv().HideUi == nil then getgenv().HideUi = false end
 local function AutoSelectTeam()
     local ok, err = pcall(function()
-        local comm = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
+        local __remotesF = ReplicatedStorage:WaitForChild("Remotes", 60)
+        local comm = __remotesF and __remotesF:WaitForChild("CommF_", 60)
+        if not comm then return end
         local team = tostring(getgenv().Team or "Pirates")
         if team ~= "Pirates" and team ~= "Marines" then team = "Pirates" end
         if plr.Team == nil or tostring(plr.Team) ~= team then
@@ -280,11 +282,19 @@ pcall(function()
     local mainGui = plr:FindFirstChild("PlayerGui") and plr.PlayerGui:FindFirstChild("Main")
     local loading = mainGui and mainGui:FindFirstChild("Loading")
     if loading then
-        repeat task.wait() until not loading.Visible
+        local __loadCap = 0
+        repeat task.wait() __loadCap += 1 until (not loading.Visible) or __loadCap >= 90
     end
 end)
 AutoSelectTeam()
-task.wait(20)
+do 
+    local __waitN = 0
+    while __waitN < 20 do
+        if plr and plr:FindFirstChild("Data") and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then break end
+        task.wait(1)
+        __waitN += 1
+    end
+end
 local function ensureFolder()
     pcall(function()
         if makefolder and (not isfolder or not isfolder(SAVE_FOLDER)) then
@@ -315,6 +325,14 @@ local function isKeyCacheValid()
     if type(data.key) ~= "string" or #data.key == 0 then return false end
     if not data.time then return false end
     if os.time() - tonumber(data.time) > 36000 then
+        pcall(function() if delfile then delfile(KEY_FILE) end end)
+        return false
+    end
+    local curHwid = nil
+    pcall(function()
+        curHwid = (gethwid and gethwid()) or game:GetService("RbxAnalyticsService"):GetClientId()
+    end)
+    if data.hwid and curHwid and tostring(data.hwid) ~= "unknown" and tostring(data.hwid) ~= tostring(curHwid) then
         pcall(function() if delfile then delfile(KEY_FILE) end end)
         return false
     end
@@ -358,7 +376,7 @@ pcall(function()
     fpsLabel.BackgroundTransparency = 0.4
     fpsLabel.TextColor3 = Color3.new(1, 1, 1)
     fpsLabel.Font = Enum.Font.GothamBold
-    fpsLabel.TextSize = 6
+    fpsLabel.TextSize = 14 
     fpsLabel.Text = "FPS: ... | Ping: ... | TIME: 0h 00m 00s"
     fpsLabel.TextXAlignment = Enum.TextXAlignment.Left
     local bootLabel = Instance.new("TextLabel", fpsGui)
@@ -369,7 +387,7 @@ pcall(function()
     bootLabel.BackgroundTransparency = 0.4
     bootLabel.TextColor3 = Color3.new(1, 1, 1)
     bootLabel.Font = Enum.Font.GothamBold
-    bootLabel.TextSize = 6
+    bootLabel.TextSize = 14 
     bootLabel.TextXAlignment = Enum.TextXAlignment.Left
     bootLabel.Text = "DIO BOOT: ..."
     __DIO_BOOT = function(s)
@@ -407,6 +425,14 @@ do
   plr = ply.LocalPlayer
   if not plr.Character then plr.CharacterAdded:Wait() end
   Root = plr.Character:WaitForChild("HumanoidRootPart", 30)
+  do 
+      local __hrpTries = 0
+      while not Root and __hrpTries < 30 do
+          task.wait(2)
+          __hrpTries += 1
+          if plr.Character then Root = plr.Character:FindFirstChild("HumanoidRootPart") end
+      end
+  end
   replicated = __SVC_RS
   local __data = plr:WaitForChild("Data", 30)
   local __lvl = __data and __data:FindFirstChild("Level")
@@ -450,8 +476,6 @@ __DIO_Wake = function(force)
     __DIO_WakeT = __n
     return true
 end
--- Activates tween control immediately for a real UI toggle. This does not
--- create or replace the feature's _G flag; _G remains the feature state.
 __DIO_TweenActivateImmediate = function()
     __DIO_TweenBlockT = 0
     __DIO_TweenBlockDur = 0.5
@@ -526,8 +550,6 @@ __DIO_UISetOn = function(name, key, on)
     __DIO_UIFlagOwner[name][key] = true
     if not __DIO_UIFlagOn[name] then __DIO_UIFlagOn[name] = {} end
     __DIO_UIFlagOn[name][key] = (on == true)
-    -- v9: dem theo TEN FLAG (khong theo key) -> "UI truth" cua tinh nang.
-    -- Tinh nang con bat thi tween khong duoc phep tu tat.
     if type(__DIO_FeatMark2) == "function" then pcall(__DIO_FeatMark2, name, on) end
 end
 __DIO_FarmFlagNames = {
@@ -555,23 +577,10 @@ __DIO_FarmFlagNames = {
     "AutoTP_Gift", "AutoTPGift", "AutoTPAndCollect", "MasterAutoLevel", "MasterAutoCandy", "TPFloor1", "TPFloor2", "TPFloor3",
     "TPFloor4", "FarmEliteH", "Safemode", "Greybeard", "ResetPH", "NextIs", "senth", "senth2",
 }
--- ==========================================================================
---  DIO TWEEN CORE v10
--- --------------------------------------------------------------------------
---  v8 da bo: lease 30s, snapshot _G flag, watchdog tu tat flag.
---  v10 them (theo phan hoi thuc te trong game):
---    * Khong co bat ky output nao ra console.
---    * Moi lenh __DIO_TweenDrop() (ke ca trong code cu con sot lai) tro thanh
---      "drop co an han": tinh nang dang bat + co _tp moi trong 1.5s => HUY drop.
---      => khong con canh "bay 1-2s roi dung 2-3s" do 1 dong drop le trong vong
---      lap cua tinh nang (vi du vong Auto Dough King khi khong thay Map.CakeLoaf).
---    * Highlight = "tinh nang dang bat", KHONG phu thuoc tween co target hay
---      khong => het canh mat mau highlight khi dang farm / mode Obrit.
--- ==========================================================================
-__DIO_TWEEN_LEASE  = 30         -- giu ten cu cho tuong thich (khong con dung)
-__DIO_MOVE_GRACE   = 12         -- "con nong": 12s ke tu _tp cuoi
-__DIO_KEEP_APPROACH = 90        -- dang bay toi dich thi giu target toi da 90s
-__DIO_SOFT_DROP    = 1.5        -- drop mem: cho 1.5s, co _tp moi thi huy drop
+__DIO_TWEEN_LEASE  = 30         
+__DIO_MOVE_GRACE   = 12         
+__DIO_KEEP_APPROACH = 90        
+__DIO_SOFT_DROP    = 1.5        
 __DIO_TweenArmedT  = 0
 __DIO_MoveT        = 0
 __DIO_Parked       = false
@@ -582,7 +591,6 @@ __DIO_FeatOnN      = 0
 __DIO_FeatMark     = {}
 __DIO_UIOn         = {}
 __DIO_UIOnN        = 0
--- _tp() goi ham nay: danh dau vua co yeu cau bay, bo park, HUY drop cho
 __DIO_Move = function()
     __DIO_MoveT    = tick()
     __DIO_Parked   = false
@@ -606,7 +614,6 @@ __DIO_UISetState = function(key, on)
         __DIO_UIOnN = math.max(0, (__DIO_UIOnN or 1) - 1)
     end
 end
--- Dem flag "tinh nang" theo TEN FLAG (khong theo key) -> khong bao gio bi ket
 __DIO_FeatMark2 = function(name, on)
     if type(name) ~= "string" then return end
     local isFeat = false
@@ -659,6 +666,47 @@ __DIO_FlagSet = function(name, val)
     if g and rawget(g, name) ~= nil then pcall(rawset, g, name, val) end
     if val == true and __prev ~= true and type(__DIO_Wake) == "function" then pcall(__DIO_Wake, true) end
 end
+__DIO_QuestGone = function()
+    local __okQ, __gone = pcall(function()
+        local __pg = plr and plr:FindFirstChild("PlayerGui")
+        local __main = __pg and __pg:FindFirstChild("Main")
+        local __q = __main and __main:FindFirstChild("Quest")
+        return __q == nil or __q.Visible == false
+    end)
+    return __okQ and __gone or false
+end
+__DIO_IslandCache = nil
+__DIO_IslandCacheT = 0
+__DIO_GetSelectedIslandModel = function()
+    local name = _G.SelectIsland
+    if type(name) ~= "string" or name == "" then return nil end
+    if __DIO_IslandCache ~= nil and tick() - __DIO_IslandCacheT < 5 then return __DIO_IslandCache end
+    local model = nil
+    local map = __SVC_WS and __SVC_WS:FindFirstChild("Map")
+    if map then
+        model = map:FindFirstChild(name)
+        if not model then
+            local lname = name:lower()
+            for _, v in ipairs(map:GetChildren()) do
+                if v:IsA("Model") and v.Name:lower():find(lname, 1, true) then model = v break end
+            end
+        end
+    end
+    if not model then model = workspace:FindFirstChild(name) end
+    __DIO_IslandCache = model
+    __DIO_IslandCacheT = tick()
+    return model
+end
+BerryArray = getgenv().BerryArray or nil
+do
+    local __okIRS, __resIRS = pcall(function()
+        local __mod = __SVC_RS:FindFirstChild("Modules")
+        local __ir = __mod and __mod:FindFirstChild("ItemReplicationService")
+        return __ir and require(__ir)
+    end)
+    if __okIRS and type(__resIRS) == "table" then ItemReplicationService = __resIRS end
+end
+KEYS = KEYS or { QUANTITY = 999999 }
 __DIO_FlagApply = function(name)
     local w, s = __DIO_FlagWant[name], __DIO_FlagSup[name]
     local anyW, anyS = false, false
@@ -696,8 +744,6 @@ __DIO_UIWant = function(name, key, on)
     if not __DIO_SharedFlags[name] then return end
     __DIO_SetFlag(name, "UI:" .. tostring(key), on and true or false)
 end
--- Do not turn a temporary internal borrow (such as Dough King borrowing
--- AutoFarmChest) into a permanent UI owner during toggle auditing.
 __DIO_HasNonUIFlagOwner = function(name)
     local owners = __DIO_FlagWant[name]
     if not owners then return false end
@@ -778,7 +824,6 @@ __DIO_AnyFarmFlag = function()
     end)
     return (ok2 and any2) and true or false
 end
--- Tinh nang dang bat?
 __DIO_AnyFeatureOn = function()
     if __DIO_FlyBusy == true then return true end
     if _G.StartFarm == true then return true end
@@ -936,7 +981,6 @@ __DIO_TweenSync = function()
     shouldTween = on and true or false
     return on
 end
--- Xoa target NGAY (dung noi bo trong core)
 __DIO_TweenDropHard = function(reason)
     __DIO_TweenTarget      = nil
     __DIO_TweenArmedFlags  = nil
@@ -950,9 +994,6 @@ __DIO_TweenDropHard = function(reason)
         __DIO_LastTween = nil
     end)
 end
--- __DIO_TweenDrop() = phien ban MEM de tuong thich 100% code cu:
---   * Tinh nang dang bat  -> hoan lai drop 1.5s, neu trong 1.5s co _tp moi thi HUY drop
---   * Khong con tinh nang -> xoa ngay
 __DIO_TweenDrop = function(reason)
     local __busy = __DIO_AnyFeatureOn() or __DIO_FlyBusy == true
     if __busy then
@@ -985,7 +1026,6 @@ __DIO_TweenSet = function(cf)
     shouldTween = true
     if type(__DIO_Move) == "function" then __DIO_Move() end
 end
--- force = true -> tat ngay (nut Stop Tween / panic). force = false -> mem.
 __DIO_TweenKill = function(keepHighlight, force)
     if force ~= true and __DIO_AnyFeatureOn() then
         if type(__DIO_TweenSync) == "function" then pcall(__DIO_TweenSync) end
@@ -1044,7 +1084,6 @@ __DIO_SafeLoop(function()
         pcall(__DIO_Watchdog)
     end
 end, "V10Watchdog")
--- Highlight: bat khi co tinh nang chay (hoac dang bay), tat khi nghi han
 __DIO_HlSync = function(wantOn)
     if wantOn then
         local __ch = plr.Character
@@ -1056,7 +1095,6 @@ __DIO_HlSync = function(wantOn)
         pcall(function() if type(__DIO_HlOff) == "function" then __DIO_HlOff() end end)
     end
 end
-
 if getgenv().DIO_ToggleNotify == nil then getgenv().DIO_ToggleNotify = false end
 __DIO_TNotify = function(title, content, dur)
     if getgenv().DIO_ToggleNotify ~= true then return end
@@ -1115,9 +1153,11 @@ until game:IsLoaded()
 local main = plr.PlayerGui:WaitForChild("Main", 10)
 local loading = main and main:WaitForChild("Loading", 10)
 if loading then
+    local __loadCap2 = 0
     repeat
         __DIO_wait()
-    until not loading.Visible
+        __loadCap2 += 1
+    until (not loading.Visible) or __loadCap2 >= 90 
 end
 World1 = game.PlaceId == 2753915549 or game.PlaceId == 85211729168715
 World2 = game.PlaceId == 4442272183 or game.PlaceId == 79091703265657
@@ -1959,7 +1999,8 @@ GetConnectionEnemies = function(a)
       return v
     end
   end
-  for i,v in next,game.Workspace.Enemies:GetChildren() do
+  local __enemiesFolder = game.Workspace:FindFirstChild("Enemies") 
+  for i,v in next,__enemiesFolder and __enemiesFolder:GetChildren() or {} do
     if v:IsA("Model") and ((typeof(a) == "table" and table.find(a, v.Name)) or v.Name == a)  and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
       return v
     end
@@ -2723,8 +2764,6 @@ _tp = function(target)
         if type(__DIO_DodgeStale) == "function" then __DIO_DodgeStale() end
         if __DIO_Dodging == true then return end
     end
-    -- v9: KHONG tu choi yeu cau bay nua. Block chi co tac dung khi khong con
-    -- tinh nang nao bat; tinh nang dang bat thi _tp luon duoc thuc hien.
     if type(__DIO_TweenBlocked) == "function" and __DIO_TweenBlocked() then
         if not __DIO_AnyFeatureOn() then return end
         if type(__DIO_TweenClearBlock) == "function" then __DIO_TweenClearBlock() end
@@ -2744,7 +2783,6 @@ _tp = function(target)
     local character = plr.Character
     if not character or not character:FindFirstChild("HumanoidRootPart") then return end
     local rootPart = character.HumanoidRootPart
-
     do
         local __needEnt = false
         pcall(function()
@@ -2807,7 +2845,7 @@ _tp = function(target)
     __DIO_LastTpT = tick()
     __DIO_TweenArmedT = tick()
     __DIO_LastTweenT = tick()
-    __DIO_TweenArmedFlags = nil       -- v9: bo snapshot flag (lam tween het han sai)
+__DIO_TweenArmedFlags = nil       
     shouldTween = true
     __DIO_FalseSince = nil
     if type(__DIO_Move) == "function" then __DIO_Move() end
@@ -2843,7 +2881,6 @@ if not __DIO_SmoothCtl then
                     if type(__DIO_TweenSync) == "function" then pcall(__DIO_TweenSync) end
                     return
                 end
-                -- v9: khong con cong "shouldTween" o day (1 nguon duy nhat la TweenValid)
                 __DIO_FalseSince = nil
                 local target = __DIO_TweenTarget
                 if not target then
@@ -3268,18 +3305,15 @@ spawn(function()
       if __DIO_Block and __DIO_Block.Parent ~= workspace then
           pcall(function() __DIO_Block.Parent = workspace end)
       end
-      -- v9: 1 nguon duy nhat quyet dinh shouldTween
       local __validST = __DIO_TweenValid()
       local __anyF    = __DIO_AnyFeatureOn() or __DIO_FlyBusy == true
       local __curT    = (__DIO_CurTarget ~= nil and __anyF)
       if __DIO_TweenTarget ~= nil and not __validST then
-          -- v9: drop that su khi core xac nhan khong con hop le
           if not __anyF and not __curT then
               __DIO_TweenDropHard("decor-invalid")
           end
       end
       pcall(__DIO_TweenSync)
-      -- HIGHLIGHT = "tinh nang dang chay", tat ngay khi khong con tinh nang chay
       local __hlWant = (__anyF or (__validST and __anyF))
       __DIO_HlSync(__hlWant)
       if __hlWant then
@@ -3304,7 +3338,7 @@ spawn(function()
     end)
       end
     end)
-    task.wait(0.5) -- v10: im lang, khong in gi ra console
+task.wait(0.5) 
   end
 end)
 QuestB = function()
@@ -4082,8 +4116,6 @@ do
                         __DIO_UIState[key] = (Value == true)
                         pcall(function() __DIO_UISetState(key, Value == true) end)
                         if Value == true then
-                            -- Set tween control and wake active workers before
-                            -- running the feature callback.
                             __DIO_TweenActivateImmediate()
                             local __before = {}
                             pcall(function()
@@ -4158,7 +4190,6 @@ do
                                 end
                             end
                             pcall(function()
-                                -- v9: tat 1 tinh nang khong duoc giet tween cua tinh nang khac
                                 pcall(function() __DIO_UISetState(key, false) end)
                                 local __stillOn = (type(__DIO_AnyFeatureOn) == "function") and __DIO_AnyFeatureOn() or false
                                 if __stillOn or __DIO_FlyBusy == true then
@@ -5346,7 +5377,8 @@ __DIO_SafeLoop(function()
         for i = 1, #Chests do
           local Chest = Chests[i]
           local Magnitude = (Chest:GetPivot().Position - Position).Magnitude
-          if not SelectedIsland or Chest:IsDescendantOf(SelectedIsland) then
+          local __selIsland = __DIO_GetSelectedIslandModel() 
+          if not __selIsland or Chest:IsDescendantOf(__selIsland) then
             if not Chest:GetAttribute("IsDisabled") and Magnitude < Distance then
               Distance = Magnitude
               Nearest = Chest
@@ -6325,9 +6357,6 @@ __DIO_SafeLoop(function()
     end
 end, "L4825")
 local __dkWasHunting = false
--- If neither chalice is in the backpack/character, Auto Dough King borrows
--- AutoFarmChest so the normal chest worker searches for God's Chalice instead
--- of entering the Cocoa branch too early.
 local function __DIO_DKHasItem(itemName)
     local ok, item = pcall(GetBP, itemName)
     return ok and item ~= nil
@@ -6342,11 +6371,6 @@ end
 local function __DIO_DKHasChalice()
     return __DIO_DKHasItem("God's Chalice") or __DIO_DKHasItem("Sweet Chalice")
 end
--- v9: vong lap Dough King chay moi 1 giay va dao qua lai giua "tim chest"
--- (AutoFarmChest) va "elite" (FarmEliteHunt). Dao lien tuc lam worker doi
--- huong lien tuc -> them tre 2s cho moi lan doi trang thai.
--- (dung bien global, khong them "local" o main chunk -> tranh tran gioi han
---  200 register cua Luau khi file qua lon)
 __DIO_DKMode, __DIO_DKModeT = nil, 0
 __DIO_DKSetMode = function(mode, force)
     if mode == __DIO_DKMode and not force then return end
@@ -6445,20 +6469,15 @@ __DIO_SafeLoop(function()
                 end)
                 local __hasChaliceDK = __DIO_DKHasChalice()
                 if not __hasChaliceDK then
-                    -- v9: doi trang thai co tre (2s) -> khong con dao chest/elite moi giay
                     __DIO_DKSetMode(__eliteSpawnedDK and "elite" or "chest")
                     if __dkWasHunting == false then
                         __dkWasHunting = true
-                        -- v9: giu lai lam drop MEM (co an han). Khong con xoa target
-                        -- moi 1 giay lam Dough King bay 1-2s roi dung.
                         __DIO_TweenDrop("dk-no-cakeloaf")
                         pcall(function() __DIO_Wake(true) end)
                     end
                     return
                 end
                 __dkWasHunting = false
-                -- v9: dong bo ca trang thai mode (neu khong, tre 2s co the khoa
-                -- viec quay lai tim chest sau khi chalice da dung xong)
                 pcall(function() __DIO_DKSetMode("off") end)
                 __DIO_DKSetChestSearch(false)
                 if GetM("Conjured Cocoa") <= 10 then
@@ -6833,7 +6852,10 @@ __DIO_SafeLoop(function()
     end
   end
   local function handleEnemySpawns()
-    for _, v in pairs(__SVC_WS["_WorldOrigin"].EnemySpawns:GetChildren()) do
+    local __woES = __SVC_WS:FindFirstChild("_WorldOrigin")
+    local __esES = __woES and __woES:FindFirstChild("EnemySpawns")
+    if not __esES then return end 
+    for _, v in pairs(__esES:GetChildren()) do
       for _, EnemyName in ipairs(MMon or {}) do
         if string.find(v.Name, EnemyName) then
           if (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - v.Position).Magnitude >= 10 then
@@ -6897,7 +6919,7 @@ FarmBoss = Tabs.Main:AddToggle({
                                                 repeat
                                                     __DIO_wait(0.25)
                                                     Attack.Kill(v, _G.FarmBoss)
-                                                until not _G.FarmBoss or v.Humanoid.Health <= 0 or not v.Parent or plr.PlayerGui.Main.Quest.Visible == false
+                                                until not _G.FarmBoss or v.Humanoid.Health <= 0 or not v.Parent or __DIO_QuestGone()
                                             else
                                                 replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
                                             end
@@ -7908,9 +7930,9 @@ __DIO_SafeLoop(function()
                 end
                 if Tool and FishingRequest and GetWaterHeight then
                     local waterHeight = GetWaterHeight(HRP.Position)
-                    local _, hitPos = Workspace:FindPartOnRayWithIgnoreList(
+                    local _, hitPos = workspace:FindPartOnRayWithIgnoreList( 
                         Ray.new(Char.Head.Position, HRP.CFrame.LookVector * MaxDistance),
-                        {Char, Workspace.Characters, Workspace.Enemies}
+                        {Char, workspace.Characters, workspace.Enemies} 
                     )
                     local TargetPos = hitPos and Vector3.new(hitPos.X, math.max(hitPos.Y, waterHeight), hitPos.Z)
                     local State = Tool:GetAttribute("State")
@@ -8132,7 +8154,7 @@ __DIO_SafeLoop(function()
               if __qZ.IsActive and string.find(__qZ.QuestText, "Swan Pirates", 1, true) and string.find(__qZ.QuestText, "50", 1, true) then
                 local v = GetConnectionEnemies("Swan Pirate")
                 if v then
-                  pcall(function() repeat __DIO_wait(0.25) Attack.Kill(v,_G.AutoZou) until not v.Parent or v.Humanoid.Health <= 0 or _G.AutoZou == false or plr.PlayerGui.Main.Quest.Visible == false end)
+                  pcall(function() repeat __DIO_wait(0.25) Attack.Kill(v,_G.AutoZou) until not v.Parent or v.Humanoid.Health <= 0 or _G.AutoZou == false or __DIO_QuestGone() end)
                 else
                   _tp(CFrame.new(1057.92761, 137.614319, 1242.08069))
                 end
@@ -9744,7 +9766,7 @@ spawn(function()
         local __qH = __DIO_GetCurrentQuest()
         if not __qH.IsActive then
           if _G.GetQFast then
-            if plr.PlayerGui.Main.Quest.Visible == false then replicated.Remotes.CommF_:InvokeServer("HornedMan","Bet") end
+            if __DIO_QuestGone() then replicated.Remotes.CommF_:InvokeServer("HornedMan","Bet") end
           else
             Rainbow1 = CFrame.new(-11892.0703125, 930.57672119141, -8760.1591796875)
             if (plr.Character.HumanoidRootPart.Position - Rainbow1.Position).Magnitude > 5 then
@@ -9757,14 +9779,14 @@ spawn(function()
           elseif __qH.IsActive and string.find(__qH.QuestText, "Stone", 1, true) then
             local v = GetConnectionEnemies("Stone")
             if v then
-              repeat __DIO_wait(0.25) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or plr.PlayerGui.Main.Quest.Visible == false
+              repeat __DIO_wait(0.25) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or __DIO_QuestGone()
             else
               _tp(CFrame.new(-1086.11621, 38.8425903, 6768.71436, 0.0231462717, -0.592676699, 0.805107772, 2.03251839e-05, 0.805323839, 0.592835128, -0.999732077, -0.0137055516, 0.0186523199))
             end
           elseif __qH.IsActive and string.find(__qH.QuestText, "Hydra Leader", 1, true) then
             local v = GetConnectionEnemies("Hydra Leader")
             if v then
-              repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or plr.PlayerGui.Main.Quest.Visible == false
+              repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or __DIO_QuestGone()
             else
               replicated.Remotes.CommF_:InvokeServer("requestEntrance",Vector3.new(5643.45263671875, 1013.0858154296875, -340.51025390625))
               local framelong1 = Vector3.new(5643.45263671875, 1013.0858154296875, -340.51025390625)
@@ -9774,14 +9796,14 @@ spawn(function()
           elseif __qH.IsActive and string.find(__qH.QuestText, "Kilo Admiral", 1, true) then
             local v = GetConnectionEnemies("Kilo Admiral")
             if v then
-              repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or plr.PlayerGui.Main.Quest.Visible == false
+              repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or __DIO_QuestGone()
             else
               _tp(CFrame.new(2877.61743, 423.558685, -7207.31006, -0.989591599, -0, -0.143904909, -0, 1.00000012, -0, 0.143904924, 0, -0.989591479))
             end
             elseif __qH.IsActive and string.find(__qH.QuestText, "Captain Elephant", 1, true) then
               local v = GetConnectionEnemies("Captain Elephant")
               if v then
-                repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki)until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or plr.PlayerGui.Main.Quest.Visible == false
+                repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki)until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or __DIO_QuestGone()
               else
               local gamergayror1 = Vector3.new(-12471.169921875, 374.94024658203, -7551.677734375)
               local gamergayror2 = CFrame.new(-13376.7578125, 433.28689575195, -8071.392578125)
@@ -9794,7 +9816,7 @@ spawn(function()
         elseif __qH.IsActive and string.find(__qH.QuestText, "Beautiful Pirate", 1, true) then
           local v = GetConnectionEnemies("Beautiful Pirate")
           if v then
-            repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or plr.PlayerGui.Main.Quest.Visible == false
+            repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Rainbow_Haki) until _G.Auto_Rainbow_Haki == false or v.Humanoid.Health <= 0 or not v.Parent or __DIO_QuestGone()
           else
             replicated.Remotes.CommF_:InvokeServer("requestEntrance",Vector3.new(5314.54638671875, 22.562219619750977, -127.06755065917969))
           end
@@ -9985,14 +10007,14 @@ __DIO_SafeLoop(function()
 	  if __fq.IsActive then
 	    local v = GetConnectionEnemies("Forest Pirate")
         if v then
-	      repeat __DIO_wait(0.25) Attack.Kill(v,_G.AutoKenVTWO) until not _G.AutoKenVTWO or v.Humanoid.Health <= 0 or plr.PlayerGui.Main.Quest.Visible == false
+	      repeat __DIO_wait(0.25) Attack.Kill(v,_G.AutoKenVTWO) until not _G.AutoKenVTWO or v.Humanoid.Health <= 0 or __DIO_QuestGone()
 	    else
 	      _tp(Kv2Pos4)
 	    end
 	  elseif __DIO_GetCurrentQuest().IsActive then
 	    local v = GetConnectionEnemies("Captain Elephant")
 	    if v then
-          repeat __DIO_wait(0.25) Attack.Kill(v,_G.AutoKenVTWO) until not _G.AutoKenVTWO or v.Humanoid.Health <= 0 or plr.PlayerGui.Main.Quest.Visible == false
+          repeat __DIO_wait(0.25) Attack.Kill(v,_G.AutoKenVTWO) until not _G.AutoKenVTWO or v.Humanoid.Health <= 0 or __DIO_QuestGone()
 	    else
 	      _tp(Kv2Pos5)
 	    end
@@ -10138,7 +10160,7 @@ __DIO_SafeLoop(function()
           if __fqC.IsActive then
             local v = GetConnectionEnemies("Forest Pirate")
             if v then
-              repeat __DIO_wait(Sec) Attack.Kill(v,_G.CitizenQuest)until _G.CitizenQuest == false or not v.Parent or v.Humanoid.Health <= 0 or plr.PlayerGui.Main.Quest.Visible == false
+              repeat __DIO_wait(Sec) Attack.Kill(v,_G.CitizenQuest)until _G.CitizenQuest == false or not v.Parent or v.Humanoid.Health <= 0 or __DIO_QuestGone()
             else
               _tp(CFrame.new(-13206.452148438, 425.89199829102, -7964.5537109375))
             end
@@ -10153,7 +10175,7 @@ __DIO_SafeLoop(function()
           local __qCE = __DIO_GetCurrentQuest()
           if __qCE.IsActive and string.find(__qCE.QuestText, "Captain Elephant", 1, true) then
             if v then
-              repeat __DIO_wait(Sec) Attack.Kill(v,_G.CitizenQuest) until _G.CitizenQuest == false or v.Humanoid.Health <= 0 or not v.Parent or plr.PlayerGui.Main.Quest.Visible == false
+              repeat __DIO_wait(Sec) Attack.Kill(v,_G.CitizenQuest) until _G.CitizenQuest == false or v.Humanoid.Health <= 0 or not v.Parent or __DIO_QuestGone()
             else
               _tp(CFrame.new(-13374.889648438, 421.27752685547, -8225.208984375))
             end
@@ -10182,7 +10204,7 @@ __DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     if _G.DummyMan then
       pcall(function()
-        if plr.PlayerGui.Main.Quest.Visible == false then
+        if __DIO_QuestGone() then
           local xxx = {[1] = "ArenaTrainer"}
 	      replicated:WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer(unpack(xxx))
         else
@@ -10817,7 +10839,8 @@ __DIO_SafeLoop(function()
           for i = 1, #Chests do
             local Chest = Chests[i]
             local Magnitude = (Chest:GetPivot().Position - Position).Magnitude
-            if not SelectedIsland or Chest:IsDescendantOf(SelectedIsland) then
+            local __selIsland = __DIO_GetSelectedIslandModel() 
+            if not __selIsland or Chest:IsDescendantOf(__selIsland) then
               if not Chest:GetAttribute("IsDisabled") and Magnitude < Distance then
                 Distance = Magnitude
                 Nearest = Chest
@@ -10846,9 +10869,12 @@ Default = false,
 Callback = function(Value)
   LookM = Value
 end})
-function MoveCamtoMoon()
-workspace.CurrentCamera.CFrame = CFrame.new(workspace.CurrentCamera.CFrame.Position,Lighting:GetMoonDirection() + workspace.CurrentCamera.CFrame.Position)
-plr.Character.HumanoidRootPart.CFrame = CFrame.new(plr.Character.HumanoidRootPart.Position,Lighting:GetMoonDirection() + plr.Character.HumanoidRootPart.CFrame.Position)
+function MoveCamtoMoon() 
+    local __chMCM = plr and plr.Character
+    local __hrpMCM = __chMCM and __chMCM:FindFirstChild("HumanoidRootPart")
+    if not __hrpMCM then return end
+    workspace.CurrentCamera.CFrame = CFrame.new(workspace.CurrentCamera.CFrame.Position,Lighting:GetMoonDirection() + workspace.CurrentCamera.CFrame.Position)
+    __hrpMCM.CFrame = CFrame.new(__hrpMCM.Position,Lighting:GetMoonDirection() + __hrpMCM.CFrame.Position)
 end
 __DIO_SafeLoop(function()
   while __DIO_wait(1) do
@@ -10881,9 +10907,17 @@ __DIO_SafeLoop(function()
         if LookMV3 then
             pcall(MoveCamtoMoon)
             replicated.Remotes.CommE:FireServer("ActivateAbility")
-            UIS:SendKeyEvent(true, "T", false, game)
+            pcall(function() 
+                local __vim = __SVC_VIM or game:GetService("VirtualInputManager")
+                local __uisSvc = game:GetService("UserInputService")
+                __vim:SendKeyEvent(true, "T", false, __uisSvc)
+            end)
             __DIO_wait(0.5)
-            UIS:SendKeyEvent(false, "T", false, game)
+            pcall(function() 
+                local __vim = __SVC_VIM or game:GetService("VirtualInputManager")
+                local __uisSvc = game:GetService("UserInputService")
+                __vim:SendKeyEvent(false, "T", false, __uisSvc)
+            end)
         end
     end
 end, "L9423")
@@ -12744,7 +12778,7 @@ __DIO_SafeLoop(function()
     while __DIO_wait(3) do
         pcall(function()
             if not _G.FrozenDimension then return end
-            local spycheck = string.match(replicated.Remotes.CommF_:InvokeServer("InfoLeviathan", "1"), "%d+")
+            local spycheck = string.match(tostring(replicated.Remotes.CommF_:InvokeServer("InfoLeviathan", "1")), "%d+") 
             if spycheck then
                 local __v = "Spy Leviathan : " .. (tonumber(spycheck) == 5 and "Already Done!!" or tostring(spycheck))
                 if __v ~= __prevSpy then __prevSpy = __v SPYING:SetDesc(__v) end
@@ -13087,7 +13121,7 @@ __DIO_SafeLoop(function()
             pcall(function()
                 local boat = getBeastHunter()
                 local heartModel, heartPart = getLeviathanHeart()
-                local character = LocalPlayer.Character
+                local character = plr.Character 
                 if not boat or not heartPart or not character then return end
                 local boatRoot = boat.PrimaryPart
                     or boat:FindFirstChild("VehicleSeat")
@@ -13959,7 +13993,7 @@ __DIO_SafeLoop(function()
     if _G.TwFruits then
       pcall(function()
         for _,x1 in pairs(workspace:GetChildren()) do
-	    if string.find(x1.Name, "Fruit") then _tp(x1.Handle.CFrame) end
+	    if x1:IsA("Model") then local __hF = x1:FindFirstChild("Handle"); if __hF then _tp(__hF.CFrame) end end 
 	    end
       end)
     end
@@ -15786,16 +15820,19 @@ Tabs.Misc:AddButton({
         local ReplicatedStorage = __SVC_RS
         local RemotesFolder = ReplicatedStorage:WaitForChild("Remotes")
         local RedeemRemote = RemotesFolder:FindFirstChild("Redeem")
-        if not RedeemRemote then
+        local __commF = RemotesFolder:FindFirstChild("CommF_")
+        if not RedeemRemote and not __commF then
             return
         end
         for _, code in ipairs(codes) do
             __DIO_wait(0)
             pcall(function()
-                if RedeemRemote.InvokeServer then
+                if RedeemRemote and RedeemRemote.InvokeServer then
                     RedeemRemote:InvokeServer(code)
-                else
+                elseif RedeemRemote then
                     RedeemRemote:FireServer(code)
+                elseif __commF then
+                    __commF:InvokeServer("Redeem", code)
                 end
             end)
         end
@@ -15887,7 +15924,7 @@ local function fetchServersData(placeId, limit)
   if not servers then return end
   local lowestPingServer = servers[1]
   for _, server in pairs(servers) do
-    if server["ping"] < lowestPingServer["ping"] and server.maxPlayers > server.playing then
+    if server["ping"] and lowestPingServer["ping"] and server["ping"] < lowestPingServer["ping"] and server.maxPlayers > server.playing then 
       lowestPingServer = server
     end
   end
@@ -15895,8 +15932,13 @@ local function fetchServersData(placeId, limit)
   __DIO_wait(commonLoadTime)
   local pingThreshold = 100
   local serverStats = StatsService.Network.ServerStatsItem
-  local dataPing = serverStats["Data Ping"]:GetValueString()
-  local pingValue = tonumber(dataPing:match("(%d+)"))
+  local pingValue = 0
+  do 
+      local __okDP, __dp = pcall(function()
+          return serverStats["Data Ping"]:GetValueString():match("(%d+)")
+      end)
+      if __okDP and __dp then pingValue = tonumber(__dp) or 0 end
+  end
   if pingValue >= pingThreshold then
     TeleportService:TeleportToPlaceInstance(placeId, lowestPingServer.id)
   else
@@ -15928,21 +15970,25 @@ Tabs.Misc:AddButton({
 Name = __DIO_T["Copy JobID"],
 Description = "",
 Callback = function()
-  setclipboard(tostring(game.JobId))
+  pcall(function() setclipboard(tostring(game.JobId)) end) 
 end})
 Tabs.Misc:AddSection("Player Gui / Others")
 Tabs.Misc:AddButton({
 Name = __DIO_T["Open Awakenings Expert"],
 Description = "",
 Callback = function()
-  plr.PlayerGui.Main.AwakeningToggler.Visible = true
+  local __mainAW = plr.PlayerGui:FindFirstChild("Main") 
+  local __aw = __mainAW and __mainAW:FindFirstChild("AwakeningToggler")
+  if __aw then __aw.Visible = true end
 end})
 Tabs.Misc:AddButton({
 Name = __DIO_T["Open Title Selection"],
 Description = "",
 Callback = function()
-  replicated.Remotes.CommF_:InvokeServer("getTitles",true)
-  plr.PlayerGui.Main.Titles.Visible = true
+  pcall(function() replicated.Remotes.CommF_:InvokeServer("getTitles",true) end)
+  local __mainTS = plr.PlayerGui:FindFirstChild("Main") 
+  local __titles = __mainTS and __mainTS:FindFirstChild("Titles")
+  if __titles then __titles.Visible = true end
 end})
 DisbleChat = Tabs.Misc:AddToggle({
 Name = __DIO_T["Disable Chat GUI"],
@@ -16022,6 +16068,7 @@ Options = HakiSt,
 Callback = function(Value)
   _G.SelectStateHaki = Value
 end})
+if _G.SelectStateHaki == nil then _G.SelectStateHaki = "State 1" end
 Tabs.Misc:AddButton({
 Name = __DIO_T["ChangeBusoStage"],
 Description = "",
@@ -16043,7 +16090,8 @@ end})
 Tabs.SeaEvent:AddButton({
     Name = __DIO_T["Remove Lighting Effect"],
     Callback = function()
-        __SVC_LIGHT.BaseAtmosphere:Destroy()
+        local __atm = __SVC_LIGHT:FindFirstChild("BaseAtmosphere") 
+        if __atm then __atm:Destroy() end
     end
 })
 rtxM = Tabs.Hop:AddToggle({
@@ -16136,11 +16184,13 @@ Callback = function()
   local __boatsIBV5 = workspace:FindFirstChild("Boats")
   if not __boatsIBV5 then return end
   for _, v in pairs(__boatsIBV5:GetDescendants()) do
-    if table.find(ListSeaBoat, v.Name) and tostring(v.Owner.Value) == tostring(plr.Name) then
-      v.VehicleSeat.MaxSpeed = 350
-      v.VehicleSeat.Torque = 0.2
-      v.VehicleSeat.TurnSpeed = 5
-      v.VehicleSeat.HeadsUpDisplay = true
+    local __ownerV = v:FindFirstChild("Owner")
+    local __seatV = v:FindFirstChild("VehicleSeat")
+    if table.find(ListSeaBoat, v.Name) and __ownerV and __seatV and tostring(__ownerV.Value) == tostring(plr.Name) then
+      __seatV.MaxSpeed = 350
+      __seatV.Torque = 0.2
+      __seatV.TurnSpeed = 5
+      __seatV.HeadsUpDisplay = true
     end
   end
 end})
@@ -16157,23 +16207,37 @@ Tabs.Misc:AddButton({
 Name = __DIO_T["Rain Fruits (Client)"],
 Description = "",
 Callback = function()
-  local __chRF = plr.Character
-  local __ppRF = __chRF and __chRF.PrimaryPart
-  if not __ppRF then return end
-  for i, v in pairs(game:GetObjects("rbxassetid://14759368201")[1]:GetChildren()) do
-    v.Parent = game.Workspace.Map
-    v:MoveTo(__ppRF.Position + Vector3.new(math.random(-50, 50), 100, math.random(-50, 50)))
-    if v.Fruit:FindFirstChild("AnimationController") then
-      v.Fruit:FindFirstChild("AnimationController"):LoadAnimation(v.Fruit:FindFirstChild("Idle")):Play()
+  pcall(function() 
+    local __chRF = plr.Character
+    local __ppRF = (__chRF and __chRF:FindFirstChild("PrimaryPart")) or (__chRF and __chRF:FindFirstChild("HumanoidRootPart"))
+    if not __ppRF then return end
+    local __objsRF = nil
+    pcall(function() __objsRF = game:GetObjects("rbxassetid://14759368201") end)
+    local __model = __objsRF and __objsRF[1]
+    if not __model then return end
+    for _, v in pairs(__model:GetChildren()) do
+      pcall(function()
+        v.Parent = game.Workspace.Map
+        v:MoveTo(__ppRF.Position + Vector3.new(math.random(-50, 50), 100, math.random(-50, 50)))
+        local __fruit = v:FindFirstChild("Fruit")
+        local __acc = __fruit and __fruit:FindFirstChild("AnimationController")
+        if __acc then
+          local __idle = __fruit:FindFirstChild("Idle")
+          if __idle then __acc:LoadAnimation(__idle):Play() end
+        end
+        local __handle = v:FindFirstChild("Handle")
+        if __handle then
+          __handle.Touched:Connect(function(otherPart)
+            if otherPart.Parent == plr.Character then
+              v.Parent = plr.Backpack
+              local __humRF = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
+              if __humRF then __humRF:EquipTool(v) end
+            end
+          end)
+        end
+      end)
     end
-    v.Handle.Touched:Connect(function(otherPart)
-      if otherPart.Parent == plr.Character then
-        v.Parent = plr.Backpack
-        local __humRF = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
-        if __humRF then __humRF:EquipTool(v) end
-      end
-    end)
-  end
+  end)
 end})
 briggt1 = Tabs.Hop:AddToggle({
 Name = __DIO_T["Turn on Full Bright"],
@@ -16210,9 +16274,14 @@ __DIO_SafeLoop(function()
     while __DIO_wait(Sec) do
         if _G.DestroyHit then
             pcall(function()
-                for _, v in pairs(workspace["_WorldOrigin"]:GetChildren()) do
-                    if table.find(HitEffects, v.Name) then
-                        v:Destroy()
+                do 
+                    local __woHV = workspace:FindFirstChild("_WorldOrigin")
+                    if __woHV then
+                        for _, v in pairs(__woHV:GetChildren()) do
+                            if table.find(HitEffects, v.Name) then
+                                v:Destroy()
+                            end
+                        end
                     end
                 end
             end)
@@ -16298,10 +16367,12 @@ Description = "",
 Default = true,
 Callback = function(Value)
   _G.WalkWater_Part = Value
-  if _G.WalkWater_Part then
-    __SVC_WS.Map["WaterBase-Plane"].Size = Vector3.new(1000, 112, 1000)
-  else
-    __SVC_WS.Map["WaterBase-Plane"].Size = Vector3.new(1000, 80, 1000)
+  do 
+    local __mapW = __SVC_WS:FindFirstChild("Map")
+    local __planeW = __mapW and __mapW:FindFirstChild("WaterBase-Plane")
+    if __planeW then
+      __planeW.Size = _G.WalkWater_Part and Vector3.new(1000, 112, 1000) or Vector3.new(1000, 80, 1000)
+    end
   end
 end
 })
@@ -16348,11 +16419,40 @@ pcall(function()
         if CameraShakerR and CameraShakerR.Stop then CameraShakerR:Stop() end
     end
 end)
-get_Monster=function()for a,b in pairs(workspace.Enemies:GetChildren())do local c=b:FindFirstChild("UpperTorso")or b:FindFirstChild("Head")if b:FindFirstChild("HumanoidRootPart",true)and c then if(b.Head.Position-plr.Character.HumanoidRootPart.Position).Magnitude<=50 then return true,c.Position end end end;for a,d in pairs(workspace.SeaBeasts:GetChildren())do if d:FindFirstChild("HumanoidRootPart")and d:FindFirstChild("Health")and d.Health.Value>0 then return true,d.HumanoidRootPart.Position end end;for a,d in pairs(workspace.Enemies:GetChildren())do if d:FindFirstChild("Health")and d.Health.Value>0 and d:FindFirstChild("VehicleSeat")then return true,d.Engine.Position end end end
+get_Monster = function() 
+    local __chGM = plr and plr.Character
+    local __hrpGM = __chGM and __chGM:FindFirstChild("HumanoidRootPart")
+    if not __hrpGM then return end
+    local __enemiesFolder = workspace:FindFirstChild("Enemies")
+    if __enemiesFolder then
+        for _, b in pairs(__enemiesFolder:GetChildren()) do
+            local c = b:FindFirstChild("UpperTorso") or b:FindFirstChild("Head")
+            if b:FindFirstChild("HumanoidRootPart", true) and c then
+                if (c.Position - __hrpGM.Position).Magnitude <= 50 then return true, c.Position end
+            end
+        end
+    end
+    local __seaBeasts = workspace:FindFirstChild("SeaBeasts")
+    if __seaBeasts then
+        for _, d in pairs(__seaBeasts:GetChildren()) do
+            if d:FindFirstChild("HumanoidRootPart") and d:FindFirstChild("Health") and d.Health.Value > 0 then
+                return true, d.HumanoidRootPart.Position
+            end
+        end
+    end
+    if __enemiesFolder then
+        for _, d in pairs(__enemiesFolder:GetChildren()) do
+            if d:FindFirstChild("Health") and d.Health.Value > 0 and d:FindFirstChild("VehicleSeat") and d:FindFirstChild("Engine") then
+                return true, d.Engine.Position
+            end
+        end
+    end
+end
 Actived=function()local a=game.Players.LocalPlayer.Character:FindFirstChildOfClass("Tool")if not a then return end
 if a.Name == (__DIO_LastActivedTool or "") then return end
 __DIO_LastActivedTool = a.Name
-for b,c in next,getconnections(a.Activated)do if typeof(c.Function)=='function'then getupvalues(c.Function)end end end
+if getconnections then pcall(function() for b,c in next,getconnections(a.Activated) do if typeof(c.Function) == "function" then getupvalues(c.Function) end end end) end 
+end 
 task.spawn(function()
   RunSer.Heartbeat:Connect(function()
     pcall(function()
@@ -16471,10 +16571,10 @@ task.spawn(function()
     end
 end)
 getBeastHunter = function()
-    local character = LocalPlayer.Character
+    local character = plr.Character 
     if not character or not character:FindFirstChild("HumanoidRootPart") then return nil end
     local hrp = character.HumanoidRootPart
-    for _, obj in pairs(Workspace:GetDescendants()) do
+    for _, obj in pairs(workspace:GetDescendants()) do 
         if obj:IsA("Model") and string.find(obj.Name, "Beast Hunter") then
             local root = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
             if root then
@@ -16487,7 +16587,7 @@ getBeastHunter = function()
     return nil
 end
 getLeviathanHeart = function()
-    for _, obj in pairs(Workspace:GetDescendants()) do
+    for _, obj in pairs(workspace:GetDescendants()) do 
         if obj:IsA("Model") and string.find(obj.Name, "Leviathan Heart") then
             local root = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
             if root then
@@ -16500,7 +16600,8 @@ end
 local function CheckInventoryNew(name)
     if ItemReplicationService and ItemReplicationService.IsInitialized then
         local ItemData = {}
-        local Items = ItemReplicationService:GetItems(KEYS.QUANTITY)
+        local okItems, Items = pcall(function() return ItemReplicationService:GetItems(KEYS.QUANTITY) end) 
+        if okItems and type(Items) == "table" then
         for _, v in pairs(Items) do
             local success, dataItem = pcall(function()
                 return v.ItemId.getDataFromId(v.ItemId):unwrap()
@@ -16513,6 +16614,7 @@ local function CheckInventoryNew(name)
                 })
             end
         end
+        end 
         for _, v in pairs(ItemData) do
             if v and v.Name == name and v.Count >= 1 then
                 return true
@@ -16547,12 +16649,11 @@ __DIO_QueueAutoExec = function()
         return tostring(v or ""):gsub("\\", "\\\\"):gsub('"', '\\"')
     end
     local __code = 'getgenv().Team="' .. __esc(getgenv().Team or "Pirates") .. '"'
-        .. ' getgenv().SaveSettings=' .. tostring(getgenv().SaveSettings ~= false)
-        .. ' getgenv().Key="' .. __esc(getgenv().Key) .. '"'
-        .. ' getgenv().AutoExecutor=true'
-        .. ' getgenv().HideUi=' .. tostring(getgenv().HideUi == true)
-        .. ' loadstring(game:HttpGet("' .. __url .. '"))()'
-    pcall(function()
+        .. '\ngetgenv().SaveSettings=' .. tostring(getgenv().SaveSettings ~= false)
+        .. '\ngetgenv().Key="' .. __esc(getgenv().Key) .. '"'
+        .. '\ngetgenv().AutoExecutor=true'
+        .. '\ngetgenv().HideUi=' .. tostring(getgenv().HideUi == true)
+        .. '\nloadstring(game:HttpGet("' .. __url .. '"))()'     pcall(function()
         if type(queue_on_teleport) == "function" then
             queue_on_teleport(__code)
         elseif syn and syn.queue_on_teleport then
@@ -16628,7 +16729,7 @@ else
         Title = "Copy Discord Link",
         Description = "Copies the invite link to your clipboard.",
         Callback = function()
-            setclipboard("https://discord.gg/NZm9MXzmzn")
+            pcall(function() setclipboard("https://discord.gg/NZm9MXzmzn") end) 
             Fluent:Notify({
                 Title = "Copied!",
                 Content = "Discord link has been copied to your clipboard.",
@@ -16651,7 +16752,7 @@ else
             if type(__link) ~= "string" or #__link <= 12 then
                 __link = "https://link4sub.com/notes/eRcc"
             end
-            setclipboard(__link)
+            pcall(function() setclipboard(__link) end) 
             Fluent:Notify({
                 Title = "Copied!",
                 Content = "Key link copied to clipboard!",
@@ -16710,10 +16811,12 @@ else
             end
         end
     })
-    Window:SelectTab(2)
-    Fluent:Notify({
-        Title = "DIO Hub",
-        Content = "Key System Loaded - Please enter key",
-        Duration = 5
-    })
+    pcall(function() Window:SelectTab(2) end) 
+    pcall(function()
+        Fluent:Notify({
+            Title = "DIO Hub",
+            Content = "Key System Loaded - Please enter key",
+            Duration = 5
+        })
+    end)
 end
