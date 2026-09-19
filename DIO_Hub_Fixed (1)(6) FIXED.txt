@@ -48,26 +48,29 @@ local function _DIO_CleanJSON(str)
     str = str:gsub("^%s+", ""):gsub("%s+$", "")
     return str
 end
+local _DIO_KeyDiag = "" -- [KEY-4] chan doan loi doc Api
+local function _DIO_TryPastefy(url, tag)
+    local raw = nil
+    local okH = pcall(function() raw = _DIO_RawHttpGet(game, url, true) end)
+    if (not okH) or type(raw) ~= "string" or #raw == 0 then
+        _DIO_KeyDiag = tag .. ": HTTP that bai / khong tra text (404? mang? executor chan?)"
+        return nil
+    end
+    local okJ, dec = pcall(function() return HttpService:JSONDecode(_DIO_CleanJSON(raw)) end)
+    if (not okJ) or type(dec) ~= "table" then
+        _DIO_KeyDiag = tag .. ": JSON khong hop le -> " .. tostring(dec):sub(1, 80)
+        return nil
+    end
+    return dec
+end
 local function _DIO_ResolvePendingFromPastefy()
-    local data = nil
-    local ok = pcall(function()
-        local raw = _DIO_RawHttpGet(game, PASTEFY_PRIMARY_URL, true)
-        if type(raw) == "string" and #raw > 0 then
-            data = HttpService:JSONDecode(_DIO_CleanJSON(raw))
-        end
-    end)
-    if (not ok) or type(data) ~= "table" then
-        data = nil
-        local ok2 = pcall(function()
-            local raw = _DIO_RawHttpGet(game, PASTEFY_FALLBACK_URL, true)
-            if type(raw) == "string" and #raw > 0 then
-                data = HttpService:JSONDecode(_DIO_CleanJSON(raw))
-            end
-        end)
-        if (not ok2) or type(data) ~= "table" then
-            warn("[DIO KEY] Khong doc duoc du lieu Api (ca link chinh va link du phong). Kiem tra mang / executor.")
-            return nil
-        end
+    local data = _DIO_TryPastefy(PASTEFY_PRIMARY_URL, "primary")
+    if type(data) ~= "table" then
+        data = _DIO_TryPastefy(PASTEFY_FALLBACK_URL, "fallback")
+    end
+    if type(data) ~= "table" then
+        warn("[DIO KEY] Khong doc duoc du lieu Api (ca link chinh va link du phong). " .. _DIO_KeyDiag)
+        return nil
     end
     return data
 end
@@ -112,6 +115,18 @@ local function _DIO_KeyLabel()
     end
     return "(chua co - hay bam Check Key)"
 end
+local function _DIO_KeyListFrom(data) -- [KEY-3] Key co the la string HOAC mang string
+    local out = {}
+    if type(data) ~= "table" then return out end
+    local arr = (type(data.Key) == "table") and data.Key or { data.Key }
+    for _, e in ipairs(arr) do
+        if type(e) == "string" then
+            local t = e:gsub("^%s+", ""):gsub("%s+$", "")
+            if #t > 0 then table.insert(out, t) end
+        end
+    end
+    return out
+end
 local function _SEC_VerifyKey(inputKey)
     if type(inputKey) ~= "string" then return false end
     inputKey = inputKey:gsub("^%s+", ""):gsub("%s+$", "")
@@ -119,35 +134,39 @@ local function _SEC_VerifyKey(inputKey)
     if type(_DIO_SessionKey) == "string" and #_DIO_SessionKey > 0 and inputKey == _DIO_SessionKey then
         return true
     end
+    local data = _DIO_ResolvePendingFromPastefy()
+    if type(data) == "table" then
+        -- [KEY-2] ONLINE: Pastefy la nguon chan ly DUY NHAT -> doi key o pastefy co hieu luc ngay,
+        -- key cu (cache / getgenv) KHONG the tu vao.
+        local list = _DIO_KeyListFrom(data)
+        if #list == 0 then
+            warn("[DIO KEY] Pastefy tra ve JSON hop le nhung thieu truong 'Key' hop le.")
+            return false
+        end
+        for _, official in ipairs(list) do
+            if #inputKey == #official then
+                local diff = 0
+                for i = 1, #inputKey do
+                    if inputKey:byte(i) ~= official:byte(i) then diff = 1 break end
+                end
+                if diff == 0 then
+                    _DIO_SetKey(inputKey)
+                    if data.Linkgetkey and #tostring(data.Linkgetkey) > 12 then
+                        _DIO_KeyConfig.Linkgetkey = tostring(data.Linkgetkey)
+                    end
+                    _DIO_KeyConfig.Loaded = true
+                    return true
+                end
+            end
+        end
+        return false
+    end
+    -- OFFLINE (khong toi duoc Pastefy): chap nhan key cau hinh / cache de khong khoa nguoi dung
     if _DIO_PendingKey ~= "" and inputKey == _DIO_PendingKey then
         _DIO_SetKey(inputKey)
         return true
     end
-    local data = _DIO_ResolvePendingFromPastefy()
-    local official = ""
-    if type(data) == "table" and data.Key ~= nil then
-        official = tostring(data.Key):gsub("^%s+", ""):gsub("%s+$", "")
-    end
-    if #official == 0 then
-        warn("[DIO KEY] Key cua he thong dang rong (Pastefy tra ve khong co truong 'Key').")
-        return false
-    end
-    local diff = 0
-    if #inputKey == #official then
-        for i = 1, #inputKey do
-            if inputKey:byte(i) ~= official:byte(i) then diff = diff + 1 end
-        end
-    else
-        diff = 1
-    end
-    if diff == 0 then
-        _DIO_SetKey(inputKey)
-        if data and data.Linkgetkey and #tostring(data.Linkgetkey) > 12 then
-            _DIO_KeyConfig.Linkgetkey = tostring(data.Linkgetkey)
-        end
-        _DIO_KeyConfig.Loaded = true
-        return true
-    end
+    warn("[DIO KEY] Offline va key khong khop cache. Chi tiet: " .. _DIO_KeyDiag)
     return false
 end
 _DIO_PendingKey = _DIO_GetEnvString("Key")
@@ -158,6 +177,7 @@ local function _DIO_AddCachedPendingKey()
         if not isfile(KEY_FILE) then return end
         local data = HttpService:JSONDecode(readfile(KEY_FILE))
         if type(data) == "table" and type(data.key) == "string" then
+            if data.time and (os.time() - tonumber(data.time) > 36000) then return end -- [KEY-1]
             local k = data.key:gsub("^%s+", ""):gsub("%s+$", "")
             if #k > 0 then
                 _DIO_PendingKey = k
