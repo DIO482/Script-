@@ -477,6 +477,9 @@ __DIO_Wake = function(force)
     return true
 end
 __DIO_TweenActivateImmediate = function()
+    local __nowA = tick()
+    if __nowA - (__DIO_LastActT or 0) < 0.5 then return end -- [HL4]
+    __DIO_LastActT = __nowA
     __DIO_TweenBlockT = 0
     __DIO_TweenBlockDur = 0.5
     __DIO_FalseSince = nil
@@ -639,6 +642,7 @@ __DIO_FeatOn = function(name)
     return (__DIO_FeatMark and __DIO_FeatMark[name] == true) or false
 end
 __DIO_TweenKillT  = 0
+__DIO_LastActT   = 0
 __DIO_TweenAllowT = 0
 __DIO_TweenArmedT = 0
 __DIO_FlyBusyT    = 0
@@ -979,6 +983,7 @@ __DIO_TweenSync = function()
         end
     end
     shouldTween = on and true or false
+    if on == false and type(__DIO_HlOff) == "function" then pcall(__DIO_HlOff) end -- [HL3]
     return on
 end
 __DIO_TweenDropHard = function(reason)
@@ -1084,6 +1089,9 @@ __DIO_SafeLoop(function()
         pcall(__DIO_Watchdog)
     end
 end, "V10Watchdog")
+__DIO_UserIntent = function() -- [HL2v2] chi UI that cua phien nay moi duoc tinh
+    return (__DIO_UIOnN or 0) > 0 or (__DIO_FeatOnN or 0) > 0
+end
 __DIO_HlSync = function(wantOn)
     if wantOn then
         local __ch = plr.Character
@@ -1113,6 +1121,18 @@ pcall(function()
 end)
 _G.SaveData = _G.SaveData or {}
 _G.DIO_AutoSave = (getgenv().SaveSettings ~= false)
+_G.DIO_AutoRestore = (getgenv().AutoRestoreToggles == true) -- [HL1] mac dinh KHONG tu bat lai toggle da luu
+-- [HL5] xoa co _G/getgenv TRUE am tu phien cu (executor giu moi truong cu) -> het "chua bat gi ma tu chay/sang highlight"
+if getgenv().DIO_ResetStaleFlags ~= false then
+    pcall(function()
+        local __gSt = nil
+        pcall(function() if type(getgenv) == "function" and getgenv() ~= _G then __gSt = getgenv() end end)
+        for _, __nm in ipairs({ "AcientOne", "Addealer", "AuraBoss", "AutoAttackDoughKing", "AutoBerry", "AutoBerryH", "AutoBigmom", "AutoChestBP", "AutoChipBeli", "AutoChipFruit", "AutoColShad", "AutoDeathStep", "AutoDoughKing", "AutoDragonTalon", "AutoEcBoss", "AutoEctoplasm", "AutoEvoRace", "AutoFMon", "AutoFactory", "AutoFarmAllBoss", "AutoFarmCandy", "AutoFarmChest", "AutoFarmDungeon", "AutoFarmGodChalice", "AutoFarmIsland", "AutoFarmNear", "AutoFarmRaid", "AutoFarm_Bone", "AutoFireFlowers", "AutoFishSlap", "AutoFistDarkness", "AutoGetQuestBounty", "AutoGetUsoap", "AutoHolyTorch", "AutoHop_Dough", "AutoHytHallow", "AutoKenVTWO", "AutoKillMob", "AutoKilo", "AutoLawKak", "AutoMatSoul", "AutoMaterial", "AutoMiror", "AutoMysticIsland", "AutoPhoenixF", "AutoPlayerHunter", "AutoPole", "AutoPoleV2", "AutoRaidCastle", "AutoRipIngay", "AutoSaber", "AutoSaw", "AutoSerpentBow", "AutoSpawnCP", "AutoStartPrehistoric", "AutoTPAndCollect", "AutoTPGift", "AutoTP_Gift", "AutoTridentW2", "AutoUnHaki", "AutoZou", "Auto_Cake_Prince", "Auto_Cavender", "Auto_Def_DarkCoat", "Auto_DonAcces", "Auto_Electric_Claw", "Auto_Fish", "Auto_God_Human", "Auto_Human", "Auto_Mink", "Auto_Rainbow_Haki", "Auto_SharkMan_Karate", "Auto_Skypiea", "Auto_Soul_Guitar", "Auto_StartRaid", "Auto_SuperHuman", "Auto_SwanGG", "Auto_Tushita", "Auto_Yama", "AutofindKitIs", "Bartilo_Quest", "BlackSpikey", "BuyDrago", "BuyMelee_BuyBlackLeg", "BuyMelee_BuyDragonClaw", "BuyMelee_BuyElectro", "BuyMelee_BuyFishmanKarate", "CDK", "CDK_TS", "CDK_YM", "CitizenQuest", "CollectPresent", "Collect_Ember", "Complete_Trials", "CraftVM", "DT_Uzoth", "DangerLV", "DarkBladev3", "Defeating", "Dojoo", "Doughv2", "DragoV1", "DragoV3", "DummyMan", "FarmBlazeEM", "FarmBoss", "FarmChestM", "FarmEliteH", "FarmEliteHop", "FarmEliteHunt", "FarmGodChalice", "FarmMastery_Dev", "FarmMastery_G", "FarmMastery_S", "FarmPhaBinh", "FarmTyrant", "FindMirage", "FishBoat", "FrozenDimension", "FrozenTP", "Greybeard", "HCM", "HighestMirage", "IceBossRen", "KeysRen", "Level", "Leviathan1", "LongsWord", "Lvthan", "MarinesCoat", "MasterAutoCandy", "MasterAutoLevel", "MobCrew", "PGB", "Piranha", "Praying", "Prefully", "Prehis_DB", "Prehis_DE", "Prehis_Find", "Prehis_Skills", "Raiding", "Relic123", "ResetPH", "SafeMode", "Safemode", "SailBoat_Hydra", "SailBoats", "SeaBeast1", "Shark", "ShotHL", "Snaguine", "StartEvent", "StartFarm", "SwanCoat", "TPDoor", "TPFloor1", "TPFloor2", "TPFloor3", "TPFloor4", "TPGEAR", "TPNpc", "Teleport", "TerrorShark", "TpDrago_Prehis", "TpLab", "TpPly", "Tp_LgS", "Tp_MasterA", "TrainDrago", "TravelDres", "TryLucky", "TwFruits", "TweenBoatOwner", "TwinHook", "UPGDrago", "WardenBoss", "beasthunter", "obsFarm", "tweenKitShrine", "tweenKitsune", "tweenShrine" }) do
+            if rawget(_G, __nm) == true then rawset(_G, __nm, false) end
+            if __gSt and rawget(__gSt, __nm) == true then rawset(__gSt, __nm, false) end
+        end
+    end)
+end
 SaveSettings = function()
     if _G.DIO_AutoSave == false then return false end
     if not writefile then return false end
@@ -3314,7 +3334,7 @@ spawn(function()
           end
       end
       pcall(__DIO_TweenSync)
-      local __hlWant = (__anyF or (__validST and __anyF))
+      local __hlWant = (__DIO_UserIntent() or __DIO_FlyBusy == true) and (tick() - (__DIO_BootT0 or 0)) > 5 -- [HL2v2]
       __DIO_HlSync(__hlWant)
       if __hlWant then
         local __stompHum = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
@@ -4101,7 +4121,7 @@ do
             function tab:AddToggle(Setting)
                 local key = __DIOKey(tabName, Setting and (Setting.Name or Setting.Title))
                 local saved = GetSetting(key, nil)
-                if Setting and saved ~= nil then
+                if _G.DIO_AutoRestore == true and Setting and saved ~= nil then
                     Setting.Default = saved
                 end
                 local origCb = Setting and Setting.Callback
@@ -4225,7 +4245,7 @@ do
                     end
                 end
                 local ctrl = _AddToggle(self, Setting)
-                if saved ~= nil and origCb then
+                if _G.DIO_AutoRestore == true and saved ~= nil and origCb then
                     task.delay(3, function()
                         if not __userTouched then
                             pcall(Setting.Callback, saved)
@@ -4294,7 +4314,7 @@ do
                     end
                 end
                 local ctrl = _AddDropdown(self, Setting)
-                if saved ~= nil and origCb then
+                if _G.DIO_AutoRestore == true and saved ~= nil and origCb then
                     task.delay(3, function()
                         if not __userTouched then
                             pcall(origCb, saved)
@@ -4324,7 +4344,7 @@ do
                     end
                 end
                 local ctrl = _AddSlider(self, Setting)
-                if saved ~= nil and origCb then
+                if _G.DIO_AutoRestore == true and saved ~= nil and origCb then
                     task.delay(3, function()
                         if not __userTouched then
                             pcall(origCb, saved)
