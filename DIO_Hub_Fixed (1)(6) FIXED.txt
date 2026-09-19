@@ -2078,20 +2078,144 @@ IsRaidMob = function(mob)
     if ok then return result end
     return false
 end
+-- ================= MOB HOLD: giu mob dung im, danh khong bi vang =================
+-- Loi cu: BringEnemy chi tween mob 1 lan (0.45s) roi "tha" => khong giu vi tri.
+--         Luc danh, knockback day velocity vao HumanoidRootPart => mob bi vang di,
+--         ma bring lai chi chay toi da 2.5s/lan nen mob bay mat.
+-- Moi:  mob duoc GIU lien tuc moi frame (neo CFrame vao anchor canh player +
+--       triet velocity = huy knockback). Chi tha khi: mob chet / tat Bring Mobs /
+--       farm dung (6s khong duoc cham) / mob qua xa / la mob Raid.
+local __DIO_BringRS = game:GetService("RunService")
+local __DIO_HeldMobs = {}            -- [HumanoidRootPart] = data (mob dang duoc giu)
+local __DIO_HoldTouchDist = 80       -- BringEnemy "cham" giu cac mob trong khoang cach nay (tu player)
+local __DIO_HoldReleaseT  = 6        -- qua nhieu giay khong duoc cham (farm dung) => tha mob
+local __DIO_HoldMaxDist   = 600      -- mob cach player qua xa => tha
+local __DIO_HoldGolden    = math.rad(137.508)  -- goc vang: chia vi tri deu, khong de mob trung nhau
+local __DIO_HoldRadius    = 4        -- ban kinh vong tron quanh player de xep mob
+
+local function __DIO_CountHeld()
+    local n = 0
+    for _ in pairs(__DIO_HeldMobs) do n += 1 end
+    return n
+end
+
+local function __DIO_ReleaseHeld(root, data)
+    if root then
+        pcall(function()
+            root:SetAttribute("Tweening", nil)
+            if root.Parent then
+                root.CanCollide = true
+                local hum = data and data.hum
+                if hum and hum.Parent then
+                    hum.WalkSpeed = (data and data.ws) or 16
+                    hum.JumpPower = (data and data.jp) or 30
+                end
+            end
+        end)
+    end
+    __DIO_HeldMobs[root] = nil
+end
+
+__DIO_ClearHeldMobs = function()
+    for root, data in pairs(__DIO_HeldMobs) do
+        __DIO_ReleaseHeld(root, data)
+    end
+end
+
+local function __DIO_ZeroVel(root)
+    local okV = pcall(function()
+        root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+    end)
+    if not okV then
+        pcall(function()
+            root.Velocity = Vector3.new(0, 0, 0)
+            root.RotVelocity = Vector3.new(0, 0, 0)
+        end)
+    end
+end
+
+-- Loop giu mob: moi frame neo mob vao anchor + huy knockback cua don danh
+task.spawn(function()
+    local __raidT = 0
+    while true do
+        __DIO_BringRS.Heartbeat:Wait()
+        local okL = pcall(function()
+            local nowT = tick()
+            if not _B then
+                if next(__DIO_HeldMobs) then __DIO_ClearHeldMobs() end
+                return
+            end
+            local plrB = game.Players.LocalPlayer
+            local charB = plrB and plrB.Character
+            local hrpB = charB and charB:FindFirstChild("HumanoidRootPart")
+            if not hrpB then return end
+            local __doRaid = (nowT - __raidT) > 0.5
+            if __doRaid then __raidT = nowT end
+            for root, data in pairs(__DIO_HeldMobs) do
+                local okM = pcall(function()
+                    local hum = data.hum
+                    if not root.Parent or not hum or not hum.Parent or hum.Health <= 0
+                        or (nowT - (data.lastTouch or 0)) > __DIO_HoldReleaseT
+                        or (root.Position - hrpB.Position).Magnitude > __DIO_HoldMaxDist then
+                        __DIO_ReleaseHeld(root, data)
+                        return
+                    end
+                    if __doRaid and type(IsRaidMob) == "function" and IsRaidMob(data.model) then
+                        __DIO_ReleaseHeld(root, data)
+                        return
+                    end
+                    -- Giu mob dung im tai cho
+                    hum.WalkSpeed = 0
+                    hum.JumpPower = 0
+                    root.CanCollide = false
+                    __DIO_ZeroVel(root)  -- huy knockback => danh bao nhieu cung khong vang
+                    -- Failsafe: Tweening keo dai bat thuong (>2s) => bo de loop neo duoc
+                    if root:GetAttribute("Tweening") and (nowT - (data.tweenT or 0)) > 2 then
+                        root:SetAttribute("Tweening", nil)
+                    end
+                    -- Neo mob vao anchor (chi sau khi tween bring ket thuc)
+                    if not root:GetAttribute("Tweening") then
+                        root.CFrame = data.anchor
+                    end
+                end)
+                if not okM then
+                    __DIO_HeldMobs[root] = nil
+                end
+            end
+        end)
+        if not okL then task.wait(0.5) end
+    end
+end)
+
 BringEnemy = function(Mon)
     if not _B then return end
-    if tick() - (__DIO_LastBring or 0) < 2.5 then return end
-    __DIO_LastBring = tick()
     local plr = game.Players.LocalPlayer
     local char = plr.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
+    local enFolder = workspace:FindFirstChild("Enemies")
+    if not enFolder then return end
+
+    -- "Cham" cac mob dang giu de chung khong bi tha khi farm con dang chay
+    -- (chay TRUOC check cooldown de luc nao cung giu duoc mob)
+    local nowT = tick()
+    for root, data in pairs(__DIO_HeldMobs) do
+        if root.Parent and data.hum and data.hum.Parent and data.hum.Health > 0
+            and (root.Position - hrp.Position).Magnitude <= __DIO_HoldTouchDist then
+            data.lastTouch = nowT
+        end
+    end
+
+    if nowT - (__DIO_LastBring or 0) < 1.0 then return end
+    __DIO_LastBring = nowT
+
     if not Mon or not Mon:FindFirstChild("HumanoidRootPart") then
         Mon = nil
     end
     if not Mon then
         local closestDist = math.huge
-        for _, enemy in ipairs(workspace.Enemies:GetChildren()) do
+        for _, enemy in ipairs(enFolder:GetChildren()) do
             local hum = enemy:FindFirstChildOfClass("Humanoid")
             local root = enemy:FindFirstChild("HumanoidRootPart")
             if hum and root and hum.Health > 0 then
@@ -2104,41 +2228,62 @@ BringEnemy = function(Mon)
         end
         if not Mon then return end
     end
+
     pcall(function()
         if sethiddenproperty then
             sethiddenproperty(plr, "SimulationRadius", math.huge)
         end
     end)
+
     local targetPos = Mon.HumanoidRootPart.Position
-    local enemies = workspace.Enemies:GetChildren()
-    local count = 0
+    local baseP = hrp.Position
+    local enemies = enFolder:GetChildren()
     for _, mob in ipairs(enemies) do
-        if count >= _G.MaxBringMobs then break end
         local hum = mob:FindFirstChild("Humanoid")
         local root = mob:FindFirstChild("HumanoidRootPart")
-        local isRaid = false
-        if type(IsRaidMob) == "function" then
-            isRaid = IsRaidMob(mob)
-        end
-        if hum and root and hum.Health > 0 and not isRaid then
+        if hum and root and hum.Health > 0 then
             local dist = (root.Position - targetPos).Magnitude
-            if dist <= _G.BringRange and not root:GetAttribute("Tweening") then
-                count += 1
-                root:SetAttribute("Tweening", true)
-                root.CanCollide = false
-                hum.WalkSpeed = 0
-                hum.JumpPower = 0
-                local tween = TweenService:Create(
-                    root,
-                    TweenInfoBring,
-                    { CFrame = CFrame.new(targetPos) }
-                )
-                tween:Play()
-                tween.Completed:Once(function()
-                    if root then
-                        root:SetAttribute("Tweening", false)
+            if dist <= _G.BringRange then
+                local held = __DIO_HeldMobs[root]
+                if held then
+                    held.lastTouch = nowT  -- dang giu roi, chi can cham de giu tiep
+                elseif __DIO_CountHeld() < _G.MaxBringMobs and not root:GetAttribute("Tweening") then
+                    local isRaid = false
+                    if type(IsRaidMob) == "function" then
+                        isRaid = IsRaidMob(mob)
                     end
-                end)
+                    if not isRaid then
+                        -- Anchor: xep quanh player, dung o do cao cua cum mob
+                        -- (neo 1 lan luc bring => player bay len farm khong keo mob bay theo)
+                        local ang = __DIO_HoldGolden * (__DIO_CountHeld() + 1)
+                        local anchorCF = CFrame.new(
+                            baseP.X + math.cos(ang) * __DIO_HoldRadius,
+                            targetPos.Y,
+                            baseP.Z + math.sin(ang) * __DIO_HoldRadius
+                        )
+                        __DIO_HeldMobs[root] = {
+                            model = mob,
+                            root = root,
+                            hum = hum,
+                            ws = hum.WalkSpeed,
+                            jp = hum.JumpPower,
+                            anchor = anchorCF,
+                            tweenT = nowT,
+                            lastTouch = nowT,
+                        }
+                        root:SetAttribute("Tweening", true)
+                        root.CanCollide = false
+                        hum.WalkSpeed = 0
+                        hum.JumpPower = 0
+                        local tween = TweenService:Create(root, TweenInfoBring, { CFrame = anchorCF })
+                        tween:Play()
+                        tween.Completed:Once(function()
+                            if root and root.Parent then
+                                root:SetAttribute("Tweening", nil)
+                            end
+                        end)
+                    end
+                end
             end
         end
     end
@@ -7595,6 +7740,7 @@ Callback = function(Value)
   _G.Neartween = (Value == true)
 end})
 _G.Neartween = (GetSetting("UI/Settings/Tween speed 600 if near", true) == true)
+_B = true  -- [MOBHOLD] khoi tao mac dinh ON (truong hop UI khong goi callback luc tao toggle)
 Bringmob = Tabs.Settings:AddToggle({
 Name = __DIO_T["Bring Mobs"],
 Description = "",
