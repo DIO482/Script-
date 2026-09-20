@@ -5871,9 +5871,34 @@ local function __DIO_IsGhost(mob)
     return __DIO_GhostSkip[mob] == true
 end
 local __DIO_LastGhostMob = nil
+-- [FIX-SPAM] Circuit breaker: neu game moi hien thong bao "ky nang chua duoc mo khoa"
+-- (mastery du thieu) thi dung dung ky nang trong 60s de tranh spam thong bao.
+__DIO_SkillLockT = 0
+__DIO_SkillLockGuard = function()
+    if tick() - (__DIO_SkillLockT or 0) < 60 then return true end
+    local __lockSeen = false
+    pcall(function()
+        local __pg = plr and plr:FindFirstChild("PlayerGui")
+        local __noti = __pg and __pg:FindFirstChild("Notifications")
+        if __noti then
+            for _, __n in pairs(__noti:GetChildren()) do
+                if __n.Name == "NotificationTemplate" then
+                    local __t = tostring(__n.Text or "")
+                    if string.find(__t, "chưa được mở khóa") or string.find(__t, "Skill locked") then
+                        __lockSeen = true
+                        break
+                    end
+                end
+            end
+        end
+    end)
+    if __lockSeen then __DIO_SkillLockT = tick() end
+    return __lockSeen
+end
 local function __DIO_FireGhostSkill(mob)
     task.spawn(function()
         pcall(function()
+            if __DIO_SkillLockGuard() then return end
             if not mob or not mob.Parent then return end
             local __gh = mob:FindFirstChild("Humanoid")
             if not __gh or __gh.Health <= 0 then return end
@@ -8288,7 +8313,12 @@ Callback = function(Value)
       end)
   end
 end})
-_G.AutoSkillGhost = GetSetting("UI/Settings/Auto Use Skill Melee/Sword If lag Mob or Ghost Mob", false)
+-- [FIX-SPAM] Khong tu bat lai feature nay tu Settings.json khi mo hub.
+-- Day la nguyen nhan bi spam thong bao "Ky nang chua duoc mo khoa! Yeu cau diem Thong Thao 150/300":
+-- toggle hien OFF trong UI nhung _G.AutoSkillGhost bi restore = true tu file auto-save (DIOHub_V3/Settings.json),
+-- loop "L5829" van dung ky nang Melee/Sword (Z/X/C) moi ~1.5s khi co mob trong 150 studs.
+-- Neu dung getgenv().AutoRestoreToggles = true, UI se tu goi callback bat lai sau 3s (van doc duoc save).
+_G.AutoSkillGhost = false
 __DIO_PickSkillTarget = function()
     local function __ok(m)
         if m == nil then return nil end
@@ -8343,6 +8373,7 @@ __DIO_FireMeleeSwordNow = function(mob)
     if not mob or not mob.Parent then return end
     task.spawn(function()
         pcall(function()
+            if __DIO_SkillLockGuard() then return end
             local h = mob:FindFirstChild("Humanoid")
             if not h or h.Health <= 0 then return end
             local mhrp = mob:FindFirstChild("HumanoidRootPart")
