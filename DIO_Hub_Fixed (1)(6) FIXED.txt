@@ -29,6 +29,18 @@ local Players           = game:GetService("Players")
 local CoreGui           = game:GetService("CoreGui")
 local RunService        = game:GetService("RunService")
 local plr               = Players.LocalPlayer
+if not plr then
+    pcall(function() plr = Players.LocalPlayer or Players.PlayerAdded:Wait() end)
+    if not plr then
+        local __pWait = 0
+        while not plr and __pWait < 20 do
+            task.wait(0.25)
+            __pWait = __pWait + 1
+            plr = Players.LocalPlayer
+        end
+        plr = plr or Players.LocalPlayer
+    end
+end
 local PASTEFY_PRIMARY_URL  = "https://pastefy.app/uKMDJHtO/raw"
 local PASTEFY_FALLBACK_URL = "https://pastefy.app/lt56aSF4/raw"
 local _DIO_KeyConfig = {
@@ -48,7 +60,7 @@ local _DIO_ApiLink   = ""     -- Linkgetkey lay tu Api
 local _DIO_ApiRaw    = ""     -- noi dung tho Api tra ve (debug)
 -- [KEY-FIX] (tuy chon) Key dung khi may KHONG goi duoc Api. De trong = offline thi khong cho qua.
 local _DIO_OfflineKeys = {
-    -- "DIOHUB", -- <-- bo comment va dien key cua ban vao day neu may ban khong goi duoc Api
+    "DIOHUB",
 }
 
 local function _DIO_CleanJSON(str)
@@ -455,7 +467,8 @@ local function AutoSelectTeam()
         if not comm then return end
         local team = tostring(getgenv().Team or "Pirates")
         if team ~= "Pirates" and team ~= "Marines" then team = "Pirates" end
-        if plr.Team == nil or tostring(plr.Team) ~= team then
+        plr = plr or Players.LocalPlayer
+        if plr and (plr.Team == nil or tostring(plr.Team) ~= team) then
             comm:InvokeServer("SetTeam2", team)
         end
     end)
@@ -465,7 +478,10 @@ local function AutoSelectTeam()
 end
 repeat task.wait() until game:IsLoaded()
 pcall(function()
-    local mainGui = plr:FindFirstChild("PlayerGui") and plr.PlayerGui:FindFirstChild("Main")
+    plr = plr or Players.LocalPlayer
+    if not plr then return end
+    local pg = plr:FindFirstChild("PlayerGui")
+    local mainGui = pg and pg:FindFirstChild("Main")
     local loading = mainGui and mainGui:FindFirstChild("Loading")
     if loading then
         local __loadCap = 0
@@ -614,7 +630,15 @@ pcall(function()
     RunService.RenderStepped:Connect(function()
         frames += 1
         if tick() - lastTime >= 1 then
-            local ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
+            local ping = 0
+            pcall(function()
+                local net = Stats and (Stats:FindFirstChild("Network") or Stats.Network)
+                local ssi = net and (net:FindFirstChild("ServerStatsItem") or net.ServerStatsItem)
+                local dp = ssi and (ssi:FindFirstChild("Data Ping") or ssi["Data Ping"])
+                if dp and dp.GetValue then
+                    ping = math.floor(dp:GetValue())
+                end
+            end)
             __joinSecs += 1
             local __h = math.floor(__joinSecs / 3600)
             local __m = math.floor((__joinSecs % 3600) / 60)
@@ -629,14 +653,22 @@ end)
 do
   ply = game.Players
   plr = ply.LocalPlayer
-  if not plr.Character then plr.CharacterAdded:Wait() end
-  Root = plr.Character:WaitForChild("HumanoidRootPart", 30)
+  if not plr then
+      repeat task.wait(0.2) plr = ply.LocalPlayer until plr or game:IsLoaded()
+      plr = plr or ply.LocalPlayer
+  end
+  if plr and not plr.Character then
+      pcall(function() plr.CharacterAdded:Wait() end)
+  end
+  if plr and plr.Character then
+      Root = plr.Character:FindFirstChild("HumanoidRootPart") or plr.Character:WaitForChild("HumanoidRootPart", 10)
+  end
   do 
       local __hrpTries = 0
-      while not Root and __hrpTries < 30 do
-          task.wait(2)
+      while not Root and __hrpTries < 15 do
+          task.wait(1)
           __hrpTries += 1
-          if plr.Character then Root = plr.Character:FindFirstChild("HumanoidRootPart") end
+          if plr and plr.Character then Root = plr.Character:FindFirstChild("HumanoidRootPart") end
       end
   end
   replicated = __SVC_RS
@@ -652,28 +684,29 @@ do
               end
           end
           if cf then
-              local _origInvoke = cf.InvokeServer
-              local __CommF_safe = setmetatable({}, {
-                  __index = cf,
-                  __newindex = function(_, k, v) cf[k] = v end
-              })
-              rem.CommF_ = cf
+              pcall(function()
+                  local mt = getrawmetatable and getrawmetatable(rem)
+                  if mt and setreadonly then
+                      setreadonly(mt, false)
+                      rawset(rem, "CommF_", cf)
+                  end
+              end)
           end
       end
   end)
-  local __data = plr:WaitForChild("Data", 30)
+  local __data = plr and (plr:FindFirstChild("Data") or plr:WaitForChild("Data", 15))
   local __lvl = __data and __data:FindFirstChild("Level")
   Lv = __lvl and __lvl.Value or 0
   TeleportService = __SVC_TP
   TW = __SVC_TWN
   Lighting = __SVC_LIGHT
-  Enemies = workspace:WaitForChild("Enemies", 30)
+  Enemies = workspace:FindFirstChild("Enemies") or workspace:WaitForChild("Enemies", 15)
   vim1 = __SVC_VIM
   vim2 = __SVC_VU
-  TeamSelf = plr.Team
+  TeamSelf = plr and plr.Team
   RunSer = __SVC_RUN
   Stats = __SVC_STAT
-  local __en = plr.Character:FindFirstChild("Energy")
+  local __en = plr and plr.Character and plr.Character:FindFirstChild("Energy")
   Energy = __en and __en.Value or 0
   BringConnections = {}
   BossList = {}
@@ -2866,12 +2899,12 @@ DropFruits = function()
   for _,v3 in next, plr.Backpack:GetChildren() do
     if string.find(v3.Name, "Fruit") then
       EquipWeapon(v3.Name) __DIO_wait(.1)
-      if plr.PlayerGui.Main.Dialogue.Visible == true then plr.PlayerGui.Main.Dialogue.Visible = false end EquipWeapon(v3.Name) plr.Character:FindFirstChild(v3.Name).EatRemote:InvokeServer("Drop")
+      pcall(function() if plr and plr.PlayerGui and plr.PlayerGui.Main and plr.PlayerGui.Main.Dialogue and plr.PlayerGui.Main.Dialogue.Visible == true then plr.PlayerGui.Main.Dialogue.Visible = false end end) EquipWeapon(v3.Name) pcall(function() if plr and plr.Character and plr.Character:FindFirstChild(v3.Name) and plr.Character[v3.Name]:FindFirstChild("EatRemote") then plr.Character[v3.Name].EatRemote:InvokeServer("Drop") end end)
     end
   end
   for a,b2 in pairs(plr.Character:GetChildren()) do
     if string.find(b2.Name, "Fruit") then EquipWeapon(b2.Name) __DIO_wait(.1)
-    if plr.PlayerGui.Main.Dialogue.Visible == true then plr.PlayerGui.Main.Dialogue.Visible = false end EquipWeapon(b2.Name) plr.Character:FindFirstChild(b2.Name).EatRemote:InvokeServer("Drop")
+    pcall(function() if plr and plr.PlayerGui and plr.PlayerGui.Main and plr.PlayerGui.Main.Dialogue and plr.PlayerGui.Main.Dialogue.Visible == true then plr.PlayerGui.Main.Dialogue.Visible = false end end) EquipWeapon(b2.Name) pcall(function() if plr and plr.Character and plr.Character:FindFirstChild(b2.Name) and plr.Character[b2.Name]:FindFirstChild("EatRemote") then plr.Character[b2.Name].EatRemote:InvokeServer("Drop") end end)
     end
   end
 end
@@ -2944,8 +2977,12 @@ getInfinity_Ability = function(Method, Var)
   elseif Method == "Energy" then
     pcall(function() if __DIO_EnergyConn then __DIO_EnergyConn:Disconnect() __DIO_EnergyConn = nil end end)
     if not Var then return end
-    __DIO_EnergyConn = plr.Character.Energy.Changed:connect(function()
-      if infEnergy then plr.Character.Energy.Value = Energy end
+    pcall(function()
+        if plr and plr.Character and plr.Character:FindFirstChild("Energy") then
+            __DIO_EnergyConn = plr.Character.Energy.Changed:connect(function()
+                if infEnergy and plr.Character and plr.Character:FindFirstChild("Energy") then plr.Character.Energy.Value = Energy end
+            end)
+        end
     end)
   elseif Method == "Observation" and Var then
     local VisionRadius = plr.VisionRadius
@@ -16703,14 +16740,16 @@ local function fetchServersData(placeId, limit)
   local commonLoadTime = 0.5
   __DIO_wait(commonLoadTime)
   local pingThreshold = 100
-  local serverStats = StatsService.Network.ServerStatsItem
   local pingValue = 0
-  do 
-      local __okDP, __dp = pcall(function()
-          return serverStats["Data Ping"]:GetValueString():match("(%d+)")
-      end)
-      if __okDP and __dp then pingValue = tonumber(__dp) or 0 end
-  end
+  pcall(function()
+      local net = StatsService and (StatsService:FindFirstChild("Network") or StatsService.Network)
+      local serverStats = net and (net:FindFirstChild("ServerStatsItem") or net.ServerStatsItem)
+      local dp = serverStats and (serverStats:FindFirstChild("Data Ping") or serverStats["Data Ping"])
+      if dp and dp.GetValueString then
+          local m = dp:GetValueString():match("(%d+)")
+          if m then pingValue = tonumber(m) or 0 end
+      end
+  end)
   if pingValue >= pingThreshold then
     TeleportService:TeleportToPlaceInstance(placeId, lowestPingServer.id)
   else
@@ -17425,7 +17464,8 @@ __DIO_QueueAutoExec = function()
         .. '\ngetgenv().Key="' .. __esc(getgenv().Key) .. '"'
         .. '\ngetgenv().AutoExecutor=true'
         .. '\ngetgenv().HideUi=' .. tostring(getgenv().HideUi == true)
-        .. '\nloadstring(game:HttpGet("' .. __url .. '"))()'     pcall(function()
+        .. '\nloadstring(game:HttpGet("' .. __url .. '"))()'
+    pcall(function()
         if type(queue_on_teleport) == "function" then
             queue_on_teleport(__code)
         elseif syn and syn.queue_on_teleport then
@@ -17472,9 +17512,20 @@ if isKeyValid() then
     __DIO_SafeStart("main-entry")
 else
     local Fluent
-    local okFluent, errFluent = pcall(function()
-        Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-    end)
+    local okFluent, errFluent = false, nil
+    for _, __fUrl in ipairs({
+        "https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua",
+        "https://raw.githubusercontent.com/dawid-scripts/Fluent/master/main.lua",
+        "https://cdn.jsdelivr.net/gh/dawid-scripts/Fluent@master/main.lua"
+    }) do
+        local ok, res = pcall(function() return loadstring(game:HttpGet(__fUrl))() end)
+        if ok and res ~= nil then
+            Fluent = res
+            okFluent = true
+            break
+        end
+        errFluent = res
+    end
     if not okFluent or not Fluent then
         warn("[DIO] Failed to load Fluent UI, loading hub anyway for debug")
         __DIO_SafeStart("fluent-fallback")
