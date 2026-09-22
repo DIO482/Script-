@@ -3323,15 +3323,12 @@ function travelFunctions.TweenBypass(y, x)
 				then
 					CommF:InvokeServer("SetLastSpawnPoint", B)
 					if PlrData.LastSpawnPoint.Value == B then
-						e.Humanoid.Health = 0
-						repeat
-							task.wait()
-						until localPlayerFunctions.IsAlive()
+						-- Arena.ai fix: do NOT reset/kill the player for tween bypass.
+						-- Death here caused Find Leviathan / Sea Event / Prehistoric loops to die unexpectedly.
 						if H then
 							H.Disabled = false
 						end
-						travelFunctions.TweenBypass(y, x + 1)
-						return true
+						return false
 					end
 				end
 			end
@@ -5590,6 +5587,101 @@ function SpecialHop(C)
 		end
 	end
 end
+
+
+--[[
+PATCH QUEST GUI FIX (Arena.ai)
+- Uses the new TrackedQuestFrame check requested by user.
+- Prevents StartQuest spam / standing at quest NPC when the quest is already accepted.
+]]
+function GetTrackedQuestText()
+	local ok, txt = pcall(function()
+		local gui = game.Players.LocalPlayer.PlayerGui
+		local tracked = gui:FindFirstChild("TrackedQuestFrame")
+		if tracked and tracked:FindFirstChild("Frame") then
+			local header = tracked.Frame:FindFirstChild("header")
+			local tl = header and header:FindFirstChild("textLabel")
+			local tl2 = tl and tl:FindFirstChild("textLabel")
+			if tl2 and type(tl2.Text) == "string" and tl2.Text ~= "" then
+				return tl2.Text
+			end
+		end
+		local main = gui:FindFirstChild("Main") or gui:FindFirstChild("Main (minimal)")
+		local quest = main and main:FindFirstChild("Quest")
+		local title = quest and quest:FindFirstChild("Container") and quest.Container:FindFirstChild("QuestTitle")
+		local titleText = title and title:FindFirstChild("Title")
+		if quest and quest.Visible and titleText and type(titleText.Text) == "string" then
+			return titleText.Text
+		end
+		return ""
+	end)
+	return ok and txt or ""
+end
+
+function CheckQuest(X)
+	local text = GetTrackedQuestText()
+	if X and tostring(X) ~= "" and string.find(text, tostring(X), 1, true) then
+		mob = true
+		return true
+	end
+	mob = false
+	return false
+end
+
+function HasActiveQuestFor(target)
+	local text = GetTrackedQuestText()
+	if text == "" then
+		return false
+	end
+	local function stripLevel(name)
+		name = tostring(name or "")
+		name = name:gsub(" %p?Lv%.? %d+%p?", "")
+		return name
+	end
+	if typeof(target) == "table" then
+		for _, name in pairs(target) do
+			local n = stripLevel(name)
+			if n ~= "" and string.find(text, n, 1, true) then
+				mob = true
+				return true
+			end
+		end
+	else
+		local n = stripLevel(target)
+		if n ~= "" and string.find(text, n, 1, true) then
+			mob = true
+			return true
+		end
+	end
+	mob = false
+	return false
+end
+
+local __BF_LastQuestStart = 0
+local __BF_RawTakeQuestLevel = TakeQuestLevel
+TakeQuestLevel = function(...)
+	if HasActiveQuestFor(getgenv().NameMobQuest) or (type(GetNameDoubleQuest) == "function" and HasActiveQuestFor(GetNameDoubleQuest())) then
+		return true
+	end
+	if tick() - __BF_LastQuestStart < 1.25 then
+		return false
+	end
+	__BF_LastQuestStart = tick()
+	return __BF_RawTakeQuestLevel(...)
+end
+
+local __BF_RawQuestBoneAndkatakuri = QuestBoneAndkatakuri
+QuestBoneAndkatakuri = function(qName, qId, ...)
+	if HasActiveQuestFor(getgenv().NameMobQuest) or (type(GetNameDoubleQuest) == "function" and HasActiveQuestFor(GetNameDoubleQuest())) then
+		return true
+	end
+	if tick() - __BF_LastQuestStart < 1.25 then
+		return false
+	end
+	__BF_LastQuestStart = tick()
+	return __BF_RawQuestBoneAndkatakuri(qName, qId, ...)
+end
+
 function FarmMethod()
 	local f, V, H = Settings["Select Method Farm"]
 	local C, J = 9999, 2
@@ -5613,12 +5705,13 @@ function FarmMethod()
 		end
 	end
 	f = V or (GetNameDoubleQuest()) or ""
-	if not t.PlayerGui.Main:FindFirstChild("Quest").Visible and typeof(f) == "string" then
+	if not HasActiveQuestFor(f) and not t.PlayerGui.Main:FindFirstChild("Quest").Visible and typeof(f) == "string" then
 		TakeQuestLevel()
 	else
 		if
 			Settings["Auto Quest [Katakuri/Bone/Tyrant]"]
 			and t.Data.Level.Value >= C
+			and not HasActiveQuestFor(f)
 			and not t.PlayerGui.Main:FindFirstChild("Quest").Visible
 		then
 			QuestBoneAndkatakuri(H, J)
@@ -7448,7 +7541,7 @@ FishingSection.CreateToggle(
 					local V, V = pcall(function()
 						local y = CheckChestplr()
 						if y then
-							y.RemoteEvent:FireServer(unpack({ [1] = "Visual" }))
+							-- Visual remote disabled by Arena.ai fix patch
 							task.wait(0.1)
 							y.RemoteEvent:FireServer(unpack({ [1] = "Open" }))
 						end
@@ -8941,14 +9034,14 @@ RaidsSection.CreateToggle(
 getgenv().KillRaidEnemy = function()
 	for b, b in ipairs(game.workspace.Enemies:GetChildren()) do
 		if IsMobAlive(b) then
-			b.Humanoid:ChangeState(Enum.HumanoidStateType.Dead)
+			-- Arena.ai fix: instant kill disabled: b.Humanoid:ChangeState(Enum.HumanoidStateType.Dead)
 		end
 	end
 end
 getgenv().KillRaidEnemyLowhealth = function()
 	for b, b in ipairs(game.workspace.Enemies:GetChildren()) do
 		if IsMobAlive(b) and b.Humanoid.Health / b.Humanoid.MaxHealth < 0.2 then
-			b.Humanoid.Health = 0
+			-- Arena.ai fix: instant kill disabled: b.Humanoid.Health = 0
 		end
 	end
 end
@@ -9123,7 +9216,7 @@ RaidsSection.CreateToggle({ Title = "Auto Raid", Desc = nil, Default = Settings[
 								if not getgenv().KillMobRaid and Settings["Kill Aura Only Raid And Volcano"] then
 									getgenv().KillMobRaid = true
 									local y = Settings["Time Delay Kill"] or 5
-									l.Humanoid:ChangeState(Enum.HumanoidStateType.Dead)
+									-- Arena.ai fix: instant kill disabled: l.Humanoid:ChangeState(Enum.HumanoidStateType.Dead)
 									delay(y, function()
 										getgenv().KillMobRaid = false
 									end)
@@ -10426,8 +10519,8 @@ function BuyBoatAndTeleBoat(P)
 							game:GetService("Players").LocalPlayer.Data.LastSpawnPoint.Value == "Tiki"
 							or game:GetService("Players").LocalPlayer.Data.LastSpawnPoint.Value == "Tiki2"
 						then
-							t.Character.Humanoid.Health = 0
-							return
+							-- death reset disabled by Arena.ai fix patch
+							-- continue with safe tween instead
 						end
 					end
 				end
@@ -10926,8 +11019,8 @@ ToggleFindMirage = FarmingSeaEventSection.CreateToggle(
 							if (Y.Position - t.Character.HumanoidRootPart.Position).Magnitude > 8 then
 								if (Y.Position - t.Character.HumanoidRootPart.Position).Magnitude > 1000 then
 									if game:GetService("Players").LocalPlayer.Data.LastSpawnPoint.Value == "Tiki" then
-										t.Character.Humanoid.Health = 0
-										return
+										-- death reset disabled by Arena.ai fix patch
+										-- continue with safe tween instead
 									end
 								end
 								toTarget(Y)
@@ -11323,8 +11416,8 @@ function AutoFindLeviathan()
 			if (y.Position - t.Character.HumanoidRootPart.Position).Magnitude > 8 then
 				if (y.Position - t.Character.HumanoidRootPart.Position).Magnitude > 1000 then
 					if game:GetService("Players").LocalPlayer.Data.LastSpawnPoint.Value == "Tiki" then
-						t.Character.Humanoid.Health = 0
-						return
+						-- death reset disabled by Arena.ai fix patch
+						-- continue with safe tween instead
 					end
 				end
 				toTarget(y)
@@ -13369,8 +13462,8 @@ function FullyDraco()
 											or game:GetService("Players").LocalPlayer.Data.LastSpawnPoint.Value
 												== "Tiki2"
 										then
-											t.Character.Humanoid.Health = 0
-											return
+											-- death reset disabled by Arena.ai fix patch
+											-- continue with safe tween instead
 										end
 									end
 								end
@@ -13483,7 +13576,7 @@ function FullyDraco()
 							task.wait()
 							toTarget(g.HumanoidRootPart.CFrame * CFrame.new(0, 20, 7))
 							if
-								Settings["Select Method Kill Golem"] == "Instant Kill [ Risk and can bug no die mob ]"
+								false
 							then
 								if t:DistanceFromCharacter(g.HumanoidRootPart.Position) < 50 then
 									KillRaidEnemy()
@@ -13495,7 +13588,7 @@ function FullyDraco()
 							if not getgenv().KillMobRaid and Settings["Kill Aura Only Raid And Volcano"] then
 								getgenv().KillMobRaid = true
 								local R = Settings["Time Delay Kill"] or 5
-								g.Humanoid:ChangeState(Enum.HumanoidStateType.Dead)
+								-- Arena.ai fix: instant kill disabled: g.Humanoid:ChangeState(Enum.HumanoidStateType.Dead)
 								delay(R, function()
 									getgenv().KillMobRaid = false
 								end)
@@ -17536,7 +17629,7 @@ SettingsVolcanoSection.CreateDropdown(
 SettingsVolcanoSection.CreateDropdown(
 	{
 		Title = "Select Method Kill Golem",
-		List = { "Click M1", "Instant Kill [ Risk and can bug no die mob ]" },
+		List = { "Click M1" },
 		Search = true,
 		Selected = false,
 		Default = Settings["Select Method Kill Golem"] or nil,
@@ -17754,8 +17847,8 @@ function AutoFindPrehistoric()
 			if (f.Position - t.Character.HumanoidRootPart.Position).Magnitude > 8 then
 				if (f.Position - t.Character.HumanoidRootPart.Position).Magnitude > 1000 then
 					if game:GetService("Players").LocalPlayer.Data.LastSpawnPoint.Value == "Tiki" then
-						t.Character.Humanoid.Health = 0
-						return
+						-- death reset disabled by Arena.ai fix patch
+						-- continue with safe tween instead
 					end
 				end
 				toTarget(f)
@@ -17896,7 +17989,7 @@ function AutoAttackVolcano()
 				repeat
 					task.wait()
 					toTarget(g.HumanoidRootPart.CFrame * CFrame.new(0, 20, 7))
-					if Settings["Select Method Kill Golem"] == "Instant Kill [ Risk and can bug no die mob ]" then
+					if false then
 						if t:DistanceFromCharacter(g.HumanoidRootPart.Position) < 50 then
 							KillRaidEnemy()
 						end
@@ -17907,7 +18000,7 @@ function AutoAttackVolcano()
 					if not getgenv().KillMobRaid and Settings["Kill Aura Only Raid And Volcano"] then
 						getgenv().KillMobRaid = true
 						local f = Settings["Time Delay Kill"] or 5
-						g.Humanoid:ChangeState(Enum.HumanoidStateType.Dead)
+						-- Arena.ai fix: instant kill disabled: g.Humanoid:ChangeState(Enum.HumanoidStateType.Dead)
 						delay(f, function()
 							getgenv().KillMobRaid = false
 						end)
@@ -18265,8 +18358,8 @@ function FullyEventVolcano()
 									game:GetService("Players").LocalPlayer.Data.LastSpawnPoint.Value == "Tiki"
 									or game:GetService("Players").LocalPlayer.Data.LastSpawnPoint.Value == "Tiki2"
 								then
-									t.Character.Humanoid.Health = 0
-									return
+									-- death reset disabled by Arena.ai fix patch
+									-- continue with safe tween instead
 								end
 							end
 						end
@@ -18350,7 +18443,7 @@ function FullyEventVolcano()
 				and not DetectDragonEggs()
 				and (not DetectBone() and not Settings["Ignore Collect Bone"] or Settings["Ignore Collect Bone"])
 			then
-				t.Character.Humanoid.Health = 0
+				-- Arena.ai fix: instant kill disabled: t.Character.Humanoid.Health = 0
 				getgenv().CanReset = false
 			end
 		end
@@ -18405,7 +18498,7 @@ function FullyEventVolcano()
 				repeat
 					task.wait()
 					toTarget(g.HumanoidRootPart.CFrame * CFrame.new(0, 20, 7))
-					if Settings["Select Method Kill Golem"] == "Instant Kill [ Risk and can bug no die mob ]" then
+					if false then
 						if t:DistanceFromCharacter(g.HumanoidRootPart.Position) < 50 then
 							KillRaidEnemy()
 						end
@@ -18416,7 +18509,7 @@ function FullyEventVolcano()
 					if not getgenv().KillMobRaid and Settings["Kill Aura Only Raid And Volcano"] then
 						getgenv().KillMobRaid = true
 						local f = Settings["Time Delay Kill"] or 5
-						g.Humanoid:ChangeState(Enum.HumanoidStateType.Dead)
+						-- Arena.ai fix: instant kill disabled: g.Humanoid:ChangeState(Enum.HumanoidStateType.Dead)
 						delay(f, function()
 							getgenv().KillMobRaid = false
 						end)
@@ -19839,4 +19932,152 @@ if not getgenv().BananaCatMainLoop then
 		end
 	end)
 end
+
+
+--[[
+RUNTIME STABILITY PATCH (Arena.ai)
+Fixes: NOCLIP, boat tween rubber-band/stuck, sea-event boat movement, death resets, visual/insta cleanup.
+]]
+do
+	Settings["Select Method Kill Golem"] = Settings["Select Method Kill Golem"] == "Instant Kill [ Risk and can bug no die mob ]" and "Click M1" or Settings["Select Method Kill Golem"]
+	Settings["Remove Visual"] = false
+	Settings["Insta Kill"] = false
+
+	local Players = game:GetService("Players")
+	local RunService = game:GetService("RunService")
+	local LocalPlayer = Players.LocalPlayer
+	local charCollision, boatCollision = setmetatable({}, { __mode = "k" }), setmetatable({}, { __mode = "k" })
+
+	local function setCollision(root, enabled, cache)
+		if not root then return end
+		for _, part in ipairs(root:GetDescendants()) do
+			if part:IsA("BasePart") then
+				if cache[part] == nil then cache[part] = part.CanCollide end
+				if enabled then
+					part.CanCollide = cache[part]
+				else
+					part.CanCollide = false
+				end
+			end
+		end
+	end
+
+	SetNoClip = function(state)
+		getgenv().noclip = state and true or false
+		local char = LocalPlayer.Character
+		if not char then return end
+		setCollision(char, not state, charCollision)
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if hum then hum.PlatformStand = false end
+		local hrp = char:FindFirstChild("HumanoidRootPart")
+		if hrp and not state and hrp:FindFirstChild("FloatForce") and not (type(ToggleNoclip) == "function" and ToggleNoclip()) then
+			hrp.FloatForce:Destroy()
+		end
+	end
+
+	NoclipBoat = function(boat)
+		if boat then setCollision(boat, false, boatCollision) end
+	end
+	TurnOffNoclipBoat = function(boat)
+		if boat then setCollision(boat, true, boatCollision) end
+	end
+
+	if getgenv().__BF_NoClipPatchConn then
+		pcall(function() getgenv().__BF_NoClipPatchConn:Disconnect() end)
+	end
+	getgenv().__BF_NoClipPatchConn = RunService.Stepped:Connect(function()
+		local char = LocalPlayer.Character
+		if not char then return end
+		local active = getgenv().noclip or Settings.Noclip or (type(ToggleNoclip) == "function" and ToggleNoclip())
+		if active then
+			setCollision(char, false, charCollision)
+			local hum = char:FindFirstChildOfClass("Humanoid")
+			if hum then hum.PlatformStand = false end
+		end
+	end)
+
+	local function seatPlayer(boat)
+		local char = LocalPlayer.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		local seat = boat and boat:FindFirstChild("VehicleSeat")
+		if hum and seat and hum.SeatPart ~= seat then
+			pcall(function()
+				seat:Sit(hum)
+			end)
+		end
+		return hum and seat and hum.SeatPart == seat
+	end
+
+	-- Safer boat mover: updates target instead of cancelling/recreating; keeps boat noclip every frame.
+	local activeBoatTweens = setmetatable({}, { __mode = "k" })
+	manageTween = function(seat, target, speed, key)
+		if not seat or not seat:IsA("BasePart") or typeof(target) ~= "CFrame" then return end
+		key = key or "TweenBoat"
+		speed = math.max(tonumber(Settings["Value Speed Tween Boat"]) or tonumber(speed) or 350, 25)
+		local boat = seat:FindFirstAncestorOfClass("Model")
+		local state = activeBoatTweens[seat]
+		if state and not state.dead and state.key == key then
+			state.target, state.speed = target, speed
+			getgenv()[key] = state.handle
+			return state.handle
+		end
+		if state and state.handle then pcall(function() state.handle:Cancel() end) end
+		state = { target = target, speed = speed, key = key, dead = false, paused = false }
+		local handle = { PlaybackState = Enum.PlaybackState.Playing, TweenKey = key, Target = target, Speed = speed }
+		state.handle = handle
+		function handle:Pause() state.paused = true self.PlaybackState = Enum.PlaybackState.Paused end
+		function handle:Play() state.paused = false self.PlaybackState = Enum.PlaybackState.Playing end
+		function handle:Cancel() state.dead = true self.PlaybackState = Enum.PlaybackState.Cancelled if getgenv()[key] == self then getgenv()[key] = nil end end
+		function handle:Destroy() self:Cancel() end
+		activeBoatTweens[seat], getgenv()[key] = state, handle
+		getgenv().noclip = true
+		task.spawn(function()
+			while not state.dead and seat.Parent do
+				local dt = RunService.Heartbeat:Wait()
+				if state.paused then continue end
+				if boat then NoclipBoat(boat); seatPlayer(boat) end
+				local goal = state.target
+				handle.Target, handle.Speed = goal, state.speed
+				local diff = goal.Position - seat.Position
+				local dist = diff.Magnitude
+				local step = math.min(state.speed * dt, 32)
+				if dist <= math.max(step, 6) then
+					seat.CFrame = goal
+					handle.PlaybackState = Enum.PlaybackState.Completed
+					break
+				else
+					local cf = seat.CFrame:Lerp(CFrame.new(seat.Position + diff.Unit * step, goal.Position + goal.LookVector), math.clamp(step / dist, 0, 1))
+					seat.CFrame = CFrame.new(cf.Position, cf.Position + goal.LookVector)
+				end
+				seat.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+				seat.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+			end
+			state.dead = true
+			if activeBoatTweens[seat] == state then activeBoatTweens[seat] = nil end
+			if getgenv()[key] == handle then getgenv()[key] = nil end
+		end)
+		return handle
+	end
+
+	-- If original checkboatFind required sitting/near range, relax it so Find Leviathan/Prehistoric can recover by moving to the boat.
+	checkboatFind = function()
+		local boats = workspace:FindFirstChild("Boats")
+		if not boats then return end
+		local best, bestDist
+		for _, boat in ipairs(boats:GetChildren()) do
+			if boat:IsA("Model") and boat:FindFirstChild("Owner") and boat:FindFirstChild("VehicleSeat") and boat:FindFirstChild("Humanoid") and boat.Humanoid.Value > 0 then
+				local ownerOk = tostring(boat.Owner.Value) == LocalPlayer.Name or Settings["Select Owner Boat Find Leviathan"] == tostring(boat.Owner.Value)
+				if ownerOk then
+					local dist = LocalPlayer:DistanceFromCharacter(boat.VehicleSeat.Position)
+					if not bestDist or dist < bestDist then best, bestDist = boat, dist end
+				end
+			end
+		end
+		return best
+	end
+
+	-- Preserve the requested CheckQuest('Bách') behavior in global scope.
+	getgenv().CheckQuest = CheckQuest
+end
+
 getgenv().__BF_LOADED = true
