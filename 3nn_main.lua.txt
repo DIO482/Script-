@@ -1990,10 +1990,13 @@ SectionLocalPlayerMain.CreateToggle(
 		SaveSettings("Auto Translate", K)
 	end
 )
-SectionLocalPlayerMain.CreateButton({ Title = "Stop Tween" }, function()
-	getgenv().noclip = false
-	TweenManager.CancelCurrent()
-end)
+	SectionLocalPlayerMain.CreateButton({ Title = "Stop Tween" }, function()
+		TweenManager.CancelCurrent()
+		if type(getgenv().StopAllTween) == "function" then
+			pcall(getgenv().StopAllTween)
+		end
+		SetNoClip(false)
+	end)
 SectionLocalPlayerMain.CreateButton({ Title = "Fix UI Button Game" }, function()
 	require(game:GetService("ReplicatedStorage").Modules.LastInput).IsMobile = function()
 		return true
@@ -3377,6 +3380,453 @@ local function y(x)
 	k.P = 10000
 	k.Parent = x
 end
+--[[ ============================================================================================
+	ARENA FIX v3  -  TWEEN + NOCLIP ENGINE  (thay cho mover cu)
+	--------------------------------------------------------------------------------------------
+	Nguyen nhan gay "giat / bi keo nguoc khi di qua vat the" cua ban cu:
+	  1. Mover cu chay tren Heartbeat (sau buoc physics) => buoc physics da keo nhan vat
+	     ra khoi vat the truoc khi minh ghi CFrame => nhin nhu bi day nguoc.
+	  2. Mover cu luu 1 "path" ao (u) va moi khi lech >= 40 studs la RESET path ve vi tri thuc
+	     + GIAM 30% speed (cap * 0.7) => vua giat vua khung lien tuc.
+	  3. Mover cu luon ghi  CFrame.new(u)  (mat huong xoay) => nhan vat bi quay giat.
+	  4. Noclip chi duoc ap o 1 connection rieng, khong chac chan chay truoc khi ghi CFrame.
+	--------------------------------------------------------------------------------------------
+	Engine moi:
+	  * Ghi CFrame tren RunService.Stepped (pre-physics), NGAY SAU khi da noclip char
+	    => physics/va cham khong the keo nguoc.
+	  * Path chong giat: lech nho (< HoldDev) thi bam theo vi tri thuc, lech lon thi giu path
+	    (khong reset lung tung), KHONG bao gio tu giam speed.
+	  * Giu huong xoay LookVector cua goal.
+	  * Zero AssemblyLinearVelocity / AssemblyAngularVelocity moi frame.
+	  * Tu don dep: char chet / doi character / ngoi thuyen / part bi xoa / bi huy / het han.
+	  * Ho tro ca char lan thuyen (manageTween) voi noclip rieng cho thuyen.
+============================================================================================ ]]
+do
+	local RunService = game:GetService("RunService")
+	local Players = game:GetService("Players")
+	local LP = Players.LocalPlayer
+
+	local collideCache = setmetatable({}, { __mode = "k" })
+	local Engine = {}
+	getgenv().TweenEngine = Engine
+
+	Engine.Movers = setmetatable({}, { __mode = "k" }) -- [part] = mover state
+	Engine.Active = nil -- mover cua nhan vat (de watchdog / TweenManager)
+	Engine.anchoredParts = setmetatable({}, { __mode = "k" })
+
+	Engine.NoClip = false -- noclip thu cong (dong bo voi getgenv().noclip)
+	Engine.AutoNoClip = true -- tu bat noclip khi dang bay (farm/tween)
+	Engine.MaxStep = 27 -- tran studs / frame (giu replication on dinh)
+	Engine.Eps = 2.5 -- sai so coi nhu da toi noi
+	Engine.SnapRange = 7 -- duoi bao nhieu studs thi dat chinh xac (khong tween)
+	Engine.ResyncDev = 150 -- lech qua muc nay coi nhu bi dich chuyen that (portal/respawn) -> bam lai vi tri
+	Engine.AnchorMode = false -- true = neo Character trong luc bay (chong giat tuyet doi)
+	Engine.Debug = false
+
+	local function log(...)
+		if Engine.Debug then
+			print("[TweenEngine]", ...)
+		end
+	end
+
+	local listCache = setmetatable({}, { __mode = "k" })
+
+	-- Lay danh sach BasePart cua 1 model.
+	-- Cache 0.25s de khong phai GetDescendants moi physics step, NHUNG luon cong them
+	-- cac BasePart la con truc tiep (tool/accessory moi them) => khong bo sot part nao.
+	local function getParts(root, force)
+		local list, seen = {}, {}
+		if not root then
+			return list
+		end
+		local c = listCache[root]
+		if force or not c or tick() - c.t >= 0.25 or not c.list then
+			c = { t = tick(), list = {} }
+			local ok, desc = pcall(function()
+				return root:GetDescendants()
+			end)
+			if ok and type(desc) == "table" then
+				for _, p in ipairs(desc) do
+					if p:IsA("BasePart") then
+						c.list[#c.list + 1] = p
+					end
+				end
+			end
+			listCache[root] = c
+		end
+		for _, p in ipairs(c.list) do
+			if not seen[p] then
+				seen[p] = true
+				list[#list + 1] = p
+			end
+		end
+		local ok2, kids = pcall(function()
+			return root:GetChildren()
+		end)
+		if ok2 and type(kids) == "table" then
+			for _, p in ipairs(kids) do
+				if p:IsA("BasePart") and not seen[p] then
+					seen[p] = true
+					list[#list + 1] = p
+				end
+			end
+		end
+		return list
+	end
+
+	-- Bat / tat noclip cho 1 model (char hoac thuyen). Ghi nho CanCollide goc de tra lai.
+	function Engine.SetNoClip(root, state, force)
+		if not root then
+			return
+		end
+		if state then
+			for _, p in ipairs(getParts(root, force)) do
+				if collideCache[p] == nil then
+					collideCache[p] = p.CanCollide
+				end
+				if p.CanCollide then
+					p.CanCollide = false
+				end
+			end
+		else
+			for _, p in ipairs(getParts(root, true)) do
+				if collideCache[p] ~= nil then
+					local orig = collideCache[p]
+					collideCache[p] = nil
+					pcall(function()
+						p.CanCollide = orig
+					end)
+				end
+			end
+			listCache[root] = nil
+		end
+	end
+
+	-- Tra lai CanCollide cho TAT CA part da tung bi noclip (dung khi tat noclip / Stop Tween).
+	function Engine.RestoreAllNoClip()
+		for p, orig in pairs(collideCache) do
+			if p then
+				pcall(function()
+					p.CanCollide = orig
+				end)
+			end
+		end
+		collideCache = setmetatable({}, { __mode = "k" })
+	end
+
+	local function unanchor(m)
+		if m and m.part and m.anchoredByUs then
+			m.anchoredByUs = false
+			Engine.anchoredParts[m.part] = nil
+			pcall(function()
+				m.part.Anchored = false
+			end)
+		end
+	end
+
+	local function destroy(m, state, cancelBy)
+		if not m or m.dead then
+			return
+		end
+		m.dead = true
+		unanchor(m)
+		if m.part and Engine.Movers[m.part] == m then
+			Engine.Movers[m.part] = nil
+		end
+		if Engine.Active == m then
+			Engine.Active = nil
+		end
+		if m.key and getgenv()[m.key] == m.handle then
+			getgenv()[m.key] = nil
+		end
+		if m.handle then
+			m.handle.PlaybackState = state or Enum.PlaybackState.Cancelled
+		end
+		if type(TweenManager) == "table" then
+			if TweenManager.currentTween == m.handle then
+				TweenManager.currentTween, TweenManager.currentPart, TweenManager.currentGoal, TweenManager.TweenRunning =
+					nil, nil, nil, false
+			end
+		end
+		if getgenv().Tween == m.handle then
+			getgenv().Tween = nil
+		end
+		log("stop mover", cancelBy or "", m.part and m.part.Name)
+	end
+	Engine.Stop = destroy
+
+	function Engine.IsMoving(part)
+		local m = part and Engine.Movers[part]
+		return m ~= nil and not m.dead
+	end
+
+	--[[ Engine.Move(part, goalCFrame, speed(studs/s), opts)
+	     opts = { player = bool, boat = bool, key = string, eps = number, holdDev = number } ]]
+	function Engine.Move(part, goal, speed, opts)
+		opts = opts or {}
+		if not part or typeof(goal) ~= "CFrame" or not part:IsA("BasePart") or not part.Parent then
+			return nil
+		end
+		speed = math.max(tonumber(speed) or 350, 1)
+		local eps = tonumber(opts.eps) or Engine.Eps
+		if opts.boat and (not opts.eps) then
+			eps = 6
+		end
+
+		-- Da co mover cho part nay -> chi cap nhat goal (khong huy/tai tao moi frame => het "giat dau")
+		local cur = Engine.Movers[part]
+		if cur and not cur.dead then
+			cur.goal, cur.speed, cur.eps = goal, speed, eps
+			cur.lastFeed = tick()
+			cur.paused = false
+			if cur.handle then
+				cur.handle.PlaybackState = Enum.PlaybackState.Playing
+				cur.handle.Target, cur.handle.Speed = goal, speed
+			end
+			if opts.key then
+				cur.key = opts.key
+				getgenv()[opts.key] = cur.handle
+			end
+			return cur.handle
+		end
+
+		local m = {
+			part = part,
+			goal = goal,
+			speed = speed,
+			eps = eps,
+			path = part.Position,
+			holdDev = tonumber(opts.holdDev) or (opts.boat and 90 or Engine.ResyncDev),
+			resyncDev = tonumber(opts.resyncDev) or (opts.boat and 400 or Engine.ResyncDev),
+			lastFeed = tick(),
+			startedAt = tick(),
+			player = opts.player == true,
+			boat = opts.boat == true,
+			-- thuyen: bam theo vi tri thuc (vi nhieu loop tu chinh CFrame cua thuyen),
+			-- nhan vat: giu path de chong bi vat ly keo nguoc
+			holdPath = not opts.boat,
+			key = opts.key,
+			paused = false,
+			dead = false,
+			anchoredByUs = false,
+		}
+		m.char = m.player and LP.Character or nil
+		m.boatModel = m.boat and part:FindFirstAncestorOfClass("Model") or nil
+
+		local handle = {
+			PlaybackState = Enum.PlaybackState.Playing,
+			Target = goal,
+			Speed = speed,
+			TweenKey = opts.key,
+			Part = part,
+		}
+		m.handle = handle
+		function handle:Pause()
+			m.paused = true
+			self.PlaybackState = Enum.PlaybackState.Paused
+		end
+		function handle:Play()
+			m.paused = false
+			m.lastFeed = tick()
+			self.PlaybackState = Enum.PlaybackState.Playing
+		end
+		function handle:Cancel()
+			destroy(m, Enum.PlaybackState.Cancelled, "Cancel")
+		end
+		function handle:Destroy()
+			destroy(m, Enum.PlaybackState.Cancelled, "Destroy")
+		end
+		function handle:IsAlive()
+			return not m.dead
+		end
+
+		Engine.Movers[part] = m
+		if m.player then
+			Engine.Active = m
+			getgenv().noclip = true
+			if type(TweenManager) == "table" then
+				TweenManager.currentTween, TweenManager.currentPart, TweenManager.currentGoal, TweenManager.TweenRunning =
+					handle, part, goal, true
+			end
+			getgenv().Tween = handle
+			if Engine.AnchorMode then
+				local ok = pcall(function()
+					part.Anchored = true
+				end)
+				if ok then
+					m.anchoredByUs = true
+					Engine.anchoredParts[part] = true
+				end
+			end
+			if type(I) == "function" then
+				pcall(I)
+			end
+		end
+		if m.boat then
+			if m.boatModel then
+				Engine.SetNoClip(m.boatModel, true, true)
+			end
+			if m.key then
+				getgenv()[m.key] = handle
+			end
+		end
+		log("start mover", part.Name, speed)
+		return handle
+	end
+
+	-- Di chuyen 1 buoc cho 1 mover. Tra ve false neu mover da bi huy.
+	local function stepMover(part, m, dt)
+		if m.dead then
+			return false
+		end
+		if not part or not part.Parent then
+			destroy(m, Enum.PlaybackState.Cancelled, "part gone")
+			return false
+		end
+		if m.player then
+			local c = LP.Character
+			if not c or c ~= m.char then
+				destroy(m, Enum.PlaybackState.Cancelled, "character changed")
+				return false
+			end
+			local hum = c:FindFirstChildOfClass("Humanoid")
+			if not hum or hum.Health <= 0 then
+				destroy(m, Enum.PlaybackState.Cancelled, "dead")
+				return false
+			end
+			if hum.SeatPart then -- dang ngoi thuyen -> nhuong cho boat mover
+				destroy(m, Enum.PlaybackState.Cancelled, "seated")
+				return false
+			end
+			Engine.SetNoClip(c, true)
+			getgenv().noclip = true
+			if tick() - (m.lastTag or 0) > 1 then
+				m.lastTag = tick()
+				if type(I) == "function" then
+					pcall(I)
+				end
+			end
+		elseif m.boat then
+			-- giu nguoi cho ngoi tren ghe + noclip thuyen
+			if tick() >= (m.nextBoatCheck or 0) then
+				m.nextBoatCheck = tick() + 0.25
+				if m.boatModel then
+					Engine.SetNoClip(m.boatModel, true)
+				end
+				local c = LP.Character
+				local hum = c and c:FindFirstChildOfClass("Humanoid")
+				if hum and part:IsA("VehicleSeat") and hum.SeatPart ~= part then
+					pcall(function()
+						part:Sit(hum)
+					end)
+				end
+			end
+		end
+
+		if m.paused then
+			return true
+		end
+
+		local goal, rot = m.goal, part.CFrame - part.CFrame.Position
+		local pos = part.Position
+		local dev = (pos - m.path).Magnitude
+
+		--[[ CHONG GIAT / CHONG BI KEO NGUOC:
+		     - path la duong bay "uy quyen" (khong bao gio reset ve vi tri thuc nhu ban cu)
+		     - lech nho (va cham/day nguoc vat ly) -> ghi de lai dung vi tri path
+		     - lech rat lon (bi portal/respawn dich chuyen that) -> moi bam lai vi tri thuc ]]
+		if not m.holdPath or dev > m.resyncDev then
+			m.path = pos
+		elseif dev > 0.05 then
+			part.CFrame = CFrame.new(m.path) * rot
+			pos = m.path
+		end
+
+		local delta = goal.Position - m.path
+		local dist = delta.Magnitude
+
+		if dist <= m.eps then
+			-- Da toi noi: dat chinh xac goal, giu huong xoay hien tai
+			part.CFrame = CFrame.new(goal.Position) * rot
+			if not part.Anchored then
+				part.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+				part.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+			end
+			if tick() - m.lastFeed > 0.30 then
+				destroy(m, Enum.PlaybackState.Completed, "arrived")
+				return false
+			end
+			return true
+		end
+
+		local step = math.min(m.speed * dt, Engine.MaxStep, dist)
+		local dir = delta / dist
+		local newPos = m.path + dir * step
+		local look = goal.LookVector
+		if look.Magnitude < 0.01 or math.abs(look.Y) > 0.99 then
+			part.CFrame = CFrame.new(newPos) * rot
+		else
+			part.CFrame = CFrame.new(newPos, newPos + look)
+		end
+		m.path = newPos
+		if not part.Anchored then
+			part.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+			part.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+		end
+		return true
+	end
+
+	getgenv().TweenEngine.StepMover = stepMover
+
+	-- 1 connection duy nhat: noclip truoc, roi moi ghi CFrame (dung thu tu pre-physics)
+	local stepConn
+	stepConn = RunService.Stepped:Connect(function(_, dt)
+		dt = tonumber(dt) or 0.0167
+		if dt <= 0 or dt > 0.5 then
+			dt = 0.0167
+		end
+		local char = LP.Character
+		if char then
+			local wantNoClip = Engine.NoClip or getgenv().noclip
+			if not wantNoClip and Engine.AutoNoClip and type(ToggleNoclip) == "function" then
+				local ok, res = pcall(ToggleNoclip)
+				wantNoClip = ok and res == true
+			end
+			if wantNoClip then
+				Engine.SetNoClip(char, true)
+				local hum = char:FindFirstChildOfClass("Humanoid")
+				if hum and hum.PlatformStand then
+					hum.PlatformStand = false
+				end
+			end
+		end
+		for part, m in pairs(Engine.Movers) do
+			stepMover(part, m, dt)
+		end
+	end)
+	getgenv().TweenEngine.StepConnection = stepConn
+
+	-- Watchdog: khong bao gio de nhan vat bi ket vi bi neo (AnchorMode)
+	task.spawn(function()
+		while task.wait(0.5) do
+			pcall(function()
+				local active = Engine.Active
+				if not active or active.dead then
+					for part in pairs(Engine.anchoredParts) do
+						pcall(function()
+							part.Anchored = false
+						end)
+						Engine.anchoredParts[part] = nil
+					end
+				end
+			end)
+		end
+	end)
+
+	getgenv().CharSpeed = { cap = 1000, nextRaise = 0 } -- bo co che tu giam speed cu
+	getgenv().TweenSnapRange = Engine.SnapRange
+end
+
 -- x = RunService, k = shared tween state, P = max studs per frame, e = minimum speed cap, Y = desync threshold (studs)
 local x, k, P, e, Y =
 	game:GetService("RunService"), { LastTP = 0, LastCF = nil, ActiveConnection = nil, LastCall = 0, Active = nil }, 18, 120, 40
@@ -3398,151 +3848,28 @@ end
 -- Z = HumanoidRootPart, C = goal CFrame, J = speed (studs/s), F = arrival epsilon (studs)
 -- If a mover for the same part is already alive, its goal is simply updated, so calling this
 -- every frame (as the farm loops do) no longer restarts the tween each time.
+-- [ARENA FIX] B: wrapper -> TweenEngine (tween + noclip cho nhan vat)
+-- Z = HumanoidRootPart, C = goal CFrame, J = speed (studs/s), F = sai so toi noi
 local function B(Z, C, J, F)
 	if not Z or typeof(C) ~= "CFrame" then
 		return
 	end
 	local q = t.Character
-	local c = q and q:FindFirstChildOfClass("Humanoid")
-	if not q or Z.Parent ~= q or not c or c.Health <= 0 then
+	if not q or Z.Parent ~= q then
 		return
 	end
-	J = math.max(tonumber(J) or 350, 1)
-	F = tonumber(F) or 2.5
-	k.LastTP = tick()
-	k.LastCF = C
-	local act = k.Active
-	if act and act.alive and act.part == Z and act.char == q then
-		act.goal = C
-		act.speed = J
-		act.eps = F
-		act.lastFeed = tick()
-		act.paused = false
-		return act.handle
+	local c = q:FindFirstChildOfClass("Humanoid")
+	if not c or c.Health <= 0 then
+		return
 	end
-	TweenManager.CancelTweenOnly()
-	if k.Active and k.Active.alive then
-		k.Active.handle:Cancel()
+	local Engine = getgenv().TweenEngine
+	if not Engine then
+		return
 	end
-	local st = {
-		alive = true,
-		part = Z,
-		char = q,
-		goal = C,
-		speed = J,
-		eps = F,
-		lastFeed = tick(),
-		paused = false,
-	}
-	local r = {}
-	st.handle = r
-	local function n()
-		if not st.alive then
-			return
-		end
-		st.alive = false
-		if k.Active == st then
-			k.Active = nil
-		end
-		if k.ActiveConnection == st then
-			k.ActiveConnection = nil
-		end
-		if TweenManager.currentTween == r then
-			TweenManager.currentTween = nil
-			TweenManager.currentPart = nil
-			TweenManager.currentGoal = nil
-			TweenManager.TweenRunning = false
-		end
-		if getgenv().Tween == r then
-			getgenv().Tween = nil
-		end
-	end
-	r.Pause = function()
-		st.paused = true
-	end
-	r.Play = function()
-		st.paused = false
-	end
-	r.Cancel = function()
-		n()
-	end
-	r.Destroy = function()
-		n()
-	end
-	r.IsAlive = function()
-		return st.alive
-	end
-	k.Active = st
-	k.ActiveConnection = st
-	TweenManager.currentTween = r
-	TweenManager.currentPart = Z
-	TweenManager.currentGoal = C
-	TweenManager.TweenRunning = true
-	getgenv().Tween = r
-	task.spawn(function()
-		local u = Z.Position
-		local z, U, h = 1 / 0, tick(), true
-		local p, w
-		while st.alive do
-			local dt = x.Heartbeat:Wait()
-			if not st.alive then
-				break
-			end
-			local M = t.Character
-			local j = M and M:FindFirstChildOfClass("Humanoid")
-			if M ~= st.char or Z.Parent ~= M or not j or j.Health <= 0 or Z.Anchored then
-				break
-			end
-			if st.paused then
-				continue
-			end
-			local W = st.goal.Position
-			local T0 = Z.Position
-			local distNow = (W - T0).Magnitude
-			local v0 = H()
-			if distNow < z - 5 then
-				z, U = distNow, tick()
-			elseif tick() - U > 2.5 then
-				h = false
-			end
-			if p and (T0 - p).Magnitude > Y then
-				u = T0
-				if h and w and distNow > w + Y then
-					v0.cap = math.max(v0.cap * 0.7, e)
-					v0.nextRaise = tick() + 3
-				end
-			end
-			local step = math.min(math.min(st.speed, v0.cap) * dt, P)
-			local dir = W - u
-			local remain = dir.Magnitude
-			if remain > step and tick() >= v0.nextRaise then
-				v0.cap = math.min(v0.cap * 1.08, st.speed)
-				v0.nextRaise = tick() + 1.5
-			end
-			if remain <= step or remain <= 0.05 then
-				u = W
-			else
-				u = u + dir / remain * step
-			end
-			I()
-			getgenv().noclip = true
-			if (W - u).Magnitude <= st.eps then
-				Z.CFrame = st.goal
-			else
-				Z.CFrame = CFrame.new(u)
-			end
-			Z.AssemblyLinearVelocity = Vector3.new(0.0, 0.0, 0.0)
-			Z.AssemblyAngularVelocity = Vector3.new(0.0, 0.0, 0.0)
-			p, w = u, distNow
-			-- Arrived and nobody re-fed a goal recently -> this mover is done.
-			if (W - u).Magnitude <= st.eps and tick() - st.lastFeed > 0.35 then
-				break
-			end
-		end
-		n()
-	end)
-	return r
+	k.LastTP, k.LastCF = tick(), C
+	return Engine.Move(Z, C, math.max(tonumber(J) or 350, 1), { player = true, eps = tonumber(F) or 2.5 })
 end
+
 function toTarget(P, e)
 	if typeof(P) ~= "CFrame" then
 		return
@@ -3591,9 +3918,16 @@ function toTarget(P, e)
 			end
 		end
 	end
-	if Y < (e and 8 or 150) and not G and not ReadyToDodge then
+	-- [ARENA FIX] Truoc day: dist < 150 la dat CFrame truc tiep => nhay cung lien tuc (giat).
+	-- Gio: chi dat chinh xac khi rat gan, con lai de TweenEngine bay muot (co noclip).
+	local snapRange = tonumber(getgenv().TweenSnapRange) or 7
+	if (Y < snapRange or (e and Y < 8)) and not G and not ReadyToDodge then
 		TweenManager.CancelTweenOnly()
 		I()
+		getgenv().noclip = true
+		if getgenv().TweenEngine then
+			getgenv().TweenEngine.SetNoClip(t.Character, true)
+		end
 		H.CFrame = P
 		return
 	end
@@ -3810,10 +4144,19 @@ function toTarget(P, e)
 		then (CFrame.new(0, 200, 0))
 		else if G then (CFrame.new(0, Settings["Distance Teleport Y"] or 800, 0)) else Z
 	Y, e = Settings["Speed Tween "] or 300, P * Z
-	if (e.Position - H.Position).Magnitude < 3 and not ReadyToDodge and not G then
+	Y = tonumber(Y) or 300
+	if Y < 50 then
+		Y = 300
+	end
+	local distGoal = (e.Position - H.Position).Magnitude
+	if distGoal < 3 and not ReadyToDodge and not G then
 		TweenManager.CancelTweenOnly()
 		H.CFrame = e
 		return
+	end
+	if distGoal < 260 then
+		-- gan dich thi bay nhanh cho kip farm, nhung van la tween (khong snap cung)
+		Y = math.max(Y, 700)
 	end
 	B(H, e, Y)
 end
@@ -6612,6 +6955,9 @@ task.spawn(function()
 							TweenManager.CancelCurrent()
 						end
 						if Settings["Use Method Teleport"] then
+							getgenv().noclip = true
+							if getgenv().TweenEngine then getgenv().TweenEngine.SetNoClip(t.Character, true) end
+
 							t.Character.HumanoidRootPart.CFrame = Y.CFrame
 							TweenManager.CancelCurrent()
 						else
@@ -8405,6 +8751,9 @@ function AutoChest()
 				TweenManager.CancelCurrent()
 			end
 			if Settings["Use Method Teleport"] then
+				getgenv().noclip = true
+				if getgenv().TweenEngine then getgenv().TweenEngine.SetNoClip(t.Character, true) end
+
 				t.Character.HumanoidRootPart.CFrame = y.CFrame
 				TweenManager.CancelCurrent()
 			else
@@ -11220,14 +11569,32 @@ function DetectSoulEmber()
 end
 function CollectSoulEmber()
 	local y = DetectSoulEmber()
-	if y then
-		if t:DistanceFromCharacter(y.Part.Position) > 100 then
-			toTarget(y.Part.CFrame)
+	local Engine = getgenv().TweenEngine
+	local char = t.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if y and y:FindFirstChild("Part") and hrp then
+		-- [ARENA FIX] truoc day dat CFrame truc tiep -> giat; gio tween + noclip
+		local dist = (hrp.Position - y.Part.Position).Magnitude
+		getgenv().noclip = true
+		if Engine then
+			Engine.SetNoClip(char, true)
+		end
+		if dist > 6 then
+			local spd = math.max(tonumber(Settings["Speed Tween "]) or 300, 450)
+			if Engine then
+				Engine.Move(hrp, y.Part.CFrame, spd, { player = true, eps = 0.5 })
+			else
+				toTarget(y.Part.CFrame)
+			end
 		else
-			t.Character.HumanoidRootPart.CFrame = y.Part.CFrame
+			TweenManager.CancelTweenOnly()
+			hrp.CFrame = y.Part.CFrame
 		end
 	else
-		toTarget(game.workspace._WorldOrigin.Locations["Kitsune Island"].CFrame)
+		local loc = game.workspace._WorldOrigin.Locations:FindFirstChild("Kitsune Island")
+		if loc then
+			toTarget(loc.CFrame)
+		end
 	end
 end
 function AutoSummonAzureEmber()
@@ -11293,7 +11660,14 @@ LeviathanEventSection.CreateButton({ Title = "Buy Spy" }, function()
 	require(game.ReplicatedStorage.DialogueController):Start(y)
 end)
 LeviathanEventSection.CreateButton({ Title = "Teleport your boat to current Position" }, function()
-	checkboat().VehicleSeat.CFrame = t.Character.HumanoidRootPart.CFrame
+	local boat = checkboatFind() or checkboat()
+	local hrp = t.Character and t.Character:FindFirstChild("HumanoidRootPart")
+	if boat and boat:FindFirstChild("VehicleSeat") and hrp then
+		NoclipBoat(boat)
+		manageTween(boat.VehicleSeat, CFrame.new(hrp.Position.X, boat.VehicleSeat.Position.Y, hrp.Position.Z), 400, "TweenBoat")
+	elseif boat and boat:FindFirstChild("VehicleSeat") then
+		boat.VehicleSeat.CFrame = hrp.CFrame
+	end
 end)
 LeviathanEventSection.CreateToggle(
 	{ Title = "Auto Buy Spy", Desc = nil, Default = Settings["Auto Buy Spy"] or false },
@@ -12201,8 +12575,21 @@ LeviathanEventSection.CreateToggle(
 					pcall(function()
 						if game.workspace._WorldOrigin.Locations:FindFirstChild("Frozen Dimension") then
 							local s = DetectNpc("Frozen Watcher")
-							if s then
-								toTarget(s.HumanoidRootPart.CFrame)
+							if s and s:FindFirstChild("HumanoidRootPart") then
+								-- [ARENA FIX] dang ngoi thuyen thi tween thuyen (khong tween nguoi)
+								local boat = checkboatFind() or checkboat()
+								if boat and t.Character.Humanoid.Sit then
+									local g = CFrame.new(
+										s.HumanoidRootPart.Position.X,
+										boat.VehicleSeat.Position.Y,
+										s.HumanoidRootPart.Position.Z
+									)
+									manageTween(boat.VehicleSeat, g, 350, "TweenBoatToFrozen")
+									NoclipBoat(boat)
+								else
+									getgenv().noclip = true
+									toTarget(s.HumanoidRootPart.CFrame)
+								end
 								return
 							end
 						end
@@ -12233,23 +12620,21 @@ LeviathanEventSection.CreateToggle(
 								table.insert(AllNPCS, s)
 							end
 							for s, X in pairs(AllNPCS) do
-								if X.Name == "Frozen Watcher" then
-									s = checkboatFind()
-									repeat
-										task.wait()
-										local g = CFrame.new(
-											X.HumanoidRootPart.Position.X,
-											s.VehicleSeat.Position.Y,
-											X.HumanoidRootPart.Position.Z
-										)
-										manageTween(s.VehicleSeat, g, 350, "TweenBoatToFrozen")
-										NoclipBoat(s)
-									until game:GetService("Workspace").NPCs:FindFirstChild("Frozen Watcher")
-										or not Settings["Tween Boat To Frozen Dimension"]
-									if getgenv().TweenBoatToFrozen then
-										getgenv().TweenBoatToFrozen:Pause()
-										getgenv().TweenBoatToFrozen:Cancel()
+								if X.Name == "Frozen Watcher" and X:FindFirstChild("HumanoidRootPart") then
+									-- [ARENA FIX] guard nil boat + tween lien tuc (khong huy/tai tao moi vong)
+									local boat = checkboatFind() or checkboat()
+									if not boat or not boat:FindFirstChild("VehicleSeat") then
+										return
 									end
+									repeat
+										task.wait(0.1)
+										local seat = boat.VehicleSeat
+										local goal = CFrame.new(X.HumanoidRootPart.Position.X, seat.Position.Y, X.HumanoidRootPart.Position.Z)
+										NoclipBoat(boat)
+										manageTween(seat, goal, 350, "TweenBoatToFrozen")
+									until (seat.Position - goal.Position).Magnitude <= 25
+										or game:GetService("Workspace").NPCs:FindFirstChild("Frozen Watcher")
+										or not Settings["Tween Boat To Frozen Dimension"]
 								end
 							end
 						end
@@ -13901,7 +14286,7 @@ function AutoFishV2()
 		else
 			local m = CFrame.new(753.0653686523438, R.WorldPivot.Y, 6994.5146484375)
 			if (R.VehicleSeat.Position - m.Position).Magnitude > 50 then
-				R.VehicleSeat.CFrame = m
+				manageTween(R.VehicleSeat, m, 400, "TweenBoat")
 			elseif not t.Character.Humanoid.Sit then
 				toTarget(R.VehicleSeat.CFrame)
 			end
@@ -16009,7 +16394,20 @@ function QuestGood3()
 	end
 	for g, g in pairs(AllNPCS) do
 		if g.Name:match("Luxury Boat Dealer") then
-			t.Character.HumanoidRootPart.CFrame = g.HumanoidRootPart.CFrame
+			-- [ARENA FIX] tween toi NPC roi moi invoke (thay vi nhay cung)
+			local hrp = t.Character and t.Character:FindFirstChild("HumanoidRootPart")
+			if hrp and g:FindFirstChild("HumanoidRootPart") then
+				if (hrp.Position - g.HumanoidRootPart.Position).Magnitude > 12 then
+					toTarget(g.HumanoidRootPart.CFrame)
+				else
+					getgenv().noclip = true
+					if getgenv().TweenEngine then
+						getgenv().TweenEngine.SetNoClip(t.Character, true)
+					end
+					TweenManager.CancelTweenOnly()
+					hrp.CFrame = g.HumanoidRootPart.CFrame
+				end
+			end
 			game:GetService("ReplicatedStorage").Remotes.CommF_
 				:InvokeServer(unpack({ [1] = "CDKQuest", [2] = "BoatQuest", [3] = g }))
 		end
@@ -16103,8 +16501,8 @@ function Questgood5()
 		).Magnitude < 1000
 	then
 		if game:GetService("Workspace").Map.HeavenlyDimension.Exit.BrickColor == BrickColor.new("Cloudy grey") then
-			game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame =
-				game:GetService("Workspace").Map.HeavenlyDimension.Exit.CFrame
+
+
 			toTarget(game:GetService("Workspace").Map.HeavenlyDimension.Exit.CFrame)
 			return
 		end
@@ -16325,8 +16723,8 @@ function QuestEvil5()
 		end
 	else
 		if game:GetService("Workspace").Map.HellDimension.Exit.BrickColor == BrickColor.new("Olivine") then
-			game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame =
-				game:GetService("Workspace").Map.HellDimension.Exit.CFrame
+
+
 			toTarget(game:GetService("Workspace").Map.HellDimension.Exit.CFrame)
 			return
 		end
@@ -19933,26 +20331,39 @@ if not getgenv().BananaCatMainLoop then
 	end)
 end
 
-
---[[
-RUNTIME STABILITY PATCH (Arena.ai)
-Fixes: NOCLIP, boat tween rubber-band/stuck, sea-event boat movement, death resets, visual/insta cleanup.
-]]
 do
-	Settings["Select Method Kill Golem"] = Settings["Select Method Kill Golem"] == "Instant Kill [ Risk and can bug no die mob ]" and "Click M1" or Settings["Select Method Kill Golem"]
+	Settings["Select Method Kill Golem"] = Settings["Select Method Kill Golem"] == "Instant Kill [ Risk and can bug no die mob ]" and "Click M1"
+		or Settings["Select Method Kill Golem"]
 	Settings["Remove Visual"] = false
 	Settings["Insta Kill"] = false
 
 	local Players = game:GetService("Players")
 	local RunService = game:GetService("RunService")
 	local LocalPlayer = Players.LocalPlayer
-	local charCollision, boatCollision = setmetatable({}, { __mode = "k" }), setmetatable({}, { __mode = "k" })
+	local Engine = getgenv().TweenEngine
+	if not Engine then
+		warn("[Banana Cat Hub] TweenEngine missing -> tween/noclip se dung ban cu!")
+	end
+
+	-- tat connection noclip cu (ban va) neu co
+	if getgenv().__BF_NoClipPatchConn then
+		pcall(function()
+			getgenv().__BF_NoClipPatchConn:Disconnect()
+		end)
+		getgenv().__BF_NoClipPatchConn = nil
+	end
+
+	local boatCollision = setmetatable({}, { __mode = "k" })
 
 	local function setCollision(root, enabled, cache)
-		if not root then return end
+		if not root then
+			return
+		end
 		for _, part in ipairs(root:GetDescendants()) do
 			if part:IsA("BasePart") then
-				if cache[part] == nil then cache[part] = part.CanCollide end
+				if cache[part] == nil then
+					cache[part] = part.CanCollide
+				end
 				if enabled then
 					part.CanCollide = cache[part]
 				else
@@ -19963,12 +20374,24 @@ do
 	end
 
 	SetNoClip = function(state)
-		getgenv().noclip = state and true or false
+		state = state and true or false
+		getgenv().noclip = state
+		if Engine then
+			Engine.NoClip = state
+		end
 		local char = LocalPlayer.Character
-		if not char then return end
-		setCollision(char, not state, charCollision)
+		if not char then
+			return
+		end
+		if Engine then
+			Engine.SetNoClip(char, state, true)
+		else
+			setCollision(char, not state, boatCollision)
+		end
 		local hum = char:FindFirstChildOfClass("Humanoid")
-		if hum then hum.PlatformStand = false end
+		if hum then
+			hum.PlatformStand = false
+		end
 		local hrp = char:FindFirstChild("HumanoidRootPart")
 		if hrp and not state and hrp:FindFirstChild("FloatForce") and not (type(ToggleNoclip) == "function" and ToggleNoclip()) then
 			hrp.FloatForce:Destroy()
@@ -19976,25 +20399,26 @@ do
 	end
 
 	NoclipBoat = function(boat)
-		if boat then setCollision(boat, false, boatCollision) end
-	end
-	TurnOffNoclipBoat = function(boat)
-		if boat then setCollision(boat, true, boatCollision) end
+		if not boat then
+			return
+		end
+		if Engine then
+			Engine.SetNoClip(boat, true, true)
+		else
+			setCollision(boat, false, boatCollision)
+		end
 	end
 
-	if getgenv().__BF_NoClipPatchConn then
-		pcall(function() getgenv().__BF_NoClipPatchConn:Disconnect() end)
-	end
-	getgenv().__BF_NoClipPatchConn = RunService.Stepped:Connect(function()
-		local char = LocalPlayer.Character
-		if not char then return end
-		local active = getgenv().noclip or Settings.Noclip or (type(ToggleNoclip) == "function" and ToggleNoclip())
-		if active then
-			setCollision(char, false, charCollision)
-			local hum = char:FindFirstChildOfClass("Humanoid")
-			if hum then hum.PlatformStand = false end
+	TurnOffNoclipBoat = function(boat)
+		if not boat then
+			return
 		end
-	end)
+		if Engine then
+			Engine.SetNoClip(boat, false)
+		else
+			setCollision(boat, true, boatCollision)
+		end
+	end
 
 	local function seatPlayer(boat)
 		local char = LocalPlayer.Character
@@ -20008,68 +20432,77 @@ do
 		return hum and seat and hum.SeatPart == seat
 	end
 
-	-- Safer boat mover: updates target instead of cancelling/recreating; keeps boat noclip every frame.
-	local activeBoatTweens = setmetatable({}, { __mode = "k" })
+	--[[ manageTween: tween thuyen.
+	     - Khong huy/tai tao mover moi lan goi (chi update goal) => het giat khi loop goi lien tuc
+	     - Noclip thuyen + giu nguoi ngoi ghe moi 0.25s
+	     - Van giu API cu: Pause() / Play() / Cancel() / Destroy() / PlaybackState / TweenKey ]]
 	manageTween = function(seat, target, speed, key)
-		if not seat or not seat:IsA("BasePart") or typeof(target) ~= "CFrame" then return end
-		key = key or "TweenBoat"
-		speed = math.max(tonumber(Settings["Value Speed Tween Boat"]) or tonumber(speed) or 350, 25)
-		local boat = seat:FindFirstAncestorOfClass("Model")
-		local state = activeBoatTweens[seat]
-		if state and not state.dead and state.key == key then
-			state.target, state.speed = target, speed
-			getgenv()[key] = state.handle
-			return state.handle
+		if not seat or not seat:IsA("BasePart") or typeof(target) ~= "CFrame" then
+			return nil
 		end
-		if state and state.handle then pcall(function() state.handle:Cancel() end) end
-		state = { target = target, speed = speed, key = key, dead = false, paused = false }
-		local handle = { PlaybackState = Enum.PlaybackState.Playing, TweenKey = key, Target = target, Speed = speed }
-		state.handle = handle
-		function handle:Pause() state.paused = true self.PlaybackState = Enum.PlaybackState.Paused end
-		function handle:Play() state.paused = false self.PlaybackState = Enum.PlaybackState.Playing end
-		function handle:Cancel() state.dead = true self.PlaybackState = Enum.PlaybackState.Cancelled if getgenv()[key] == self then getgenv()[key] = nil end end
-		function handle:Destroy() self:Cancel() end
-		activeBoatTweens[seat], getgenv()[key] = state, handle
-		getgenv().noclip = true
-		task.spawn(function()
-			while not state.dead and seat.Parent do
-				local dt = RunService.Heartbeat:Wait()
-				if state.paused then continue end
-				if boat then NoclipBoat(boat); seatPlayer(boat) end
-				local goal = state.target
-				handle.Target, handle.Speed = goal, state.speed
-				local diff = goal.Position - seat.Position
-				local dist = diff.Magnitude
-				local step = math.min(state.speed * dt, 32)
-				if dist <= math.max(step, 6) then
-					seat.CFrame = goal
-					handle.PlaybackState = Enum.PlaybackState.Completed
-					break
-				else
-					local cf = seat.CFrame:Lerp(CFrame.new(seat.Position + diff.Unit * step, goal.Position + goal.LookVector), math.clamp(step / dist, 0, 1))
-					seat.CFrame = CFrame.new(cf.Position, cf.Position + goal.LookVector)
+		key = key or "TweenBoat"
+		local spd = math.max(tonumber(Settings["Value Speed Tween Boat"]) or tonumber(speed) or 350, 25)
+		local boat = seat:FindFirstAncestorOfClass("Model")
+		if not Engine then
+			-- fallback: dat truc tiep (an toan, khong crash)
+			pcall(function()
+				seat.CFrame = target
+				if boat then
+					NoclipBoat(boat)
 				end
-				seat.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-				seat.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+			end)
+			return nil
+		end
+		if boat then
+			Engine.SetNoClip(boat, true)
+			seatPlayer(boat)
+		end
+		return Engine.Move(seat, target, spd, { boat = true, key = key, eps = 6 })
+	end
+
+	-- Huy TAT CA tween (char + thuyen) - dung cho nut "Stop Tween"
+	getgenv().StopAllTween = function()
+		for part, mover in pairs(Engine and Engine.Movers or {}) do
+			pcall(function()
+				mover.handle:Cancel()
+			end)
+		end
+		for _, key in ipairs({ "TweenBoat", "TweenBoatBack", "TweenBoatToFrozen", "TweenBoatToKitsune" }) do
+			local h = getgenv()[key]
+			if h and h.Cancel then
+				pcall(function()
+					h:Pause()
+					h:Cancel()
+				end)
 			end
-			state.dead = true
-			if activeBoatTweens[seat] == state then activeBoatTweens[seat] = nil end
-			if getgenv()[key] == handle then getgenv()[key] = nil end
-		end)
-		return handle
+		end
+		if Engine then
+			Engine.Active = nil
+		end
 	end
 
 	-- If original checkboatFind required sitting/near range, relax it so Find Leviathan/Prehistoric can recover by moving to the boat.
 	checkboatFind = function()
 		local boats = workspace:FindFirstChild("Boats")
-		if not boats then return end
+		if not boats then
+			return nil
+		end
 		local best, bestDist
 		for _, boat in ipairs(boats:GetChildren()) do
-			if boat:IsA("Model") and boat:FindFirstChild("Owner") and boat:FindFirstChild("VehicleSeat") and boat:FindFirstChild("Humanoid") and boat.Humanoid.Value > 0 then
-				local ownerOk = tostring(boat.Owner.Value) == LocalPlayer.Name or Settings["Select Owner Boat Find Leviathan"] == tostring(boat.Owner.Value)
+			if
+				boat:IsA("Model")
+				and boat:FindFirstChild("Owner")
+				and boat:FindFirstChild("VehicleSeat")
+				and boat:FindFirstChild("Humanoid")
+				and boat.Humanoid.Value > 0
+			then
+				local ownerOk = tostring(boat.Owner.Value) == LocalPlayer.Name
+					or Settings["Select Owner Boat Find Leviathan"] == tostring(boat.Owner.Value)
 				if ownerOk then
 					local dist = LocalPlayer:DistanceFromCharacter(boat.VehicleSeat.Position)
-					if not bestDist or dist < bestDist then best, bestDist = boat, dist end
+					if not bestDist or dist < bestDist then
+						best, bestDist = boat, dist
+					end
 				end
 			end
 		end
@@ -20079,5 +20512,6 @@ do
 	-- Preserve the requested CheckQuest('Bách') behavior in global scope.
 	getgenv().CheckQuest = CheckQuest
 end
+
 
 getgenv().__BF_LOADED = true
