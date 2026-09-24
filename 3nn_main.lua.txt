@@ -21,9 +21,13 @@ function SaveSettings(b, t, A)
 		writefile(FolderName .. "/" .. SaveFileName, HttpService:JSONEncode(Settings))
 	end)
 end
-if getgenv().Config then
+if type(getgenv().Config) == "table" then
 	Settings = getgenv().Config
 	SaveSettings()
+elseif getgenv().Config ~= nil then
+	-- [FIX] A non-table getgenv().Config (e.g. a pasted string) used to become
+	-- Settings and crash on the first index write inside SaveSettings.
+	warn("[Banana Cat Hub] getgenv().Config is not a table; ignoring it.")
 end
 function ReadSetting(depth)
 	depth = depth or 0
@@ -86,14 +90,20 @@ until not game:GetService("Players").LocalPlayer.PlayerGui:FindFirstChild("Loadi
 repeat
 	wait()
 until game:IsLoaded() and (game.Players.LocalPlayer:FindFirstChild("DataLoaded"))
+-- [FIX] The team-select loop calls FireButton every second; the old code attached
+-- a NEW Activated connection on every call, leaking connections for minutes.
+-- Cache one connection per button (weak keys: released when the button is destroyed).
+local firedButtonConns = setmetatable({}, { __mode = "k" })
 function FireButton(b)
 	b.Selectable = true
 	game:GetService("GuiService").SelectedObject = b
 	game:GetService("VirtualInputManager"):SendKeyEvent(true, "Return", false, b)
 	game:GetService("VirtualInputManager"):SendKeyEvent(false, "Return", false, b)
-	b.Activated:Connect(function()
-		game:GetService("GuiService").SelectedObject = nil
-	end)
+	if not firedButtonConns[b] then
+		firedButtonConns[b] = b.Activated:Connect(function()
+			game:GetService("GuiService").SelectedObject = nil
+		end)
+	end
 end
 repeat
 	wait()
@@ -234,14 +244,29 @@ end
 getgenv().tablefruitausea3 = {}
 whitelistedfruit = {}
 TableDevilFruit = {}
-local a, s, X = next, game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("GetFruits", false)
-for g, g in a, s, X do
-	if g.Price >= 1000000 then
-		table.insert(whitelistedfruit, string.split(g.Name, "-")[1] .. " Fruit")
-		getgenv().tablefruitausea3[g.Name] = g.Price
+-- [FIX] GetFruits can return nil or non-table data at startup; iterating it raw
+-- (next(nil)) killed the entire script before the UI even loaded. Guard it.
+local okFruits, fruitList = pcall(function()
+	return game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("GetFruits", false)
+end)
+fruitList = (okFruits and type(fruitList) == "table") and fruitList or {}
+for _, fruit in pairs(fruitList) do
+	if type(fruit) == "table" and type(fruit.Name) == "string" then
+		local price = tonumber(fruit.Price) or 0
+		if price >= 1000000 then
+			table.insert(whitelistedfruit, string.split(fruit.Name, "-")[1] .. " Fruit")
+			getgenv().tablefruitausea3[fruit.Name] = price
+		end
+		TableDevilFruit[fruit.Name] = false
 	end
-	TableDevilFruit[g.Name] = false
 end
+-- [FIX] These globals are shared state used across the spawn-mob and chest features
+-- but were never initialized at top level: `N` (tried spawn names) made `#N` crash
+-- on nil, and `f` (chest counter) made `f += 1` crash - both silently killing
+-- their features. (The only same-named `local N` in the file lives inside an
+-- unrelated skills-section helper.)
+N = {}
+f = 0
 getgenv().tablefruitausea3["Dragon (East)-Dragon (East)"] = 15000000
 getgenv().tablefruitausea3["Dragon (West)-Dragon (West)"] = 15000000
 ItemId = require(game.ReplicatedStorage.Economy.ItemId)
@@ -1605,13 +1630,40 @@ function CheckJobIdServer()
 	end
 	return R
 end
+--[[ [FIX] Read-merge-write helper for the "already visited servers" list.
+     The old code corrupted this file in two ways: HopServer wrote JSONEncode(K)
+     where K was the hop-delay NUMBER (so CheckJobIdServer crashed on a non-table
+     decode), and the main loop periodically wiped it to {}. Both made HopServer
+     lose its dedupe memory mid-session. ]]
+function StoreVisitedJob(jobId)
+	if jobId == nil then
+		return
+	end
+	pcall(function()
+		local seen = {}
+		local okRead, decoded = pcall(function()
+			return game:GetService("HttpService"):JSONDecode(readfile("Banana Cat Hub/Jobid.json"))
+		end)
+		if okRead and type(decoded) == "table" then
+			for _, id in pairs(decoded) do
+				seen[tostring(id)] = true
+			end
+		end
+		seen[tostring(jobId)] = true
+		local list = {}
+		for id in pairs(seen) do
+			table.insert(list, id)
+		end
+		writefile("Banana Cat Hub/Jobid.json", game:GetService("HttpService"):JSONEncode(list))
+	end)
+end
 function HopServer(R)
 	local function m()
 		for E = 1, 100, 1 do
 			for l, Q in pairs((game:GetService("ReplicatedStorage").__ServerBrowser:InvokeServer(E))) do
 				if l ~= game.JobId and not table.find(CheckJobIdServer(), l) then
 					game:GetService("ReplicatedStorage").__ServerBrowser:InvokeServer("teleport", l)
-					writefile("Banana Cat Hub/Jobid.json", game:GetService("HttpService"):JSONEncode(K))
+					StoreVisitedJob(l)
 					getgenv().limit_type("clearAll")
 				end
 			end
@@ -1664,8 +1716,11 @@ function HopLessAll()
 			m = l.nextPageCursor
 		end
 		K = 0
-		for m, S in pairs(l.data) do
-			m = true
+		for jobId, S in pairs(l.data) do
+			-- [FIX] `m` here used to be assigned (`m = true`), which clobbered the OUTER
+			-- upvalue `m` holding the API pagination cursor. From page 2 on the cursor was
+			-- a boolean and the URL concatenation crashed the whole hop loop.
+			local m = true
 			Q = tostring(S.id)
 			if tonumber(S.maxPlayers) > tonumber(S.playing) and tonumber(S.playing) <= 3 then
 				for l, l in pairs(R) do
@@ -1725,7 +1780,10 @@ function getServerTime()
 	RealTime = tostring(math.floor(game.Lighting.ClockTime * 100) / 100)
 	RealTime = tostring(game.Lighting.ClockTime)
 	RealTimeTable = RealTime:split(".")
-	Minute, Second = RealTimeTable[1], tonumber(0 + tonumber(RealTimeTable[2] / 100)) * 60
+	Minute = RealTimeTable[1] or "0"
+	-- [FIX] ClockTime can be a whole number (no "."), which made RealTimeTable[2] nil
+	-- and the old line crash with "attempt to perform arithmetic on a nil value".
+	Second = if RealTimeTable[2] then tonumber(0 + tonumber(RealTimeTable[2] / 100)) * 60 else 0
 	return Minute, Second
 end
 function function8()
@@ -2494,6 +2552,12 @@ SectionLocalPlayerMain.CreateDropdown(
 )
 SectionLocalPlayerMain.CreateToggle({ Title = "Noclip", Desc = nil, Default = Settings.Noclip or false }, function(K)
 	SaveSettings("Noclip", K)
+	-- [FIX] Actually apply the state: the old callback only persisted the setting and
+	-- never touched getgenv().noclip / Engine.NoClip, so toggling Noclip was a no-op.
+	-- SetNoClip is the (re)defined engine-aware global and is looked up at call time.
+	if type(SetNoClip) == "function" then
+		pcall(SetNoClip, K == true)
+	end
 end)
 local K
 function SetRobloxGUI(R)
@@ -3369,15 +3433,19 @@ task.spawn(function()
 	travelFunctions.LoadBypassTPLocation()
 end)
 BypassTp = travelFunctions
+--[[ [FIX] "FloatForce" used to be a BodyVelocity (Velocity=0, MaxForce=100000).
+     With the Stepped-driven engine writing HRP.CFrame every pre-physics step,
+     that controller fought physics on every step (the "pulled back / yanked"
+     feel) and, worse, kept pinning the character after the tween ended.
+     Every consumer of this marker only checks existence or destroys it, so a
+     passive BoolValue is enough and removes the physics conflict entirely. ]]
 local function y(x)
 	if x:FindFirstChild("FloatForce") then
 		return
 	end
-	local k = Instance.new("BodyVelocity")
+	local k = Instance.new("BoolValue")
 	k.Name = "FloatForce"
-	k.Velocity = Vector3.new(0.0, 0.0, 0.0)
-	k.MaxForce = Vector3.new(100000, 100000, 100000)
-	k.P = 10000
+	k.Value = true
 	k.Parent = x
 end
 --[[ ============================================================================================
@@ -3550,6 +3618,38 @@ do
 		end
 		if getgenv().Tween == m.handle then
 			getgenv().Tween = nil
+		end
+		-- [FIX] When a player mover ends, restore the character's CanCollide if no
+		-- other mover or toggle still needs noclip. The old mover did exactly this on
+		-- completion; the engine version dropped it, leaving the player noclip
+		-- forever after one-shot tweens.
+		if m.player then
+			local otherPlayerMover = false
+			for _, other in pairs(Engine.Movers) do
+				if other ~= m and not other.dead and other.player then
+					otherPlayerMover = true
+					break
+				end
+			end
+			local toggleNeedsNoClip = false
+			if type(ToggleNoclip) == "function" then
+				local okToggle, toggleResult = pcall(ToggleNoclip)
+				toggleNeedsNoClip = okToggle and toggleResult == true
+			end
+			if
+				not otherPlayerMover
+				and not Engine.NoClip
+				and not toggleNeedsNoClip
+				and not (Settings.Noclip == true)
+			then
+				getgenv().noclip = false
+				local c = LP.Character
+				if c then
+					pcall(function()
+						Engine.SetNoClip(c, false)
+					end)
+				end
+			end
 		end
 		log("stop mover", cancelBy or "", m.part and m.part.Name)
 	end
@@ -3787,7 +3887,8 @@ do
 		end
 		local char = LP.Character
 		if char then
-			local wantNoClip = Engine.NoClip or getgenv().noclip
+			-- [FIX] The plain "Noclip" toggle was dropped by the engine rewrite; keep it honored.
+			local wantNoClip = Engine.NoClip or getgenv().noclip or (Settings.Noclip == true)
 			if not wantNoClip and Engine.AutoNoClip and type(ToggleNoclip) == "function" then
 				local ok, res = pcall(ToggleNoclip)
 				wantNoClip = ok and res == true
@@ -3883,7 +3984,7 @@ function toTarget(P, e)
 		return
 	end
 	k.LastCall = tick()
-	if Z and Z.Sit then
+	if Z and Z.SeatPart then
 		TweenManager.CancelCurrent()
 		task.wait(0.1)
 		getgenv().noclip = false
@@ -4216,7 +4317,7 @@ end)
 function equiptool(g)
 	local char = t.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
-	if g and hum and not hum.Sit and (t:FindFirstChild("Backpack")) and (t.Backpack:FindFirstChild(g)) then
+	if g and hum and not hum.SeatPart and (t:FindFirstChild("Backpack")) and (t.Backpack:FindFirstChild(g)) then
 		hum:EquipTool(t.Backpack:FindFirstChild(g))
 	end
 end
@@ -4517,7 +4618,13 @@ getgenv().SpamGunDragonStorm = function(E)
 	if not d or (l:IsGunReloading(d)) then
 		return
 	end
-	l = getupvalues(require(L.Controllers.CombatController).Attack)[9]
+	-- [FIX] getupvalues(f) returns an (iterator, count) pair; indexing that
+	-- iterator with [9] yielded nil, so every debug.getupvalue(nil, ...) call
+	-- crashed and the whole Dragon Storm spam feature was dead.
+	local okUp, l = pcall(getupvalue, require(L.Controllers.CombatController).Attack, 9)
+	if not okUp or type(l) ~= "function" then
+		return
+	end
 	local I, _, o, V, N, y, P =
 		debug.getupvalue(l, 15),
 		debug.getupvalue(l, 13),
@@ -4549,8 +4656,13 @@ function ShootM1(E)
 			)
 		then
 			if NameWeapon("Gun") ~= "Skull Guitar" then
-				local l =
-					getupvalues(require(game:GetService("ReplicatedStorage").Controllers.CombatController).Attack)[9]
+				-- [FIX] same getupvalues() iterator-indexing misuse; extract the real
+				-- 9th upvalue or abort this shot instead of crashing the thread.
+				local okUp, l = pcall(getupvalue,
+					require(game:GetService("ReplicatedStorage").Controllers.CombatController).Attack, 9)
+				if not okUp or type(l) ~= "function" then
+					return
+				end
 				local Q, d, I, _, o, V, N =
 					debug.getupvalue(l, 15),
 					debug.getupvalue(l, 13),
@@ -8218,7 +8330,7 @@ function AutoQuestDojo()
 				getgenv().RoughSea = V
 				Y = CFrame.new(-32975.9921875, P.WorldPivot.Y, 25963.7109375)
 					* CFrame.new(0, P.WorldPivot.Y, 0 + RoughSea)
-				if not t.Character.Humanoid.Sit then
+				if not t.Character.Humanoid.SeatPart then
 					toTarget(P.VehicleSeat.CFrame)
 				else
 					manageTween(P.VehicleSeat, Y, 350, "TweenBoat")
@@ -8320,7 +8432,7 @@ function AutoQuestDojo()
 				getgenv().RoughSea = V
 				P = CFrame.new(-32975.9921875, y.WorldPivot.Y, 25963.7109375)
 					* CFrame.new(0, y.WorldPivot.Y, 0 + RoughSea)
-				if not t.Character.Humanoid.Sit then
+				if not t.Character.Humanoid.SeatPart then
 					toTarget(y.VehicleSeat.CFrame)
 				else
 					manageTween(y.VehicleSeat, P, 350, "TweenBoat")
@@ -8349,7 +8461,7 @@ function AutoQuestDojo()
 				getgenv().RoughSea = V
 				Y = CFrame.new(-32975.9921875, P.WorldPivot.Y, 25963.7109375)
 					* CFrame.new(0, P.WorldPivot.Y, 0 + RoughSea)
-				if not t.Character.Humanoid.Sit then
+				if not t.Character.Humanoid.SeatPart then
 					toTarget(P.VehicleSeat.CFrame)
 				else
 					manageTween(P.VehicleSeat, Y, 350, "TweenBoat")
@@ -9028,7 +9140,8 @@ function ObservationV2()
 				game:GetService("VirtualInputManager"):SendKeyEvent(false, "E", false, game)
 				wait(2)
 			elseif not H then
-				GetPart = DetectPartSpawnMob("Marine Commodore")
+				-- [FIX] Was leaking into the global scope.
+				local GetPart = DetectPartSpawnMob("Marine Commodore")
 				toTarget(GetPart.CFrame * CFrame.new(0, 60, 0))
 			else
 				repeat
@@ -9866,8 +9979,53 @@ local function b()
 	end
 	return false
 end
+--[[ [FIX] Random Devil Fruit - new GachaNetworkRF flow.
+     The old body was literally `b()`, and the global `b` at that point is the
+     "Select Island" name list (a table), so every spin threw
+     "attempt to call a table value" and the feature did nothing.
+     The ZiolesGacha box is rendered at the BOTTOM of the Devil Fruit shop UI,
+     so opening the shop is all the UI-side preparation needed; the spin itself
+     is now a single remote invoke - no per-fruit tile hunting anymore. ]]
+local GachaBoxName = "ZiolesGacha"
+local lastFruitSpinTick = 0
 function RandomFruit()
-	b()
+	if not Settings["Random Devil Fruit"] then
+		return
+	end
+	-- Guard: the caller polls every 0.5s. A fresh spin takes several seconds
+	-- (spinner animation), so without this we would double-purchase whenever
+	-- the spinner window is slow to appear.
+	local now = tick()
+	if now - lastFruitSpinTick < 8 then
+		return
+	end
+	lastFruitSpinTick = now
+	-- 1) Make sure the Devil Fruit shop is open (the gacha box lives at its bottom).
+	pcall(function()
+		local shop = require(game:GetService("ReplicatedStorage").Controllers.UI.FruitShop)
+		if type(shop) == "table" and type(shop.init) == "function" then
+			shop.init()
+		end
+		if type(shop) == "table" and type(shop.Open) == "function" then
+			shop:Open()
+		end
+	end)
+	-- 2) Wait (bounded) for the gacha remote to exist before invoking.
+	local gacha = game:GetService("ReplicatedStorage").Modules.Net:FindFirstChild("RF/GachaNetworkRF")
+	while not gacha do
+		task.wait(0.25)
+		if tick() - now > 10 then
+			return
+		end
+		gacha = game:GetService("ReplicatedStorage").Modules.Net:FindFirstChild("RF/GachaNetworkRF")
+	end
+	-- 3) Spin the ZiolesGacha box exactly once.
+	local ok, err = pcall(function()
+		gacha:InvokeServer({ Context = "Purchase", BoxName = GachaBoxName })
+	end)
+	if not ok then
+		warn("[Banana Cat Hub] Gacha spin failed:", err)
+	end
 end
 function DetectCountDF()
 	local b = getbackpack()
@@ -10808,7 +10966,7 @@ function SpinBoat()
 		and P
 		and not Settings["Auto Sea Event With Friend"]
 		and game.PlaceId == getgenv().CheckPlaceId
-		and not t.Character.Humanoid.Sit
+		and not t.Character.Humanoid.SeatPart
 	then
 		RoughSeaSpin = Settings["Teleport Boat Other CFrame if Rough Sea"] and V or 0
 		local Y, H =
@@ -10892,7 +11050,7 @@ function BuyBoatAndTeleBoat(P)
 		end)
 		if Settings["Tween Until Have Sea Event"] then
 			local H = CFrame.new(-118834.515625, Y.WorldPivot.Y, 999920.0494155884)
-			if not t.Character.Humanoid.Sit then
+			if not t.Character.Humanoid.SeatPart then
 				toTarget(Y.VehicleSeat.CFrame)
 			else
 				l(Y, H, 350)
@@ -10911,7 +11069,7 @@ function BuyBoatAndTeleBoat(P)
 				else H
 			if (Y.VehicleSeat.Position - H.Position).Magnitude > 200 then
 				C = CFrame.new(H.Position.X, Y.WorldPivot.Y, H.Position.Z)
-				if not t.Character.Humanoid.Sit then
+				if not t.Character.Humanoid.SeatPart then
 					toTarget(Y.VehicleSeat.CFrame)
 				else
 					l(Y, C, 350)
@@ -10927,7 +11085,7 @@ function BuyBoatAndTeleBoat(P)
 						C = string.split(C, "/")
 						if tonumber(C[1]) < tonumber(C[2]) then
 							if t:DistanceFromCharacter(Y.PrimaryPart.Position) < 20 then
-								if not t.Character.Humanoid.Sit then
+								if not t.Character.Humanoid.SeatPart then
 									if t.Character:FindFirstChild("_RepairHammer") then
 										if t.Character._RepairHammer:FindFirstChild("M1UP") then
 											t.Character._RepairHammer.M1UP:Destroy()
@@ -10951,7 +11109,7 @@ function BuyBoatAndTeleBoat(P)
 					end
 				end
 				if not P then
-					if not t.Character.Humanoid.Sit then
+					if not t.Character.Humanoid.SeatPart then
 						toTarget(Y.VehicleSeat.CFrame)
 					end
 					local P = CFrame.new(H.Position.X, Y.WorldPivot.Y, H.Position.Z)
@@ -10961,7 +11119,7 @@ function BuyBoatAndTeleBoat(P)
 							task.wait()
 							toTarget(P * CFrame.new(0, 2500, 0))
 						until tick() - H >= 12
-					elseif t.Character.Humanoid.Sit then
+					elseif t.Character.Humanoid.SeatPart then
 						l(Y, P, 350)
 					end
 				end
@@ -11378,7 +11536,7 @@ ToggleFindMirage = FarmingSeaEventSection.CreateToggle(
 									:InvokeServer("BuyBoat", "PirateBrigade")
 								wait(3)
 							end
-						elseif t.Character.Humanoid.Sit then
+						elseif t.Character.Humanoid.SeatPart then
 							local Y, H, Z =
 								CFrame.new(-118834.515625, 160, -78.9505844116211) * CFrame.new(0, 0, 99999999),
 								CFrame.new(-32975.9921875, 160, 25963.7109375),
@@ -11402,7 +11560,7 @@ ToggleFindMirage = FarmingSeaEventSection.CreateToggle(
 									manageTween(P.VehicleSeat, Y, 350, "TweenBoat")
 								end
 							until not Settings["Auto Find Mirage"]
-								or not t.Character.Humanoid.Sit
+								or not t.Character.Humanoid.SeatPart
 								or (game:GetService("Workspace").Map:FindFirstChild("MysticIsland"))
 							if getgenv().TweenBoat then
 								getgenv().TweenBoat:Pause()
@@ -11544,12 +11702,12 @@ function AutoSpawnKitsune()
 	local H = CFrame.new(-32975.9921875, Y, 25963.7109375) * CFrame.new(0, 0, 1000)
 	if CheckMoon() == "Full Moon" and math.floor(18 - y) <= 0 then
 		if (P.VehicleSeat.Position - H.Position).Magnitude > 200 then
-			if not t.Character.Humanoid.Sit then
+			if not t.Character.Humanoid.SeatPart then
 				toTarget(P.VehicleSeat.CFrame)
 			else
 				manageTween(P.VehicleSeat, H, 350, "TweenBoat")
 			end
-		elseif not t.Character.Humanoid.Sit then
+		elseif not t.Character.Humanoid.SeatPart then
 			toTarget(P.VehicleSeat.CFrame)
 		end
 	else
@@ -11776,7 +11934,7 @@ function AutoFindLeviathan()
 	end
 	if Settings["Auto Destroy IDK"] and getgenv().DesIdk2 then
 		toTarget(getgenv().OldBoat.VehicleSeat.CFrame)
-		if t.Character.Humanoid.Sit then
+		if t.Character.Humanoid.SeatPart then
 			getgenv().DesIdk2 = false
 		end
 		return
@@ -11912,7 +12070,7 @@ function AutoFindLeviathan()
 					manageTween(g.VehicleSeat, y, 350, "TweenBoat")
 				end
 			until not Settings["Auto Find Leviathan"]
-				or not t.Character.Humanoid.Sit
+				or not t.Character.Humanoid.SeatPart
 				or (game.workspace._WorldOrigin.Locations:FindFirstChild("Frozen Dimension"))
 				or Settings["Auto Destroy IDK"] and getgenv().DesIdk
 			g.VehicleSeat.BodyVelocity.MaxForce = Z
@@ -11927,7 +12085,7 @@ function AutoFindLeviathan()
 			end
 			g.VehicleSeat.CFrame = CFrame.new(g.VehicleSeat.Position.X, H, g.VehicleSeat.Position.Z)
 		elseif I and Settings["Auto Buy Boat Beast Hunter"] then
-			if not t.Character.Humanoid.Sit then
+			if not t.Character.Humanoid.SeatPart then
 				toTarget(I.VehicleSeat.CFrame)
 			end
 		end
@@ -12103,10 +12261,10 @@ LeviathanEventSection.CreateToggle(
 							return
 						end
 						local g = checkboatMulti()
-						if g and not t.Character.Humanoid.Sit then
+						if g and not t.Character.Humanoid.SeatPart then
 							toTarget(g.Seat.CFrame)
 						elseif
-							t.Character.Humanoid.Sit
+							t.Character.Humanoid.SeatPart
 							and (t.Character:FindFirstChild("HumanoidRootPart"))
 							and (t.Character:FindFirstChild("HumanoidRootPart"):FindFirstChild("FloatForce"))
 						then
@@ -12578,7 +12736,7 @@ LeviathanEventSection.CreateToggle(
 							if s and s:FindFirstChild("HumanoidRootPart") then
 								-- [ARENA FIX] dang ngoi thuyen thi tween thuyen (khong tween nguoi)
 								local boat = checkboatFind() or checkboat()
-								if boat and t.Character.Humanoid.Sit then
+								if boat and t.Character.Humanoid.SeatPart then
 									local g = CFrame.new(
 										s.HumanoidRootPart.Position.X,
 										boat.VehicleSeat.Position.Y,
@@ -12612,7 +12770,8 @@ LeviathanEventSection.CreateToggle(
 				while Settings["Tween Boat To Frozen Dimension"] and (wait()) do
 					pcall(function()
 						if game.workspace._WorldOrigin.Locations:FindFirstChild("Frozen Dimension") then
-							AllNPCS = {}
+							-- [FIX] Was leaking into the global scope on every loop tick.
+							local AllNPCS = {}
 							for s, s in pairs(game:GetService("Workspace").NPCs:GetChildren()) do
 								table.insert(AllNPCS, s)
 							end
@@ -12929,7 +13088,7 @@ BoatSettingSection.CreateToggle({ Title = "Fly Boat", Desc = nil, Default = Sett
 		spawn(function()
 			while Settings["Fly Boat"] and (wait(0.1)) do
 				pcall(function()
-					if t.Character.Humanoid.Sit then
+					if t.Character.Humanoid.SeatPart then
 						if not b then
 							NOFLY()
 							wait()
@@ -12939,7 +13098,7 @@ BoatSettingSection.CreateToggle({ Title = "Fly Boat", Desc = nil, Default = Sett
 						end
 						repeat
 							wait()
-						until not Settings["Fly Boat"] or not t.Character.Humanoid.Sit
+						until not Settings["Fly Boat"] or not t.Character.Humanoid.SeatPart
 						if not b then
 							NOFLY()
 						else
@@ -13229,7 +13388,7 @@ function AutoUpgradeRaceDraco()
 					getgenv().RoughSea = V
 					g = CFrame.new(-32975.9921875, X.WorldPivot.Y, 25963.7109375)
 						* CFrame.new(0, X.WorldPivot.Y, 0 + RoughSea)
-					if not t.Character.Humanoid.Sit then
+					if not t.Character.Humanoid.SeatPart then
 						toTarget(X.VehicleSeat.CFrame)
 					else
 						manageTween(X.VehicleSeat, g, 350, "TweenBoat")
@@ -13858,7 +14017,7 @@ function FullyDraco()
 									:InvokeServer("BuyBoat", "PirateBrigade")
 								wait(3)
 							end
-						elseif t.Character.Humanoid.Sit then
+						elseif t.Character.Humanoid.SeatPart then
 							task.spawn(function()
 								NoclipBoat(g)
 							end)
@@ -14287,7 +14446,7 @@ function AutoFishV2()
 			local m = CFrame.new(753.0653686523438, R.WorldPivot.Y, 6994.5146484375)
 			if (R.VehicleSeat.Position - m.Position).Magnitude > 50 then
 				manageTween(R.VehicleSeat, m, 400, "TweenBoat")
-			elseif not t.Character.Humanoid.Sit then
+			elseif not t.Character.Humanoid.SeatPart then
 				toTarget(R.VehicleSeat.CFrame)
 			end
 		end
@@ -16385,7 +16544,8 @@ GetItemsSection.CreateToggle(
 )
 StartGood = true
 function QuestGood3()
-	AllNPCS = {}
+	-- [FIX] Was leaking into the global scope on every call.
+	local AllNPCS = {}
 	for g, g in pairs(game:GetService("Workspace").NPCs:GetChildren()) do
 		table.insert(AllNPCS, g)
 	end
@@ -16577,7 +16737,8 @@ function QuestEvil3()
 			else l
 	end
 	if not l then
-		GetPart = DetectPartSpawnMob("Marine Commodore")
+		-- [FIX] Was leaking into the global scope.
+		local GetPart = DetectPartSpawnMob("Marine Commodore")
 		toTarget(GetPart.CFrame * CFrame.new(0, 60, 0))
 	else
 		repeat
@@ -16624,7 +16785,8 @@ function QuestEvil4()
 			end
 		until not g or not g.Parent or g.Humanoid.Health == 0
 	else
-		GetPart = DetectPartSpawnMob(checknearstpartmobspawn())
+		-- [FIX] Was leaking into the global scope.
+		local GetPart = DetectPartSpawnMob(checknearstpartmobspawn())
 		toTarget(GetPart.CFrame * CFrame.new(0, 15, 0))
 	end
 end
@@ -17512,7 +17674,8 @@ function AutoYorumini()
 			ClickM1(g)
 		until not IsMobAlive(g) or not Settings["Auto Yoru Mini"]
 	elseif not DetectItemPlr("God's Chalice") then
-		elitehunter = DetectEliteHunter()
+		-- [FIX] Was leaking into the global scope on every loop tick.
+		local elitehunter = DetectEliteHunter()
 		if elitehunter then
 			local g = elitehunter
 			if g then
@@ -17804,10 +17967,13 @@ function DetectMaterialsUpgrade()
 		if
 			R ~= "NameWp"
 			and R ~= "Physical"
-			and not CheckCountItem(R, m)
-			and R ~= "Dark Fragment"
-			and NameWorldMaterials[R][game.PlaceId]
-		then
+		and not CheckCountItem(R, m)
+		and R ~= "Dark Fragment"
+		-- [FIX] Unknown materials have no entry in NameWorldMaterials; the old code
+		-- indexed a nil row and errored out of the upgrade loop every cycle.
+		and NameWorldMaterials[R]
+		and NameWorldMaterials[R][game.PlaceId]
+	then
 			return R
 		end
 	end
@@ -18254,7 +18420,7 @@ function AutoFindPrehistoric()
 				game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("BuyBoat", "PirateBrigade")
 				wait(3)
 			end
-		elseif t.Character.Humanoid.Sit then
+		elseif t.Character.Humanoid.SeatPart then
 			local f, R, m =
 				CFrame.new(-118834.515625, 160, -78.9505844116211) * CFrame.new(0, 0, 99999999),
 				CFrame.new(-32975.9921875, 160, 25963.7109375),
@@ -18278,7 +18444,7 @@ function AutoFindPrehistoric()
 					manageTween(g.VehicleSeat, f, 350, "TweenBoat")
 				end
 			until not Settings["Auto Find Prehistoric Island"]
-				or not t.Character.Humanoid.Sit
+				or not t.Character.Humanoid.SeatPart
 				or (game:GetService("Workspace").Map:FindFirstChild("PrehistoricIsland"))
 			if getgenv().TweenBoat then
 				getgenv().TweenBoat:Pause()
@@ -18328,6 +18494,12 @@ ToggleAutoFindPrehistoricIsland = FarmingVolcanoSection.CreateToggle(
 		SaveSettings("Auto Find Prehistoric Island", g)
 	end
 )
+-- [FIX] The volcano features used the global `b` (the island name list from the
+-- Select Island dropdown) as a "skull pending" state flag. Writing to it
+-- corrupted that list mid-session and flipped unrelated features that read the
+-- same global (e.g. Fly Boat). Dedicated session flag instead (starts true,
+-- matching the original de-facto initial state).
+SkullPending = true
 function AutoAttackVolcano()
 	if game:GetService("Workspace").Map:FindFirstChild("PrehistoricIsland") then
 		if not t:GetAttribute("CurrentLocation") or t:GetAttribute("CurrentLocation") ~= "Prehistoric Island" then
@@ -18373,13 +18545,13 @@ function AutoAttackVolcano()
 				end
 			end
 		else
-			if b then
+			if SkullPending then
 				local g = workspace.Map.PrehistoricIsland.Core.PrehistoricRelic.Skull
 				repeat
 					task.wait()
 					toTarget(g.CFrame)
 				until t:DistanceFromCharacter(g.Position) <= 200 or (DetectGolem()) or (DetectRockVolcano())
-				b = false
+				SkullPending = false
 				return
 			end
 			local g = DetectGolem()
@@ -18438,7 +18610,7 @@ function AutoAttackVolcano()
 							or (DetectGolem())
 						f = DetectGolem()
 						if not f then
-							b = true
+							SkullPending = true
 						end
 						wait(1)
 					end
@@ -18463,7 +18635,7 @@ function AutoAttackVolcano()
 						or (DetectGolem())
 					f = DetectGolem()
 					if not f then
-						b = true
+						SkullPending = true
 					end
 				end
 			end
@@ -18766,7 +18938,7 @@ function FullyEventVolcano()
 						game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("BuyBoat", "PirateBrigade")
 						wait(3)
 					end
-				elseif t.Character.Humanoid.Sit then
+				elseif t.Character.Humanoid.SeatPart then
 					task.spawn(function()
 						NoclipBoat(g)
 					end)
@@ -18882,13 +19054,13 @@ function FullyEventVolcano()
 			end
 		else
 			getgenv().CanReset = true
-			if b then
+			if SkullPending then
 				local g = workspace.Map.PrehistoricIsland.Core.PrehistoricRelic.Skull
 				repeat
 					task.wait()
 					toTarget(g.CFrame)
 				until t:DistanceFromCharacter(g.Position) <= 200 or (DetectGolem()) or (DetectRockVolcano())
-				b = false
+				SkullPending = false
 				return
 			end
 			local g = DetectGolem()
@@ -18947,7 +19119,7 @@ function FullyEventVolcano()
 							or (DetectGolem())
 						s = DetectGolem()
 						if not s then
-							b = true
+							SkullPending = true
 						end
 						wait(1)
 					end
@@ -18972,7 +19144,7 @@ function FullyEventVolcano()
 						or (DetectGolem())
 					s = DetectGolem()
 					if not s then
-						b = true
+						SkullPending = true
 					end
 				end
 			end
@@ -19020,36 +19192,124 @@ FullyVolcanoSection.CreateToggle(
 )
 ESPTab = Main.CreatePage({ Page_Name = "ESP", Page_Title = "ESP Tab" })
 ESPSection = ESPTab.CreateSection("ESP")
+--[[ [FIX] Every ESP feature in this section rendered with the client-side
+     Drawing API (Drawing.new("Text") / Drawing.new("Square")). That API does
+     not exist in most executors, so the very first feature tick threw
+     "attempt to call a nil value"; the surrounding pcall swallowed it, which
+     is why enabling ANY ESP toggle in this tab showed nothing.
+     The drawing is now a BillboardGui-based label engine - plain Roblox
+     instances that render in every executor. Billboards auto-track their
+     anchor, so the old per-frame WorldToViewportPoint projection is gone. ]]
+local ESP_ANCHOR_FOLDER = "ESP_BananaCat_Anchors"
+local function espAnchorFolder()
+	local folder = workspace:FindFirstChild(ESP_ANCHOR_FOLDER)
+	if not folder then
+		folder = Instance.new("Folder")
+		folder.Name = ESP_ANCHOR_FOLDER
+		folder.Parent = workspace
+	end
+	return folder
+end
+local function espEnsureLabel(anchor, textColor)
+	local gui = anchor:FindFirstChild("ESP_BananaCat_Label")
+	if gui then
+		return gui
+	end
+	gui = Instance.new("BillboardGui")
+	gui.Name = "ESP_BananaCat_Label"
+	gui.Size = UDim2.fromScale(3, 1)
+	gui.StudioStudsOffset = Vector3.new(0, 1.5, 0)
+	gui.AlwaysOnTop = true
+	gui.LightInfluence = 0
+	gui.ResetOnTargetLost = false
+	local label = Instance.new("TextLabel")
+	label.Name = "ESP_Text"
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.BackgroundTransparency = 0.25
+	label.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+	label.TextColor3 = textColor or Color3.fromRGB(255, 255, 255)
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 16
+	label.TextXAlignment = Enum.TextXAlignment.Center
+	label.TextYAlignment = Enum.TextYAlignment.Center
+	label.TextWrapped = true
+	label.AutomaticSize = Enum.AutomaticSize.Y
+	label.Parent = gui
+	gui.Parent = anchor
+	return gui
+end
+local function espLabelText(anchor, text)
+	local gui = anchor:FindFirstChild("ESP_BananaCat_Label")
+	if gui and gui:FindFirstChild("ESP_Text") then
+		gui.ESP_Text.Text = text
+	end
+end
+-- [FIX] Islands are Location Folders; a BillboardGui needs a part/model anchor,
+-- so each island label gets an invisible, physics-disabled anchor part.
+local function espIslandAnchor(loc, cf)
+	local existing = espAnchorFolder():FindFirstChild("Island_" .. loc.Name)
+	if existing and existing.Parent then
+		return existing
+	end
+	local p = Instance.new("Part")
+	p.Name = "Island_" .. loc.Name
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	p.Massless = true
+	p.Transparency = 1
+	p.Size = Vector3.new(0.1, 0.1, 0.1)
+	p.CFrame = cf
+	p.Parent = espAnchorFolder()
+	return p
+end
 function EspSpawnBerry()
 	local b, s = DetectBerryESP()
-	if b then
-		local X = Instance.new("IntValue", b.Parent)
-		X.Name = "Ignored"
-		local g = Drawing.new("Text")
-		g.Visible = false
-		g.Transparency = 1
-		g.Text = b.Name
-		g.Color = Color3.fromRGB(255, 255, 255)
-		g.Size = 20
-		g.Outline = true
-		g.OutlineColor = Color3.fromRGB(0, 0, 0)
-		g.Center = true
-		g.Font = 1
+	if b and b.Parent then
+		-- [FIX] BillboardGui label on the berry bush pivot instead of Drawing.
+		local anchor = b.Parent:FindFirstChild("WorldPivot") or b.Parent
+		if anchor:FindFirstChild("ESP_BananaCat_Label") then
+			return
+		end
+		if not anchor:FindFirstChild("Ignored") then
+			local m = Instance.new("IntValue")
+			m.Name = "Ignored"
+			m.Parent = anchor
+		end
+		local okGui = pcall(espEnsureLabel, anchor)
+		if not okGui then
+			local m = anchor:FindFirstChild("Ignored")
+			if m then
+				m:Destroy()
+			end
+			return
+		end
 		spawn(function()
 			repeat
-				task.wait()
-				local f, R = game.workspace.CurrentCamera:WorldToViewportPoint(b.Parent.WorldPivot.Position)
-				if R then
-					g.Text = s .. " (" .. math.round(t:DistanceFromCharacter(b.Parent.WorldPivot.Position)) .. ")"
-					g.Position = Vector2.new(f.X, f.Y - 20)
-					g.Visible = true
-				else
-					g.Visible = false
+				task.wait(0.25)
+				local okCheck, stillThere = pcall(function()
+					return b and b.Parent ~= nil and DetectBerryCFrame(b:GetAttributes()) ~= nil
+				end)
+				if not (okCheck and stillThere) then
+					break
 				end
-			until not b or not b.Parent or not Settings["ESP Berry"] or not DetectBerryCFrame(b:GetAttributes())
-			g:Remove()
-			if b.Parent then
-				X:Destroy()
+				pcall(function()
+					local part = b.Parent:FindFirstChild("WorldPivot") or anchor
+					-- [FIX] `s` from DetectBerryESP is the spawn CFrame, not a name;
+					-- the old label showed a raw CFrame string. Show the berry name.
+					espLabelText(anchor, b.Name .. " (" .. math.round(t:DistanceFromCharacter(part.Position)) .. ")")
+				end)
+			until not b or not b.Parent or not Settings["ESP Berry"]
+			if anchor and anchor.Parent then
+				local gui = anchor:FindFirstChild("ESP_BananaCat_Label")
+				if gui then
+					gui:Destroy()
+				end
+				local m = anchor:FindFirstChild("Ignored")
+				if m then
+					m:Destroy()
+				end
 			end
 		end)
 	end
@@ -19077,36 +19337,52 @@ end
 function EspIsland()
 	local b = DetectIsland()
 	if b then
-		local s = Instance.new("IntValue", b)
-		s.Name = "Ignored"
-		local X = Drawing.new("Text")
-		X.Visible = false
-		X.Transparency = 1
-		X.Text = b.Name
-		X.Color = Color3.fromRGB(255, 255, 255)
-		X.Size = 20
-		X.Outline = true
-		X.OutlineColor = Color3.fromRGB(0, 0, 0)
-		X.Center = true
-		X.Font = 1
+		-- [FIX] BillboardGui label driven by an invisible anchor part (a
+		-- BillboardGui cannot be parented to a Location Folder).
+		local okCf, cf = pcall(function()
+			return b:GetAttribute("CFrame")
+		end)
+		if not (okCf and cf and cf.Position) then
+			return
+		end
+		if not b:FindFirstChild("Ignored") then
+			local s = Instance.new("IntValue", b)
+			s.Name = "Ignored"
+		end
+		local okAnchor, anchor = pcall(espIslandAnchor, b, cf)
+		if not (okAnchor and anchor) then
+			local s = b:FindFirstChild("Ignored")
+			if s then
+				s:Destroy()
+			end
+			return
+		end
+		pcall(espEnsureLabel, anchor)
 		spawn(function()
 			repeat
-				task.wait()
-				local g, f = game.workspace.CurrentCamera:WorldToViewportPoint(b:GetAttribute("CFrame").Position)
-				if f then
-					X.Text = b.Name
-						.. " ("
-						.. math.round(t:DistanceFromCharacter(b:GetAttribute("CFrame").Position))
-						.. ")"
-					X.Position = Vector2.new(g.X, g.Y - 20)
-					X.Visible = true
-				else
-					X.Visible = false
+				task.wait(0.25)
+				local okPos, pos = pcall(function()
+					local a = b:GetAttribute("CFrame")
+					return a and a.Position or nil
+				end)
+				if not (okPos and pos) then
+					break
+				end
+				if anchor and anchor.Parent then
+					anchor.CFrame = CFrame.new(pos)
+					pcall(function()
+						espLabelText(anchor, b.Name .. " (" .. math.round(t:DistanceFromCharacter(pos)) .. ")")
+					end)
 				end
 			until not b or not b.Parent or not Settings["ESP Island"]
-			X:Remove()
-			if b.Parent then
-				s:Destroy()
+			if anchor and anchor.Parent then
+				anchor:Destroy()
+			end
+			if b and b.Parent then
+				local s = b:FindFirstChild("Ignored")
+				if s then
+					s:Destroy()
+				end
 			end
 		end)
 	end
@@ -19210,14 +19486,25 @@ function EspFruit()
 	if not b then
 		return
 	end
-	local s, X = GetFruitName(b), b:FindFirstChild("Handle")
+	local X = b:FindFirstChild("Handle")
 	if not X then
 		return
 	end
-	local g = Instance.new("IntValue")
-	g.Name = "Ignored"
-	g.Parent = X
-	local g, f =
+	-- [FIX] BillboardGui label on the fruit Handle instead of Drawing Text+Square
+	-- (the billboard's own background replaces the Square).
+	if X:FindFirstChild("ESP_BananaCat_Label") then
+		return
+	end
+	local okName, s = pcall(GetFruitName, b)
+	if not (okName and s) then
+		return
+	end
+	if not X:FindFirstChild("Ignored") then
+		local g = Instance.new("IntValue")
+		g.Name = "Ignored"
+		g.Parent = X
+	end
+	local fruitColor =
 		({
 			["Leopard Fruit"] = Color3.fromRGB(255, 170, 0),
 			["Dragon (East) Fruit"] = Color3.fromRGB(255, 0, 0),
@@ -19227,46 +19514,33 @@ function EspFruit()
 			["Venom Fruit"] = Color3.fromRGB(180, 60, 200),
 			["Dough Fruit"] = Color3.fromRGB(255, 220, 180),
 			["Light Fruit"] = Color3.fromRGB(255, 255, 150),
-		})[s] or (Color3.fromRGB(255, 255, 255)),
-		Drawing.new("Text")
-	f.Visible = false
-	f.Transparency = 1
-	f.Text = s
-	f.Color = g
-	f.Size = 20
-	f.Outline = true
-	f.OutlineColor = Color3.fromRGB(0, 0, 0)
-	f.Center = true
-	f.Font = 2
-	local R = Drawing.new("Square")
-	R.Visible = false
-	R.Filled = true
-	R.Color = Color3.fromRGB(0, 0, 0)
-	R.Transparency = 0.4
+		})[s] or Color3.fromRGB(255, 255, 255)
+	local okGui = pcall(espEnsureLabel, X, fruitColor)
+	if not okGui then
+		local g = X:FindFirstChild("Ignored")
+		if g then
+			g:Destroy()
+		end
+		return
+	end
 	spawn(function()
 		repeat
-			task.wait()
-			if X then
-				local m, E = workspace.CurrentCamera:WorldToViewportPoint(X.Position)
-				if E then
-					f.Text = s .. " [" .. math.round(t:DistanceFromCharacter(X.Position)) .. "m]"
-					f.Position = Vector2.new(m.X, m.Y - 20)
-					f.Color = g
-					f.Visible = true
-					local s = f.TextBounds
-					R.Position = Vector2.new(f.Position.X - s.X / 2 - 4, f.Position.Y - 2)
-					R.Size = Vector2.new(s.X + 8, s.Y + 4)
-					R.Visible = true
-				else
-					f.Visible = false
-					R.Visible = false
-				end
+			task.wait(0.25)
+			if X and X.Parent then
+				pcall(function()
+					espLabelText(X, s .. " [" .. math.round(t:DistanceFromCharacter(X.Position)) .. "m]")
+				end)
 			end
-		until not b or not b.Parent or not X.Parent or not Settings["ESP Fruit"]
-		f:Remove()
-		R:Remove()
-		if X:FindFirstChild("Ignored") then
-			X.Ignored:Destroy()
+		until not b or not b.Parent or not X or not X.Parent or not Settings["ESP Fruit"]
+		if X and X.Parent then
+			local gui = X:FindFirstChild("ESP_BananaCat_Label")
+			if gui then
+				gui:Destroy()
+			end
+			local g = X:FindFirstChild("Ignored")
+			if g then
+				g:Destroy()
+			end
 		end
 	end)
 end
@@ -19295,40 +19569,54 @@ end
 function ESPPlayer()
 	local b = DetectPlayerESP()
 	if b then
-		local s = Instance.new("IntValue", b)
-		s.Name = "Ignored"
-		local X = Drawing.new("Text")
-		X.Visible = false
-		X.Transparency = 1
-		X.Text = b.Name
-		X.Color = Color3.fromRGB(255, 255, 255)
-		X.Size = 20
-		X.Outline = true
-		X.OutlineColor = Color3.fromRGB(0, 0, 0)
-		X.Center = true
-		X.Font = 1
+		-- [FIX] BillboardGui label on the character (HRP) instead of Drawing.
+		if b:FindFirstChild("ESP_BananaCat_Label", true) then
+			return
+		end
+		if not b:FindFirstChild("Ignored") then
+			local s = Instance.new("IntValue", b)
+			s.Name = "Ignored"
+		end
+		local hrp = b:FindFirstChild("HumanoidRootPart")
+		local anchor = hrp or b
+		local okGui = pcall(espEnsureLabel, anchor)
+		if not okGui then
+			local s = b:FindFirstChild("Ignored")
+			if s then
+				s:Destroy()
+			end
+			return
+		end
 		spawn(function()
 			repeat
-				task.wait()
-				local g, f = game.workspace.CurrentCamera:WorldToViewportPoint(b.HumanoidRootPart.Position)
-				if f then
-					X.Text = b.Name
+				task.wait(0.25)
+				local okInfo, info = pcall(function()
+					local part = b:FindFirstChild("HumanoidRootPart")
+					local hum = b:FindFirstChildOfClass("Humanoid")
+					if not part or not hum then
+						return nil
+					end
+					return b.Name
 						.. " ("
-						.. math.round(t:DistanceFromCharacter(b.HumanoidRootPart.Position))
-						.. ")"
-						.. "\10"
-						.. b.Humanoid.Health
+						.. math.round(t:DistanceFromCharacter(part.Position))
+						.. ")\n"
+						.. hum.Health
 						.. " / "
-						.. b.Humanoid.MaxHealth
-					X.Position = Vector2.new(g.X, g.Y - 20)
-					X.Visible = true
-				else
-					X.Visible = false
+						.. hum.MaxHealth
+				end)
+				if okInfo and info and anchor and anchor.Parent then
+					pcall(espLabelText, anchor, info)
 				end
 			until not b or not b.Parent or not Settings["ESP Player"]
-			X:Remove()
-			if b.Parent then
-				s:Destroy()
+			local gui = b:FindFirstChild("ESP_BananaCat_Label", true)
+			if gui then
+				gui:Destroy()
+			end
+			if b and b.Parent then
+				local s = b:FindFirstChild("Ignored")
+				if s then
+					s:Destroy()
+				end
 			end
 		end)
 	end
@@ -19496,7 +19784,10 @@ MISCPVPSection.CreateToggle(
 	{ Title = "Walk On Water", Desc = nil, Default = Settings["Walk On Water "] or true },
 	function(b)
 		if b then
-			if not game.Workspace:FindFirstChild("WaterWalk") then
+			-- [FIX] `platform` was an accidental global; the part is now resolved/created
+			-- once per enable and held as an upvalue of the worker thread.
+			local platform = game.Workspace:FindFirstChild("WaterWalk")
+			if not platform then
 				platform = Instance.new("Part")
 				platform.Name = "WaterWalk"
 				platform.Size = Vector3.new(1 / 0, 1, 1 / 0)
@@ -19507,7 +19798,7 @@ MISCPVPSection.CreateToggle(
 			spawn(function()
 				while Settings["Walk On Water "] and (task.wait()) do
 					pcall(function()
-						if t.Character.Humanoid.Sit then
+						if t.Character.Humanoid.SeatPart then
 							platform.CanCollide = false
 							return
 						end
@@ -20023,7 +20314,20 @@ a.CreateToggle(
 		SaveSettings("Remove Notifications", T)
 	end
 )
-DisplayNoti = getupvalues(require(game:GetService("ReplicatedStorage").Notification).Display)[1]
+-- [FIX] getupvalues(f) returns an (iterator, count) pair; indexing that iterator
+-- with [1] yielded nil, so DisplayNoti was always nil and DisplayNoti:Add(T)
+-- crashed inside the game's notification path whenever "Remove Notifications"
+-- was enabled. Grab the actual first upvalue (the same one the author meant).
+DisplayNoti = nil
+do
+	local okNoti, notiMod = pcall(function()
+		return require(game:GetService("ReplicatedStorage").Notification)
+	end)
+	if okNoti and type(notiMod) == "table" and type(notiMod.Display) == "function" then
+		local okUp, up = pcall(getupvalue, notiMod.Display, 1)
+		DisplayNoti = (okUp and up) or nil
+	end
+end
 spawn(function()
 	repeat
 		wait(1)
@@ -20044,7 +20348,11 @@ spawn(function()
 			T.Displayed = true
 			T.CreationTime = tick()
 			T.Label.Visible = true
-			DisplayNoti:Add(T)
+			-- [FIX] nil/type-guard the upvalue: a game update can change the
+			-- upvalue layout, and this runs inside the GAME's notification path.
+			if type(DisplayNoti) == "table" and type(DisplayNoti.Add) == "function" then
+				pcall(DisplayNoti.Add, DisplayNoti, T)
+			end
 			return true
 		end
 	end
@@ -20222,17 +20530,26 @@ SharedGachaUtil = require(game.ReplicatedStorage.Modules.Gacha.SharedGachaUtil)
 TextUtil = require(game.ReplicatedStorage.Modules.Util.TextUtil)
 if not getgenv().BananaCatMainLoop then
 	getgenv().BananaCatMainLoop = true
-	lastHopTick = tick()
-	lastFruitTick = tick()
+	-- [FIX] These leaked into the global scope.
+	local lastHopTick = tick()
+	local lastFruitTick = tick()
+	local lastSpeedApply = 0
+	local lastSimRadius = 0
 	x.RenderStepped:Connect(function()
-		pcall(function()
-			sethiddenproperty(t, "SimulationRadius", 5000)
-		end)
+		-- [FIX] sethiddenproperty was called on EVERY render frame; the property only
+		-- needs a periodic refresh (the game resetting it is covered by 2x/sec).
+		if tick() - lastSimRadius >= 0.5 then
+			lastSimRadius = tick()
+			pcall(function()
+				sethiddenproperty(t, "SimulationRadius", 5000)
+			end)
+		end
 		if tick() - lastHopTick >= 500 then
 			lastHopTick = tick()
-			pcall(function()
-				writefile("Banana Cat Hub/Jobid.json", HttpService:JSONEncode({}))
-			end)
+			-- [FIX] The old code wiped the visited-server list to {} here, which made
+			-- HopServer re-visit servers it had already hopped to. Merge the current
+			-- job id into the existing list instead.
+			StoreVisitedJob(game.JobId)
 		end
 		pcall(function()
 			if Settings["Auto Aimbot"] then
@@ -20255,7 +20572,11 @@ if not getgenv().BananaCatMainLoop then
 					TweenManager.CancelCurrent()
 				end
 			end
-			if (ToggleNoclip() or Settings.Noclip) and t.Character then
+			-- [FIX] The engine's Stepped connection already applies character noclip every
+			-- frame using a cached descendant list. This raw GetDescendants() per render
+			-- frame bypassed that cache (real perf cost) and fought the engine's
+			-- collide-restore; it now only runs as a fallback when the engine is missing.
+			if (ToggleNoclip() or Settings.Noclip) and t.Character and not getgenv().TweenEngine then
 				local T, b, a = next, t.Character:GetDescendants()
 				for s, s in T, b, a do
 					if (s:IsA("MeshPart") or (s:IsA("Part"))) and s.CanCollide then
@@ -20264,18 +20585,23 @@ if not getgenv().BananaCatMainLoop then
 				end
 			end
 		end)
-		task.spawn(function()
-			local hum = t.Character and t.Character:FindFirstChildOfClass("Humanoid")
-			if not hum then
-				return
-			end
-			if Settings["Change WalkSpeed"] then
-				hum.WalkSpeed = tonumber(Settings["Input WalkSpeed"]) or 16
-			end
-			if Settings["Change JumpPower"] then
-				hum.JumpPower = tonumber(Settings["Input JumpPower"]) or 50
-			end
-		end)
+		-- [FIX] The old code spawned a brand-new thread EVERY render frame just to set
+		-- two properties (60-120 threads/sec). Throttle to 1/second.
+		if tick() - lastSpeedApply >= 1 then
+			lastSpeedApply = tick()
+			task.spawn(function()
+				local hum = t.Character and t.Character:FindFirstChildOfClass("Humanoid")
+				if not hum then
+					return
+				end
+				if Settings["Change WalkSpeed"] then
+					hum.WalkSpeed = tonumber(Settings["Input WalkSpeed"]) or 16
+				end
+				if Settings["Change JumpPower"] then
+					hum.JumpPower = tonumber(Settings["Input JumpPower"]) or 50
+				end
+			end)
+		end
 		if tick() - lastFruitTick >= 0.5 then
 			lastFruitTick = tick()
 			local T, T = pcall(function()
@@ -20285,10 +20611,15 @@ if not getgenv().BananaCatMainLoop then
 						or not game:GetService("Players").LocalPlayer.PlayerGui:FindFirstChild("SpinnerWindow").Enabled
 					then
 						RandomFruit()
-					elseif
-						game:GetService("Players").LocalPlayer.PlayerGui:FindFirstChild("SpinnerWindow").Enabled
+					elseif game:GetService("Players").LocalPlayer.PlayerGui:FindFirstChild("SpinnerWindow")
+						and game:GetService("Players").LocalPlayer.PlayerGui.SpinnerWindow:FindFirstChild("AboveSpinner")
+						and game:GetService("Players").LocalPlayer.PlayerGui.SpinnerWindow.AboveSpinner:FindFirstChild("Navigation")
+						and game:GetService("Players").LocalPlayer.PlayerGui.SpinnerWindow.AboveSpinner.Navigation:FindFirstChild("CloseButton")
 						and game:GetService("Players").LocalPlayer.PlayerGui.SpinnerWindow.AboveSpinner.Navigation.CloseButton.Visible
 					then
+						-- [FIX] FindFirstChild chain instead of raw dot-indexing: if any
+						-- node of the spinner UI is missing, the old chain threw and
+						-- aborted this whole pcall (skipping StoreFruit / Awake / shop).
 						Spinner:Close()
 					end
 				end
