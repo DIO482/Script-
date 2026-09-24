@@ -2577,90 +2577,153 @@ function __DIO_GetWorldOrigin()
     __DIO_WO = workspace:FindFirstChild("_WorldOrigin")
     return __DIO_WO
 end
-function __DIO_DodgeSeabeast()
-    local WorldOrigin = __DIO_GetWorldOrigin()
-    if not WorldOrigin then return false end
-    for _, v in ipairs(WorldOrigin:GetChildren()) do
-        if v:IsA("Part") then
-            local bc = v.BrickColor
-            if bc == BrickColor.new("Toothpaste")
-               or bc == BrickColor.new("Institutional white")
-               or v.Name:find("LightBullet") then
-                return true
-            end
-        end
-    end
-    return false
-end
-function __DIO_TerrorDodge()
-    local WorldOrigin = __DIO_GetWorldOrigin()
-    if not WorldOrigin then return false end
-    for _, v in ipairs(WorldOrigin:GetChildren()) do
-        local name = v.Name:lower()
-        if name:find("sharkslam") or name:find("spin") or name:find("chargemodel") then
-            return true
-        end
-    end
-    return false
-end
+-- =====================================================================
+-- [BANANA PORT] Sea skill dodge (DIO BrickColor/name-scan dodge deleted).
+-- Detectors + timing + fixed heights from Banana Cat Hub:
+--   * Terror Shark: Part "SharkSplash"/"ChargeUp" within 20 studs of the
+--     Terrorshark target -> +200Y on movement (hold until part gone,
+--     max 14s, min hold 2.5s when signal shorter than 1s).
+--   * Sea Beast: Humanoid animations 8708221792 / 8708222556 (Kameha and
+--     waterbeam) -> +600Y sea hover offset (0.7s/1.9s windup, hold until
+--     animation ends, max 10s). Guarded: activates if Humanoid exists.
+--   * Sea Beast beam-tell fallback: Banana's own seabeast detector is dead
+--     upstream (SeaBeast1 has no Humanoid, both PathSeaBeast assignments sit
+--     in the no-Humanoid branch), so beam tells (Toothpaste / Institutional
+--     white / LightBullet parts in _WorldOrigin) trigger the SAME Banana
+--     timing/state. Delete __DIO_BananaSeaBeamTell + loop "L1347B" below to
+--     go 100% Banana (loses seabeast dodge in current game build).
+-- Old adjustable "Dodge Height (Y)" removed per user request (fixed heights).
+-- =====================================================================
 __DIO_Dodging = __DIO_Dodging or false
-_G.DodgeSeaBeast = true
-function __DIO_DoDodge(height)
-    height = height or 200
-    if __DIO_Dodging == true then return end
-    local char = plr.Character
-    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-    __DIO_Dodging = true
-    __DIO_DodgeT0 = tick()
-    pcall(function()
-        if __DIO_LastTween then __DIO_LastTween:Cancel() __DIO_LastTween = nil end
-    end)
-    local baseY = hrp.Position.Y + height
-    local t0 = tick()
-    pcall(function()
-        repeat
-            local c = plr.Character
-            local h = c and c:FindFirstChild("HumanoidRootPart")
-            if not h then break end
-            h.CFrame = CFrame.new(h.Position.X, baseY, h.Position.Z)
-            __DIO_wait()
-        until (not __DIO_DodgeSeabeast() and not __DIO_TerrorDodge()) or (tick() - t0) > (__DIO_DODGE_MAX or 8) - 2
-    end)
-    pcall(function() __DIO_wait(0.35) end)
-    __DIO_Dodging = false
-    __DIO_DodgeT0 = 0
+_G.AutoDodgeTerrorshark = (_G.AutoDodgeTerrorshark == true)
+_G.AutoDodgeSeabeast = (_G.AutoDodgeSeabeast == true)
+__DIO_BananaTerrorDodge = false
+__DIO_BananaSeaDodge = 0
+__DIO_BananaSeaBusy = false
+__DIO_BANANA_SEA_ANIMS = {
+    ["rbxassetid://8708221792"] = true,
+    ["rbxassetid://8708222556"] = true,
+}
+__DIO_BananaTerror = function()
+    local en = workspace:FindFirstChild("Enemies")
+    local m = en and en:FindFirstChild("Terrorshark")
+    if m and m:FindFirstChild("HumanoidRootPart") then
+        local h = m:FindFirstChildOfClass("Humanoid")
+        if h and h.Health > 0 then return m end
+    end
+    return nil
 end
+__DIO_BananaSeaBeast = function()
+    local sb = workspace:FindFirstChild("SeaBeasts")
+    local m = sb and sb:FindFirstChild("SeaBeast1")
+    if m and m:FindFirstChild("HumanoidRootPart") then
+        local hp = m:FindFirstChild("Health")
+        if hp and hp.Value > 0 then return m end
+    end
+    return nil
+end
+task.spawn(function()
+    local wo = workspace:WaitForChild("_WorldOrigin", 30)
+    if not wo then return end
+    wo.ChildAdded:Connect(function(part)
+        if _G.AutoDodgeTerrorshark ~= true then return end
+        if __DIO_BananaTerrorDodge then return end
+        if not (_G.TerrorShark or _G.SailBoats) then return end
+        if not (part and part:IsA("Part")) then return end
+        if part.Name ~= "SharkSplash" and part.Name ~= "ChargeUp" then return end
+        local t = __DIO_BananaTerror()
+        if not t then return end
+        local ok, near = pcall(function()
+            return (t.HumanoidRootPart.Position - part.Position).Magnitude < 20
+        end)
+        if not ok or not near then return end
+        __DIO_BananaTerrorDodge = true
+        task.spawn(function()
+            local p0 = part
+            local t0 = tick()
+            repeat task.wait(0.2) until not p0 or not p0.Parent or tick() - t0 > 14
+            if tick() - t0 < 1 then task.wait(2.5) end
+            __DIO_BananaTerrorDodge = false
+        end)
+    end)
+end)
+__DIO_BananaSeaConn = nil
+__DIO_BananaSeaCur = nil
 __DIO_SafeLoop(function()
-    while __DIO_wait(0.1) do
-        if not _G.DodgeSeaBeast or __DIO_Dodging
-           or not (_G.SeaBeast1 or _G.TerrorShark or _G.Leviathan1 or _G.Shark or _G.Piranha) then
-        else
-            local __has = false
-            local __sb = workspace:FindFirstChild("SeaBeasts")
-            if __sb and #__sb:GetChildren() > 0 then __has = true end
-            if not __has then
-                local __en = workspace:FindFirstChild("Enemies")
-                if __en then
-                    for ___, __e in pairs(__en:GetChildren()) do
-                        local __n = __e.Name
-                        if __n == "Terrorshark" or __n == "FishBoat" or __n == "PirateBrigade" or __n == "PirateGrandBrigade" then
-                            __has = true
-                            break
-                        end
+    while __DIO_wait(0.15) do
+        pcall(function()
+            local on = (_G.AutoDodgeSeabeast == true) and (_G.SeaBeast1 or _G.SailBoats)
+            local m = (on and __DIO_BananaSeaBeast()) or nil
+            if m ~= __DIO_BananaSeaCur then
+                if __DIO_BananaSeaConn then
+                    pcall(function() __DIO_BananaSeaConn:Disconnect() end)
+                    __DIO_BananaSeaConn = nil
+                end
+                __DIO_BananaSeaCur = m
+                if m then
+                    local hum = m:FindFirstChildOfClass("Humanoid")
+                    if hum then
+                        __DIO_BananaSeaConn = hum.AnimationPlayed:Connect(function(tr)
+                            if _G.AutoDodgeSeabeast ~= true then return end
+                            if __DIO_BananaSeaBusy or __DIO_BananaSeaDodge ~= 0 then return end
+                            local id = tostring(tr.Animation.AnimationId)
+                            if not __DIO_BANANA_SEA_ANIMS[id] then return end
+                            __DIO_BananaSeaBusy = true
+                            task.spawn(function()
+                                __DIO_BananaSeaDodge = 0
+                                if id == "rbxassetid://8708222556" then task.wait(0.7) else task.wait(1.9) end
+                                local t0 = tick()
+                                __DIO_BananaSeaDodge = 600
+                                repeat task.wait() until not tr.IsPlaying or tick() - t0 >= 10
+                                __DIO_BananaSeaDodge = 0
+                                __DIO_BananaSeaBusy = false
+                            end)
+                        end)
                     end
                 end
             end
-            if __has then
-                pcall(function()
-                    if __DIO_DodgeSeabeast() or __DIO_TerrorDodge() then
-                        __DIO_DoDodge(tonumber(_G.DodgeHeight) or 200)
-                    end
+            if not m and __DIO_BananaSeaDodge ~= 0 then __DIO_BananaSeaDodge = 0 end
+        end)
+    end
+end, "L1347")
+__DIO_BananaSeaBeamTell = function()
+    local ok, hit = pcall(function()
+        local wo = workspace:FindFirstChild("_WorldOrigin")
+        if not wo then return false end
+        for _, v in ipairs(wo:GetChildren()) do
+            if v:IsA("Part") then
+                local bc = v.BrickColor
+                if bc == BrickColor.new("Toothpaste")
+                    or bc == BrickColor.new("Institutional white")
+                    or v.Name:find("LightBullet") then
+                    return true
+                end
+            end
+        end
+        return false
+    end)
+    return ok and hit or false
+end
+__DIO_SafeLoop(function()
+    while __DIO_wait(0.15) do
+        if _G.AutoDodgeSeabeast == true and (_G.SeaBeast1 or _G.SailBoats)
+            and not __DIO_BananaSeaBusy and __DIO_BananaSeaDodge == 0
+            and __DIO_BananaSeaBeast() then
+            if __DIO_BananaSeaBeamTell() then
+                __DIO_BananaSeaBusy = true
+                task.spawn(function()
+                    task.wait(0.7)
+                    if _G.AutoDodgeSeabeast ~= true then __DIO_BananaSeaBusy = false return end
+                    local t0 = tick()
+                    __DIO_BananaSeaDodge = 600
+                    repeat task.wait(0.2) until not __DIO_BananaSeaBeamTell() or tick() - t0 >= 10
+                    __DIO_BananaSeaDodge = 0
+                    __DIO_BananaSeaBusy = false
                 end)
             end
         end
     end
-end, "L1347")
+end, "L1347B")
 UpdStFruit = function()
   for z,x in next, plr.Backpack:GetChildren() do
   StoreFruit = x:FindFirstChild("EatRemote", true)
@@ -3163,6 +3226,10 @@ _tp = function(target)
         gg = target and target.CFrame
     end
     if not gg then return end
+    -- [BANANA PORT] Terror dodge: +200Y on every move while active (3nn toTarget offset)
+    if __DIO_BananaTerrorDodge == true then
+        gg = gg + Vector3.new(0, 200, 0)
+    end
     local character = plr.Character
     if not character or not character:FindFirstChild("HumanoidRootPart") then return end
     local rootPart = character.HumanoidRootPart
@@ -3492,6 +3559,10 @@ TeleportToTarget = function(targetCFrame)
     if (targetCFrame.Position - __hrpTT.Position).Magnitude > 1000 then _tp(targetCFrame) else _tp(targetCFrame) end
 end
 notween = function(p)
+    -- [BANANA PORT] Terror dodge: +200Y (covers KillSea melee path, 3nn toTarget offset)
+    if __DIO_BananaTerrorDodge == true and typeof(p) == "CFrame" then
+        p = p + Vector3.new(0, 200, 0)
+    end
     if __DIO_Dodging == true then
         if type(__DIO_DodgeStale) == "function" then __DIO_DodgeStale() end
         if __DIO_Dodging == true then return end
@@ -4311,8 +4382,6 @@ __DIO_T = setmetatable({
     ["Select Boats"] = "Select Boats",
     ["Buy Boats"] = "Buy Boats",
     ["Select Sea Level"] = "Select Sea Level",
-    ["Dodge Sea Beast / Terror Shark"] = "Dodge Sea Beast / Terror Shark",
-    ["Dodge Height (Y)"] = "Dodge Height (Y)",
     ["Auto Sea Event"] = "Auto Sea Event",
     ["Select Sea Event"] = "Select Sea Event",
     ["Auto Find Kitsune Island"] = "Auto Find Kitsune Island",
@@ -12930,22 +12999,19 @@ end
 _G.SeaEventWeaponList = __DIO_SeaNormList(GetSetting("UI/SeaEvent/Select Weapon Sea Event", nil), __DIO_SeaWpOpts, "Melee")
 _G.SeaEventSkillList  = __DIO_SeaNormList(GetSetting("UI/SeaEvent/Select Skill", nil), __DIO_SeaSkillOpts, "Z")
 Tabs.SeaEvent:AddToggle({
-Name = __DIO_T["Dodge Sea Beast / Terror Shark"],
+Name = __DIO_T["Auto Dodge Skill Terrorshark"],
 Description = "",
-Default = true,
+Default = false,
 Callback = function(Value)
-  _G.DodgeSeaBeast = Value
-  if not Value then __DIO_Dodging = false end
+  _G.AutoDodgeTerrorshark = (Value == true)
 end})
-Tabs.SeaEvent:AddSlider({
-    Name = __DIO_T["Dodge Height (Y)"],
-    Min = 100,
-    Max = 400,
-    Default = 200,
-    Callback = function(Value)
-        _G.DodgeHeight = tonumber(Value) or 200
-    end
-})
+Tabs.SeaEvent:AddToggle({
+Name = __DIO_T["Auto Dodge Skill Seabeast"],
+Description = "",
+Default = false,
+Callback = function(Value)
+  _G.AutoDodgeSeabeast = (Value == true)
+end})
 Tabs.SeaEvent:AddSlider({
     Name = __DIO_T["Teleport Y boat If have Sea Event (ALL)"],
     Min = 150,
@@ -13207,7 +13273,7 @@ __DIO_SafeLoop(function()
       if _G.Piranha then local a={"Piranha"}if CheckPiranha()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) Attack.Kill(c,_G.Piranha)until _G.Piranha==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
       if _G.MobCrew then local a={"Fish Crew Member"}if CheckFishCrew()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) Attack.Kill(c,_G.MobCrew)until _G.MobCrew==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
       if _G.HCM then local a={"Haunted Crew Member"}if CheckHauntedCrew()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) Attack.Kill(c,_G.HCM)until _G.HCM==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
-      if _G.SeaBeast1 then if workspace:FindFirstChild("SeaBeasts") and workspace.SeaBeasts:FindFirstChild("SeaBeast1")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)_tp(CFrame.new(b.HumanoidRootPart.Position.X,__DIO_WaterY()+200,b.HumanoidRootPart.Position.Z))if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then AitSeaSkill_Custom=b.HumanoidRootPart.CFrame;MousePos=AitSeaSkill_Custom.Position;__DIO_SeaSkillAtk() end until _G.SeaBeast1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
+      if _G.SeaBeast1 then if workspace:FindFirstChild("SeaBeasts") and workspace.SeaBeasts:FindFirstChild("SeaBeast1")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)_tp(CFrame.new(b.HumanoidRootPart.Position.X,__DIO_WaterY()+200+(tonumber(__DIO_BananaSeaDodge) or 0),b.HumanoidRootPart.Position.Z))if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then AitSeaSkill_Custom=b.HumanoidRootPart.CFrame;MousePos=AitSeaSkill_Custom.Position;__DIO_SeaSkillAtk() end until _G.SeaBeast1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
       if _G.Leviathan1 then if workspace:FindFirstChild("SeaBeasts") and workspace.SeaBeasts:FindFirstChild("Leviathan")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Leviathan Segment")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)_tp(CFrame.new(b.HumanoidRootPart.Position.X,__DIO_WaterY()+200,b.HumanoidRootPart.Position.Z))if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then MousePos=b:FindFirstChild("Leviathan Segment").Position;__DIO_SeaSkillAtk() end until _G.Leviathan1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
       if _G.FishBoat then
         if CheckEnemiesBoat() then
