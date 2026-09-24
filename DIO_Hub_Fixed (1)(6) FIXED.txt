@@ -1860,6 +1860,7 @@ local Attack = {}
 			local __lk = model:GetAttribute("Locked")
 			PosMon = __lk and __lk.Position or __root.Position
 			pcall(BringEnemy, model)
+			pcall(__DIO_3nn_SizePart, model)
 			__DIO_EquipFarmWeapon(model)
 			local Equipped = nil
 			pcall(function()
@@ -1898,6 +1899,7 @@ local Attack = {}
 			local __lk = model:GetAttribute("Locked")
 			PosMon = __lk and __lk.Position or __root.Position
 			pcall(BringEnemy, model)
+			pcall(__DIO_3nn_SizePart, model)
 			__DIO_EquipFarmWeapon(model)
 			local Equipped = nil
 			pcall(function()
@@ -1936,6 +1938,7 @@ local Attack = {}
 			local __lk = model:GetAttribute("Locked")
 			PosMon = __lk and __lk.Position or __root.Position
 			pcall(BringEnemy, model)
+			pcall(__DIO_3nn_SizePart, model)
 			__DIO_EquipFarmWeapon(model)
 			local Equipped = nil
 			pcall(function()
@@ -1965,6 +1968,7 @@ local Attack = {}
 			local __lk = model:GetAttribute("Locked")
 			PosMon = __lk and __lk.Position or __root.Position
 			pcall(BringEnemy, model)
+			pcall(__DIO_3nn_SizePart, model)
 			__DIO_EquipFarmWeapon(model)
 			if RandomCFrame then
 				__DIO_wait(0.1)
@@ -1991,6 +1995,7 @@ local Attack = {}
 			local __lk = model:GetAttribute("Locked")
 			PosMon = __lk and __lk.Position or root.Position
 			pcall(BringEnemy, model)
+			pcall(__DIO_3nn_SizePart, model)
 			if __DIO_UseMasteryNow(model) then
 				weaponSc("Blox Fruit")
 				_tp(root.CFrame * CFrame.new(0, 20, 0))
@@ -2019,6 +2024,7 @@ local Attack = {}
 			local __lk = model:GetAttribute("Locked")
 			PosMon = __lk and __lk.Position or root.Position
 			pcall(BringEnemy, model)
+			pcall(__DIO_3nn_SizePart, model)
 			if __DIO_UseMasteryNow(model) then
 				weaponSc("Gun")
 				_tp(root.CFrame * CFrame.new(0, 35, 8))
@@ -2060,6 +2066,7 @@ local TweenService = __SVC_TWN
 local TweenInfoBring = TweenInfo.new(0.45, Enum.EasingStyle.Linear)
 _G.BringRange = _G.BringRange or 180
 _G.MaxBringMobs = _G.MaxBringMobs or 4
+_G.AuraDistance = _G.AuraDistance or 300
 IsRaidMob = function(mob)
     if not mob then return false end
     local ok, result = pcall(function()
@@ -2078,68 +2085,218 @@ IsRaidMob = function(mob)
     if ok then return result end
     return false
 end
-BringEnemy = function(Mon)
-    if not _B then return end
-    if tick() - (__DIO_LastBring or 0) < 2.5 then return end
-    __DIO_LastBring = tick()
-    local plr = game.Players.LocalPlayer
-    local char = plr.Character
-    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-    if not Mon or not Mon:FindFirstChild("HumanoidRootPart") then
-        Mon = nil
-    end
-    if not Mon then
-        local closestDist = math.huge
-        for _, enemy in ipairs(workspace.Enemies:GetChildren()) do
-            local hum = enemy:FindFirstChildOfClass("Humanoid")
-            local root = enemy:FindFirstChild("HumanoidRootPart")
-            if hum and root and hum.Health > 0 then
-                local dist = (root.Position - hrp.Position).Magnitude
-                if dist < closestDist then
-                    closestDist = dist
-                    Mon = enemy
+-- =====================================================================
+-- [3nn PORT] Same-name BringMob stacking (spawn-part anchor + netowner check)
+-- Replaces the old tween-based BringEnemy. Wired to DIO UI:
+--   _B (Bring Mobs toggle), _G.MaxBringMobs (mobs Bring slider),
+--   _G.BringRange (Bring Distance slider).
+-- =====================================================================
+__DIO_3nn_TableMobSpawn = __DIO_3nn_TableMobSpawn or {}
+task.spawn(function()
+    pcall(function()
+        if typeof(getnilinstances) == "function" then
+            for _, __sp in pairs(getnilinstances()) do
+                if __sp:IsA("Part") and __sp:GetAttribute("DisplayName")
+                    and string.find(__sp:GetAttribute("DisplayName"), "Lv.") then
+                    table.insert(__DIO_3nn_TableMobSpawn, __sp)
                 end
             end
         end
-        if not Mon then return end
+    end)
+    pcall(function()
+        for _, __sp in pairs(game:GetService("Workspace")._WorldOrigin.EnemySpawns:GetChildren()) do
+            if __sp:IsA("Part") and __sp:GetAttribute("DisplayName")
+                and string.find(__sp:GetAttribute("DisplayName"), "Lv.") then
+                table.insert(__DIO_3nn_TableMobSpawn, __sp)
+            end
+        end
+    end)
+end)
+__DIO_3nn_StripLevel = function(name)
+    name = tostring(name or "")
+    return (name:gsub(" %p?Lv%.? %d+%p?", ""))
+end
+__DIO_3nn_DeleteIgnoredMob = function()
+    local __en = workspace:FindFirstChild("Enemies")
+    if not __en then return end
+    for _, __m in pairs(__en:GetChildren()) do
+        if __m:IsA("Model") and __m:FindFirstChild("Ignored") then
+            pcall(function() __m.Ignored:Destroy() end)
+        end
     end
+end
+__DIO_3nn_SizePart = function(mob)
+    if not mob or not mob.Parent or not mob:FindFirstChild("HumanoidRootPart") then return end
+    local __ch = plr.Character
+    local __hrp = __ch and __ch:FindFirstChild("HumanoidRootPart")
+    if not __hrp then return end
+    if (__hrp.Position - mob.HumanoidRootPart.Position).Magnitude <= 50 then
+        for _, __p in pairs(mob:GetDescendants()) do
+            if (__p:IsA("Part") or __p:IsA("MeshPart")) and __p.CanCollide then
+                __p.CanCollide = false
+            end
+        end
+    end
+end
+__DIO_3nn_DetectPartMobBring = function(mobName)
+    local __stripped = __DIO_3nn_StripLevel(mobName)
+    local __hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+    if not __hrp then return nil end
+    local __best, __bestD = nil, math.huge
+    local function __scan(list)
+        for _, __sp in pairs(list) do
+            if __sp and __sp.Parent and __sp:IsA("Part") then
+                local __nm = __sp.Name
+                if string.find(__nm, "Lv.") then __nm = __DIO_3nn_StripLevel(__nm) end
+                if __nm == mobName or __nm == __stripped then
+                    local __d = (__hrp.Position - __sp.Position).Magnitude
+                    if __d < __bestD then __bestD = __d __best = __sp end
+                end
+            end
+        end
+    end
+    __scan(__DIO_3nn_TableMobSpawn)
+    local __wo = workspace:FindFirstChild("_WorldOrigin")
+    local __es = __wo and __wo:FindFirstChild("EnemySpawns")
+    if __es then __scan(__es:GetChildren()) end
+    return __best
+end
+__DIO_3nn_GetCenter = function(mobName)
+    local __stripped = __DIO_3nn_StripLevel(mobName)
+    local __wo = workspace:FindFirstChild("_WorldOrigin")
+    local __es = __wo and __wo:FindFirstChild("EnemySpawns")
+    if not __es then return nil end
+    local __sum, __n = nil, 0
+    for _, __sp in pairs(__es:GetChildren()) do
+        if __sp:IsA("Part") then
+            local __nm = __sp.Name
+            if string.find(__nm, "Lv.") then __nm = __DIO_3nn_StripLevel(__nm) end
+            if __nm == mobName or __nm == __stripped then
+                __sum = (__sum or Vector3.new(0, 0, 0)) + __sp.Position
+                __n = __n + 1
+            end
+        end
+    end
+    if not __sum or __n == 0 then return nil end
+    return CFrame.new(__sum / __n)
+end
+__DIO_3nn_IsNetOwner = function(part)
+    if not part then return false end
+    local __chars = workspace:FindFirstChild("Characters")
+    if not __chars then return true end
+    for _, __c in pairs(__chars:GetChildren()) do
+        if __c.Name ~= plr.Name and __c:FindFirstChild("HumanoidRootPart") then
+            if (__c.HumanoidRootPart.Position - part.Position).Magnitude <= 300 then
+                return false
+            end
+        end
+    end
+    return true
+end
+__DIO_3nn_BringTarget = nil
+__DIO_3nn_BringAnchor = nil
+__DIO_3nn_BringDeb = false
+BringEnemy = function(Mon)
+    if not _B then return end
+    if not Mon or not Mon.Parent or not Mon:FindFirstChild("HumanoidRootPart") then return end
+    if type(IsRaidMob) == "function" and IsRaidMob(Mon) then return end
     pcall(function()
         if sethiddenproperty then
             sethiddenproperty(plr, "SimulationRadius", math.huge)
         end
     end)
-    local targetPos = Mon.HumanoidRootPart.Position
-    local enemies = workspace.Enemies:GetChildren()
-    local count = 0
-    for _, mob in ipairs(enemies) do
-        if count >= _G.MaxBringMobs then break end
-        local hum = mob:FindFirstChild("Humanoid")
-        local root = mob:FindFirstChild("HumanoidRootPart")
-        local isRaid = false
-        if type(IsRaidMob) == "function" then
-            isRaid = IsRaidMob(mob)
+    if __DIO_3nn_BringTarget ~= Mon then
+        __DIO_3nn_BringTarget = Mon
+        local __spawnPart = __DIO_3nn_DetectPartMobBring(Mon.Name)
+        __DIO_3nn_BringAnchor = (__spawnPart and __spawnPart.CFrame) or Mon.HumanoidRootPart.CFrame
+        local __cyb = false
+        pcall(function()
+            __cyb = (plr.Data.Race.Value == "Cyborg")
+                and (plr.Character:FindFirstChild("RaceTransformed"))
+                and plr.Character.RaceTransformed.Value
+        end)
+        if __cyb then
+            __DIO_3nn_BringAnchor = __DIO_3nn_GetCenter(Mon.Name) or __DIO_3nn_BringAnchor
         end
-        if hum and root and hum.Health > 0 and not isRaid then
-            local dist = (root.Position - targetPos).Magnitude
-            if dist <= _G.BringRange and not root:GetAttribute("Tweening") then
-                count += 1
-                root:SetAttribute("Tweening", true)
-                root.CanCollide = false
-                hum.WalkSpeed = 0
-                hum.JumpPower = 0
-                local tween = TweenService:Create(
-                    root,
-                    TweenInfoBring,
-                    { CFrame = CFrame.new(targetPos) }
-                )
-                tween:Play()
-                tween.Completed:Once(function()
-                    if root then
-                        root:SetAttribute("Tweening", false)
+        if not __DIO_3nn_BringAnchor then return end
+        __DIO_3nn_DeleteIgnoredMob()
+    end
+    if __DIO_3nn_BringDeb then
+        task.delay(0.1, function() __DIO_3nn_BringDeb = false end)
+        return
+    end
+    local __set = {}
+    if not Mon:FindFirstChild("Ignored") then
+        table.insert(__set, Mon)
+    end
+    local __count = math.clamp(math.floor(tonumber(_G.MaxBringMobs) or 2), 2, 20)
+    local __radius = (__count > 2) and 350 or 200
+    if tonumber(_G.BringRange) and tonumber(_G.BringRange) > 0 then
+        __radius = math.clamp(tonumber(_G.BringRange), 50, 1000)
+    end
+    local __isCyb = false
+    pcall(function()
+        __isCyb = (plr.Data.Race.Value == "Cyborg")
+            and (plr.Character:FindFirstChild("RaceTransformed"))
+            and plr.Character.RaceTransformed.Value
+    end)
+    if __isCyb then __radius, __count = 300, 6 end
+    local __en = workspace:FindFirstChild("Enemies")
+    if __en then
+        for _, __mob in pairs(__en:GetChildren()) do
+            if __mob ~= Mon and __mob.Name == Mon.Name and not __mob:FindFirstChild("Ignored") then
+                local __hum = __mob:FindFirstChildOfClass("Humanoid")
+                local __root = __mob:FindFirstChild("HumanoidRootPart")
+                local __raid = (type(IsRaidMob) == "function") and IsRaidMob(__mob)
+                if __hum and __root and __hum.Health > 0 and not __raid and __DIO_3nn_IsNetOwner(__root) then
+                    if (__root.Position - __DIO_3nn_BringAnchor.Position).Magnitude <= __radius
+                        and #__set < __count then
+                        table.insert(__set, __mob)
                     end
-                end)
+                end
             end
+        end
+    end
+    local __hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+    if not __hrp then return end
+    if __DIO_3nn_BringAnchor
+        and (__hrp.Position - Mon.HumanoidRootPart.Position).Magnitude <= 50
+        and __DIO_3nn_IsNetOwner(__hrp)
+        and #__set >= 2 then
+        for _, __mob in pairs(__set) do
+            __DIO_3nn_SizePart(__mob)
+            local __mr = __mob:FindFirstChild("HumanoidRootPart")
+            if __mr then
+                if not __DIO_3nn_IsNetOwner(__mr) then
+                    __mr.CFrame = __mob:GetPivot()
+                    if not __mob:FindFirstChild("Ignored") then
+                        local __ig = Instance.new("IntValue")
+                        __ig.Name = "Ignored"
+                        __ig.Parent = __mob
+                    end
+                    task.wait(0.3)
+                else
+                    __mr.CFrame = __DIO_3nn_BringAnchor * CFrame.new(0, math.random(0, 2), math.random(0, 2))
+                    task.spawn(function()
+                        local __m = __mob
+                        local __h = __m:FindFirstChildOfClass("Humanoid")
+                        if not __h then return end
+                        local __hp = __h.Health
+                        task.wait(2.2)
+                        if __m.Parent and __m:FindFirstChildOfClass("Humanoid")
+                            and __m:FindFirstChild("HumanoidRootPart") then
+                            if __m.Humanoid.Health == __hp and not __m:FindFirstChild("Ignored") then
+                                __m.HumanoidRootPart.CFrame = __m:GetPivot()
+                                local __ig = Instance.new("IntValue")
+                                __ig.Name = "Ignored"
+                                __ig.Parent = __m
+                                task.wait(0.3)
+                            end
+                        end
+                    end)
+                end
+            end
+            __DIO_3nn_BringDeb = true
         end
     end
 end
@@ -5207,6 +5364,166 @@ function __DIO_FarmHardStop()
     pcall(__DIO_GhostReset)
     __DIO_CakeBoss = nil
 end
+-- =====================================================================
+-- [3nn PORT] Quest-text helpers (TrackedQuestFrame first, Main.Quest fallback)
+-- + dynamic Tiki quest NPC locator + Tyrant Eye/Tree helpers.
+-- =====================================================================
+function __DIO_3nn_GetTrackedQuestText()
+    local __ok, __txt = pcall(function()
+        local __gui = plr.PlayerGui
+        local __tracked = __gui:FindFirstChild("TrackedQuestFrame")
+        if __tracked and __tracked:FindFirstChild("Frame") then
+            local __header = __tracked.Frame:FindFirstChild("header")
+            local __tl = __header and __header:FindFirstChild("textLabel")
+            local __tl2 = __tl and __tl:FindFirstChild("textLabel")
+            if __tl2 and type(__tl2.Text) == "string" and __tl2.Text ~= "" then
+                return __tl2.Text
+            end
+        end
+        local __main = __gui:FindFirstChild("Main") or __gui:FindFirstChild("Main (minimal)")
+        local __quest = __main and __main:FindFirstChild("Quest")
+        local __cont = __quest and __quest:FindFirstChild("Container")
+        local __title = __cont and __cont:FindFirstChild("QuestTitle")
+        local __titleText = __title and __title:FindFirstChild("Title")
+        if __quest and __quest.Visible and __titleText and type(__titleText.Text) == "string" then
+            return __titleText.Text
+        end
+        return ""
+    end)
+    return (__ok and __txt) or ""
+end
+function __DIO_3nn_HasActiveQuestFor(target)
+    local __text = __DIO_3nn_GetTrackedQuestText()
+    if __text == "" then return false end
+    local function __strip(name)
+        name = tostring(name or "")
+        return (name:gsub(" %p?Lv%.? %d+%p?", ""))
+    end
+    if typeof(target) == "table" then
+        for _, __name in pairs(target) do
+            local __n = __strip(__name)
+            if __n ~= "" and string.find(__text, __n, 1, true) then return true end
+        end
+    else
+        local __n = __strip(target)
+        if __n ~= "" and string.find(__text, __n, 1, true) then return true end
+    end
+    return false
+end
+__DIO_3nn_TikiCF = nil
+__DIO_TikiQuestT = 0
+__DIO_3nn_QuestPointFor = function(wantName)
+    local __found = nil
+    pcall(function()
+        if typeof(Quests) ~= "table" or typeof(GuideModule) ~= "table" then return end
+        if not (GuideModule.Data and GuideModule.Data.NPCList) then return end
+        local __lvMap = {}
+        for __qn, __qds in next, Quests, nil do
+            if __qn ~= "MarineQuest" then
+                for __id, __qd in next, __qds, nil do
+                    if __qd and __qd.LevelReq then __lvMap[__qd.LevelReq] = __qn end
+                end
+            end
+        end
+        for __npc, __nd in next, GuideModule.Data.NPCList, nil do
+            if __nd and __nd.Levels then
+                for __id, __lv in next, __nd.Levels, nil do
+                    if __lvMap[__lv] == wantName
+                        and __npc.Parent and __npc.Parent.Name ~= "Marine Leader" then
+                        __found = CFrame.new(__nd.Position)
+                        return
+                    end
+                end
+            end
+        end
+    end)
+    return __found
+end
+__DIO_3nn_TyrantEyesFull = function()
+    local __ok, __full = pcall(function()
+        local __map = workspace:FindFirstChild("Map")
+        local __tiki = __map and __map:FindFirstChild("TikiOutpost", true)
+        local __model = __tiki and (__tiki:FindFirstChild("IslandModel", true) or __tiki)
+        if not __model then return false end
+        local __e1 = __model:FindFirstChild("Eye1", true)
+        local __e2 = __model:FindFirstChild("Eye2", true)
+        local __e3 = __model:FindFirstChild("Eye3", true)
+        local __e4 = __model:FindFirstChild("Eye4", true)
+        return __e1 and __e2 and __e3 and __e4
+            and __e1.Transparency == 0 and __e2.Transparency == 0
+            and __e3.Transparency == 0 and __e4.Transparency == 0
+    end)
+    return (__ok and __full) or false
+end
+__DIO_3nn_TyrantTree = function()
+    local __ok, __tree = pcall(function()
+        local __map = workspace:FindFirstChild("Map")
+        local __tiki = __map and __map:FindFirstChild("TikiOutpost")
+        local __model = __tiki and __tiki:FindFirstChild("IslandModel")
+        local __arena = __model and __model:FindFirstChild("EagleBossArena", true)
+        if not __arena then return nil end
+        for _, __m in pairs(__arena:GetChildren()) do
+            if __m.Name == "Tree" and not __m:GetAttribute("AlreadyDestroyedClient") then
+                return __m
+            end
+        end
+        return nil
+    end)
+    return (__ok and __tree) or nil
+end
+-- =====================================================================
+-- [3nn PORT] "Auto Quest [Katakuri/Bone/Tyrant]" toggle logic.
+-- Lv gate (Bone 2050 / Cake 2275 / Tyrant 2575) + skip if quest already
+-- active + only take when Quest GUI hidden. Walks to quest NPC, StartQuest
+-- within 8 studs (ID 2), StartQuest throttled 1.25s like 3nn.
+-- Returns true when caller should stop this tick (going to NPC / took quest).
+-- =====================================================================
+_G.AutoQuestKTB = (_G.AutoQuestKTB == true)
+__DIO_3nn_QT_LastStart = 0
+__DIO_3nn_AutoQuestKTB = function(mode)
+    if _G.AutoQuestKTB ~= true then return false end
+    local C, H, mobs, npcCF
+    if mode == "Cake" then
+        C, H = 2275, "CakeQuest2"
+        mobs = {"Baking Staff", "Head Baker", "Cake Guard", "Cookie Crafter"}
+        npcCF = CFrame.new(-1927.92, 37.80, -12842.54)
+    elseif mode == "Bone" then
+        C, H = 2050, "HauntedQuest2"
+        mobs = {"Reborn Skeleton", "Demonic Soul", "Living Zombie", "Posessed Mummy"}
+        npcCF = CFrame.new(-9516.99, 172.01, 6078.46)
+    elseif mode == "Tyrant" then
+        C, H = 2575, "TikiQuest3"
+        mobs = {"Isle Champion", "Serpent Hunter", "Skull Slayer", "Sun-kissed Warrior"}
+        if not __DIO_3nn_TikiCF then
+            __DIO_3nn_TikiCF = __DIO_3nn_QuestPointFor("TikiQuest3")
+        end
+        npcCF = __DIO_3nn_TikiCF
+    else
+        return false
+    end
+    local lvl = (plr.Data and plr.Data.Level and plr.Data.Level.Value) or 0
+    if lvl < C then return false end
+    if __DIO_3nn_HasActiveQuestFor(mobs) then return false end
+    local qm = plr.PlayerGui:FindFirstChild("Main")
+    qm = qm and qm:FindFirstChild("Quest")
+    if qm and qm.Visible then return false end
+    if not npcCF then return false end
+    local hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+    local hum = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
+    if not hrp or not hum then return true end
+    if (npcCF.Position - hrp.Position).Magnitude <= 8 then
+        if hum.Health > 0 and tick() - __DIO_3nn_QT_LastStart > 1.25 then
+            __DIO_3nn_QT_LastStart = tick()
+            pcall(function()
+                game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("StartQuest", H, 2)
+            end)
+            task.wait(0.5)
+        end
+    else
+        _tp(npcCF * CFrame.new(0, 4, 2))
+    end
+    return true
+end
 function __DIO_ApplyFarmMode()
     __DIO_FarmHardStop()
     if not _G.StartFarm then
@@ -5238,6 +5555,7 @@ function __DIO_ApplyAcceptQuest()
     _G.AcceptQuestL = __on and __mode == "Farm Level"
     _G.AcceptQuestC = __on and __mode == "Farm Cake"
     _G.AcceptQuestB = __on and __mode == "Farm Bone"
+    _G.AcceptQuestT = __on and __mode == "Farm Tyrant"
     if not __on then
         StopTween(false)
         __DIO_CurTarget = nil
@@ -5284,6 +5602,14 @@ Tabs.Main:AddToggle({
     Callback = function(Value)
         _G.AcceptQuest = Value
         __DIO_ApplyAcceptQuest()
+    end
+})
+Tabs.Main:AddToggle({
+    Name = __DIO_T["Auto Quest [Katakuri/Bone/Tyrant]"],
+    Description = "",
+    Default = false,
+    Callback = function(Value)
+        _G.AutoQuestKTB = (Value == true)
     end
 })
 local function IsInSubmergedIsland()
@@ -5480,11 +5806,23 @@ __DIO_SafeLoop(function()
   while __DIO_wait(1) do
     pcall(function()
       if _G.AutoFarmNear then
-        for i,v in pairs(workspace.Enemies:GetChildren()) do
-          if v:FindFirstChild("Humanoid") or v:FindFirstChild("HumanoidRootPart") then
-            if v.Humanoid.Health > 0 then
-              repeat __DIO_wait(0.25) Attack.Kill(v,_G.AutoFarmNear) until not _G.AutoFarmNear or not v.Parent or v.Humanoid.Health <= 0
+        -- [3nn PORT] Aura Farm: nearest alive mob within AuraDistance (default 300)
+        local __hrpA = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+        if __hrpA then
+          local __dist = tonumber(_G.AuraDistance) or 300
+          local __best, __bestD = nil, __dist
+          for _, __m in pairs(workspace.Enemies:GetChildren()) do
+            local __h = __m:FindFirstChildOfClass("Humanoid")
+            local __r = __m:FindFirstChild("HumanoidRootPart")
+            local __ghost = (type(__DIO_IsGhost) == "function") and __DIO_IsGhost(__m)
+            if __h and __r and __h.Health > 0 and not __ghost then
+              local __d = (__r.Position - __hrpA.Position).Magnitude
+              if __d < __bestD then __bestD = __d __best = __m end
             end
+          end
+          if __best then
+            pcall(__DIO_3nn_SizePart, __best)
+            repeat __DIO_wait(0.25) Attack.Kill(__best, _G.AutoFarmNear) until not _G.AutoFarmNear or not __best.Parent or not __best:FindFirstChildOfClass("Humanoid") or __best:FindFirstChildOfClass("Humanoid").Health <= 0
           end
         end
       end
@@ -6458,6 +6796,8 @@ __DIO_SafeLoop(function()
                 if not hrp then return end
                 local enemies = workspace:FindFirstChild("Enemies")
                 if not enemies then return end
+                -- [3nn PORT] Auto Quest [Katakuri/Bone/Tyrant] (quest first, like 3nn)
+                if __DIO_3nn_AutoQuestKTB("Cake") then return end
                 local mapW = workspace:FindFirstChild("Map")
                 local mirror = mapW and mapW:FindFirstChild("CakeLoaf")
                 mirror = mirror and mirror:FindFirstChild("BigMirror")
@@ -6544,20 +6884,15 @@ __DIO_SafeLoop(function()
                 if _G.AcceptQuestC then
                     local __qm = plr.PlayerGui:FindFirstChild("Main")
                     __qm = __qm and __qm:FindFirstChild("Quest")
-                    if not (__qm and __qm.Visible) then
+                    if not (__qm and __qm.Visible) and not __DIO_3nn_HasActiveQuestFor({"Cookie Crafter", "Cake Guard", "Baking Staff", "Head Baker"}) then
                         if (__DIO_CakeQuestCF.Position - hrp.Position).Magnitude > 40 then
                             TeleportConditional(hrp, __DIO_CakeQuestCF, TELEPORT_DISTANCE_THRESHOLD)
                             return
                         end
                         if tick() - __DIO_CakeQuestT > 6 then
                             __DIO_CakeQuestT = tick()
-                            local q = {
-                                { "StartQuest", "CakeQuest2", 2 },
-                                { "StartQuest", "CakeQuest2", 1 },
-                                { "StartQuest", "CakeQuest1", 1 },
-                                { "StartQuest", "CakeQuest1", 2 }
-                            }
-                            replicated.Remotes.CommF_:InvokeServer(unpack(q[math.random(1, 4)]))
+                            -- [3nn PORT] Katakuri -> CakeQuest2 ID 2 (deterministic, was random 1-4)
+                            replicated.Remotes.CommF_:InvokeServer("StartQuest", "CakeQuest2", 2)
                             __DIO_wait(1)
                         end
                     end
@@ -6832,6 +7167,8 @@ __DIO_SafeLoop(function()
                 local hrp = char and char:FindFirstChild("HumanoidRootPart")
                 if not hrp then return end
                 if hrp:FindFirstChild("AntiFall") then hrp.AntiFall:Destroy() end
+                -- [3nn PORT] Auto Quest [Katakuri/Bone/Tyrant] (quest first, like 3nn)
+                if __DIO_3nn_AutoQuestKTB("Bone") then return end
                 local mainGui = plr.PlayerGui:FindFirstChild("Main")
                 local QuestUI = mainGui and mainGui:FindFirstChild("Quest")
                 pcall(__DIO_GhostClean)
@@ -6873,18 +7210,13 @@ __DIO_SafeLoop(function()
                        or (mob:FindFirstChild("Humanoid") and mob.Humanoid.Health <= 0)
                     return
                 end
-                if _G.AcceptQuestB and QuestUI and not QuestUI.Visible then
+                if _G.AcceptQuestB and QuestUI and not QuestUI.Visible and not __DIO_3nn_HasActiveQuestFor({"Reborn Skeleton", "Living Zombie", "Demonic Soul", "Posessed Mummy"}) then
                     local npcD = (__DIO_BoneNpcCF.Position - hrp.Position).Magnitude
                     if npcD <= 10 then
                         if tick() - __DIO_BoneQuestT > 6 then
                             __DIO_BoneQuestT = tick()
-                            local quests = {
-                                { "StartQuest", "HauntedQuest1", 1 },
-                                { "StartQuest", "HauntedQuest1", 2 },
-                                { "StartQuest", "HauntedQuest2", 1 },
-                                { "StartQuest", "HauntedQuest2", 2 }
-                            }
-                            __SVC_RS.Remotes.CommF_:InvokeServer(unpack(quests[math.random(1, #quests)]))
+                            -- [3nn PORT] Bones -> HauntedQuest2 ID 2 (deterministic, was random 1-4)
+                            __SVC_RS.Remotes.CommF_:InvokeServer("StartQuest", "HauntedQuest2", 2)
                             __DIO_wait(1)
                         end
                         if (__DIO_BoneSpawn.Position - hrp.Position).Magnitude > 10 then
@@ -6954,6 +7286,8 @@ __DIO_SafeLoop(function()
                 if not plr.Character then return end
                 local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
                 if not hrp then return end
+                -- [3nn PORT] Auto Quest [Katakuri/Bone/Tyrant] (quest first, like 3nn)
+                if __DIO_3nn_AutoQuestKTB("Tyrant") then return end
                 local boss = workspace.Enemies:FindFirstChild("Tyrant of the Skies")
                 if boss and boss:FindFirstChild("Humanoid") and boss.Humanoid.Health > 0 then
                     repeat
@@ -6964,6 +7298,26 @@ __DIO_SafeLoop(function()
                         __DIO_wait(0.25)
                     until not _G.FarmTyrant or not boss.Parent or boss.Humanoid.Health <= 0
                     return
+                end
+                -- [3nn PORT] TikiQuest3 ID 2 (quest-gated, was: no quest at all)
+                if _G.AcceptQuestT then
+                    local __tqm = plr.PlayerGui:FindFirstChild("Main")
+                    __tqm = __tqm and __tqm:FindFirstChild("Quest")
+                    if not (__tqm and __tqm.Visible) and not __DIO_3nn_HasActiveQuestFor({"Isle Champion", "Serpent Hunter", "Skull Slayer", "Sun-kissed Warrior"}) then
+                        if not __DIO_3nn_TikiCF then
+                            __DIO_3nn_TikiCF = __DIO_3nn_QuestPointFor("TikiQuest3")
+                        end
+                        if __DIO_3nn_TikiCF then
+                            if (hrp.Position - __DIO_3nn_TikiCF.Position).Magnitude > 8 then
+                                _tp(__DIO_3nn_TikiCF)
+                            elseif tick() - (__DIO_TikiQuestT or 0) > 6 then
+                                __DIO_TikiQuestT = tick()
+                                replicated.Remotes.CommF_:InvokeServer("StartQuest", "TikiQuest3", 2)
+                                __DIO_wait(1)
+                            end
+                            return
+                        end
+                    end
                 end
                 local mobList = {"Serpent Hunter","Skull Slayer","Isle Champion","Sun-kissed Warrior"}
                 local __farmedMob = false
@@ -6989,6 +7343,30 @@ __DIO_SafeLoop(function()
                     end
                 end
                 if __farmedMob then return end
+                -- [3nn PORT] all 4 Eyes open -> destroy Tree in EagleBossArena (Skull Guitar skills)
+                if __DIO_3nn_TyrantEyesFull() then
+                    local __tree = __DIO_3nn_TyrantTree()
+                    if __tree then
+                        local __pivot = __tree:GetPivot()
+                        if (hrp.Position - __pivot.Position).Magnitude > 12 then
+                            _tp(__pivot)
+                        else
+                            pcall(function()
+                                if type(GetBP) == "function" and GetBP("Skull Guitar") then
+                                    pcall(EquipWeapon, "Skull Guitar")
+                                end
+                                for _, __sk in ipairs({"Z", "X", "C", "V", "F"}) do
+                                    if not _G.FarmTyrant then break end
+                                    vim1:SendKeyEvent(true, __sk, false, game)
+                                    __DIO_wait(0.12)
+                                    vim1:SendKeyEvent(false, __sk, false, game)
+                                    __DIO_wait(0.12)
+                                end
+                            end)
+                        end
+                        return
+                    end
+                end
                 if __DIO_PhaBinhSummon then pcall(__DIO_PhaBinhSummon) end
             end)
         end
@@ -14037,137 +14415,14 @@ __DIO_GachaGetModules = function()
     return __DIO_GachaModules
 end
 __DIO_GachaRollOnce = function()
+    -- [STANDARD FIX] direct RF call, no GUI clicking, no module sniffing
     if __DIO_GachaBusy then return false end
     __DIO_GachaBusy = true
-    local __rolled = false
     task.spawn(function()
         pcall(function()
-            local mods = __DIO_GachaGetModules()
-            if not mods then
-                if tick() - (__DIO_GachaWarnT or 0) > 60 then
-                    __DIO_GachaWarnT = tick()
-                    pcall(function() __DIO_TNotify("Auto Random Fruit", "Khong tim thay module Gacha (Controllers.GachaClient) trong game nay.", 5) end)
-                end
-                return
-            end
-            local GachaClient, GachaWindow = mods.Client, mods.Window
-            local success, gachaData = pcall(function()
-                return GachaClient.CheckGachaAsync(__DIO_GACHA_NAME)
-            end)
-            if not (success and gachaData and gachaData.Level and gachaData.Level.RequirementMet) then
-                if tick() - (__DIO_GachaWarnT or 0) > 60 then
-                    __DIO_GachaWarnT = tick()
-                    pcall(function() __DIO_TNotify("Auto Random Fruit", "Chua du dieu kien cap do de roll " .. __DIO_GACHA_NAME .. " - tam dung.", 5) end)
-                end
-                return
-            end
-            local priceArg = {
-                ["Name"]  = "Money",
-                ["Value"] = (gachaData.Price and gachaData.Price.Value) or 0,
-            }
-            local playerGui = plr:FindFirstChild("PlayerGui")
-            if not playerGui then return end
-            local snapshotBefore = {}
-            for _, gui in ipairs(playerGui:GetChildren()) do
-                if gui:IsA("ScreenGui") then
-                    snapshotBefore[gui] = gui.Enabled
-                end
-            end
-            pcall(function()
-                GachaWindow:Open(__DIO_GACHA_NAME, priceArg)
-            end)
-            __DIO_wait(1.2)
-            if not _G.Random_Auto then return end
-            local targetGuis = {}
-            for _, gui in ipairs(playerGui:GetChildren()) do
-                if gui:IsA("ScreenGui") then
-                    local before = snapshotBefore[gui]
-                    if before == nil or (before == false and gui.Enabled) then
-                        table.insert(targetGuis, gui)
-                    end
-                end
-            end
-            if #targetGuis == 0 then
-                for _, method in ipairs({ "Roll", "Spin", "Buy", "Purchase", "Confirm", "Draw", "Pull" }) do
-                    if type(GachaWindow[method]) == "function" then
-                        local ok = pcall(GachaWindow[method], GachaWindow, __DIO_GACHA_NAME, priceArg)
-                        if ok then
-                            __rolled = true
-                            return
-                        end
-                    end
-                end
-                return
-            end
-            local guiBlacklist = { "chat", "topbar", "leaderboard", "serverlist", "notification", "robux", "coregui" }
-            local btnBlacklist = { "close", "exit", "back", "cancel", "robux", "server", "list", "no", "x" }
-            local btnKeywords  = { "roll", "spin", "random", "buy", "confirm", "draw", "pull", "play", "start", "purchase" }
-            local function listHas(list, str)
-                str = string.lower(tostring(str or ""))
-                for _, v in ipairs(list) do
-                    if #v <= 2 then
-                        if str == v then return true end
-                    elseif string.find(str, v, 1, true) then
-                        return true
-                    end
-                end
-                return false
-            end
-            local function fireBtn(btn)
-                if getconnections then
-                    local fired = false
-                    for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do conn:Fire() fired = true end
-                    for _, conn in ipairs(getconnections(btn.Activated))       do conn:Fire() fired = true end
-                    if fired then return true end
-                end
-                if firesignal then
-                    pcall(function()
-                        firesignal(btn.MouseButton1Click)
-                        firesignal(btn.Activated)
-                    end)
-                    return true
-                end
-                pcall(function() btn:Activate() end)
-                return false
-            end
-            local clicked = false
-            for _, gui in ipairs(targetGuis) do
-                if not listHas(guiBlacklist, gui.Name) then
-                    local allBtns = {}
-                    for _, btn in ipairs(gui:GetDescendants()) do
-                        if (btn:IsA("TextButton") or btn:IsA("ImageButton")) and btn.Visible then
-                            local name = btn.Name
-                            local text = (btn:IsA("TextButton") and btn.Text) or ""
-                            if not listHas(btnBlacklist, name) and not listHas(btnBlacklist, text) then
-                                table.insert(allBtns, { btn = btn, name = name, text = text })
-                            end
-                        end
-                    end
-                    for _, b in ipairs(allBtns) do
-                        if listHas(btnKeywords, b.name) or listHas(btnKeywords, b.text) then
-                            if fireBtn(b.btn) then clicked = true break end
-                        end
-                    end
-                    if not clicked and getconnections then
-                        local best, bestCount = nil, 0
-                        for _, b in ipairs(allBtns) do
-                            local n = #getconnections(b.btn.MouseButton1Click)
-                            if n > bestCount then bestCount = n best = b end
-                        end
-                        if best and bestCount > 0 then
-                            if fireBtn(best.btn) then clicked = true end
-                        end
-                    end
-                    if not clicked then
-                        for _, b in ipairs(allBtns) do
-                            if fireBtn(b.btn) then clicked = true break end
-                        end
-                    end
-                end
-                if clicked then break end
-            end
-            __rolled = clicked
+            game:GetService("ReplicatedStorage").Modules.Net["RF/GachaNetworkRF"]:InvokeServer({ Context = "Purchase", BoxName = __DIO_GACHA_NAME })
         end)
+        __DIO_wait(1.5)
         __DIO_GachaBusy = false
     end)
     return true
