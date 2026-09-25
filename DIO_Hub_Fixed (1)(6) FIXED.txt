@@ -1980,8 +1980,19 @@ local Attack = {}
 				Equipped = __chK3 and __chK3:FindFirstChildOfClass("Tool")
 			end)
 			local ToolTip = Equipped and Equipped.ToolTip
+			-- ================= [FA-SEA] SWORD / MELEE = FAST ATTACK, KHONG SKILL =========
+			-- 3nn sea event (11359-11362): UsedualFlock() + ClickM1(target, true)
+			--   -> AttackFunction(80) = M1 spam MOI FRAME. Skill chi dung cho GUN
+			--   (11341-11352: SpamGunDragonStorm + UseSkillGun).
+			-- Ban cu o day goi __DIO_SeaSkillAtk() khi dodge bat -> skill co cooldown +
+			-- animation dai => giết Terrorshark "bao gio moi xong". Bo han voi sword/melee.
+			-- __DIO_DodgeBypass: chi trong 1 lan di chuyen cua buoc danh, khong cong offset
+			-- +200Y cua dodge (dodge +200 => player o +260, melee khong toi = khong dam).
+			-- Gun giu nguyen: remote cua gun ban theo TOA DO nen van an dam tu tren cao.
 			if ToolTip == "Blox Fruit" then
-				_tp(__DIO_FarmPos(model, 10, 0, 90))
+				__DIO_DodgeBypass = true
+				pcall(function() _tp(__DIO_FarmPos(model, 10, 0, 90)) end)
+				__DIO_DodgeBypass = nil
 			elseif Equipped and Equipped.Name == "Dragonstorm" and type(__RAID_SpamGun) == "function" then
 				-- [PATCH-SEA1] 3nn "Use Dragonstorm For Sea Event" path for Terrorshark: the
 				-- gun remote carries the TARGET position, so it still lands while the +200Y
@@ -1992,12 +2003,16 @@ local Attack = {}
 				-- [PATCH-SEA1] old: notween(+50,8) -> wait .85 -> notween(+400,0) -> wait 1
 				-- -> M1 was fired from 400 (dodge: 600) studs above the shark and the server
 				-- dropped every hit. 3nn parks at HRP + (0,60,0) and fires M1 every frame.
-				_tp(model.HumanoidRootPart.CFrame * CFrame.new(0, 60, 0))
+				__DIO_DodgeBypass = true
+				pcall(function() _tp(model.HumanoidRootPart.CFrame * CFrame.new(0, 60, 0)) end)
+				__DIO_DodgeBypass = nil
 			end
-			pcall(__DIO_3nn_M1, model)
-			-- [PATCH-SEA1] inside the dodge window melee cannot reach (3nn has the same
-			-- blind spot): keep DPS going with skills/gun, like 3nn does with gun/fruit.
-			if __DIO_TerrorDodgeOn and __DIO_TerrorDodgeOn() and type(__DIO_SeaSkillAtk) == "function" then
+			-- [TS-FIX] 3nn sea/terror attack = ClickM1(model, true) -> AttackFunction(80).
+			-- Range 45 (mac dinh cho mob tren bo) khong voi toi shark khi dang park o +60.
+			pcall(__DIO_3nn_M1, model, 80)
+			-- [FA-SEA] Skill CHI con goi khi cam GUN (3nn: SpamGunDragonStorm + UseSkillGun).
+			-- Sword / Melee / Blox Fruit = fast attack (M1) o tren, khong dung skill.
+			if ToolTip == "Gun" and type(__DIO_SeaSkillAtk) == "function" then
 				pcall(__DIO_SeaSkillAtk)
 			end
 		end
@@ -3351,7 +3366,9 @@ _tp = function(target)
     if not gg then return end
     -- [BANANA PORT] Terror dodge: +200Y on every move while active (3nn toTarget offset)
     -- [DODGE-FIX] them dieu kien _G.AutoDodgeTerrorshark (flag co the treo tu lan chay truoc)
-    if __DIO_TerrorDodgeOn and __DIO_TerrorDodgeOn() then
+    -- [FA-SEA] __DIO_DodgeBypass = true trong 1 lan di chuyen cua buoc DANH: sword/melee
+    -- phai ha xuong dung tam danh (M1 moi an dam), khong cong +200Y vao vi tri danh.
+    if (not __DIO_DodgeBypass) and __DIO_TerrorDodgeOn and __DIO_TerrorDodgeOn() then
         gg = gg + Vector3.new(0, 200, 0)
     end
     local character = plr.Character
@@ -3685,7 +3702,8 @@ end
 notween = function(p)
     -- [BANANA PORT] Terror dodge: +200Y (covers KillSea melee path, 3nn toTarget offset)
     -- [DODGE-FIX] chi ap dung khi switch Auto Dodge Skill Terrorshark dang ON
-    if typeof(p) == "CFrame" and __DIO_TerrorDodgeOn and __DIO_TerrorDodgeOn() then
+    -- [FA-SEA] xem __DIO_DodgeBypass o _tp: buoc danh sword/melee khong cong +200Y
+    if (not __DIO_DodgeBypass) and typeof(p) == "CFrame" and __DIO_TerrorDodgeOn and __DIO_TerrorDodgeOn() then
         p = p + Vector3.new(0, 200, 0)
     end
     if __DIO_Dodging == true then
@@ -18071,23 +18089,31 @@ __DIO_HitParts = function(model, myPos, range)
         if hrp.Size.Y > 5 then
             table.insert(pts, (hrp.CFrame * CFrame.new(0, -hrp.Size.Y * 1.5 + 3, 0)).Position)
         end
-        local reachable = false
+        -- [TS-FIX] 3nn getBladeHits: model duoc XET khi HRP (hoac probe duoi HRP) nam trong
+        -- 10 + range + SizeX/2 cua player - KHONG doi hoi phai co part trong dung ban kinh
+        -- `range`. Ban cu doi hoi do, nen Terrorshark (bi park o HRP + (0,60,0) - dung nhu
+        -- 3nn P=60) tra ve hit-list RONG vi 60 > 45 + SizeX/2 => __DIO_3nn_M1 thoat truoc
+        -- khi FireServer => "fast attack khong gay dam len terrorshark".
+        local gate = math.max(10 + r, 70)
+        local inGate = false
         for _, p in ipairs(pts) do
-            if (p - myPos).Magnitude <= r then reachable = true break end
+            if (p - myPos).Magnitude <= gate then inGate = true break end
         end
-        if not reachable then return end
+        if not inGate then return end
         for _, p in ipairs(model:GetDescendants()) do
             if p:IsA("BasePart") and (p.Position - myPos).Magnitude <= r then table.insert(out, p) end
         end
-        if #out == 0 and (hrp.Position - myPos).Magnitude <= math.max(r, 70) then
-            table.insert(out, hrp)   -- never worse than the old single-HRP behaviour
+        if #out == 0 then
+            table.insert(out, hrp)   -- trong tam gate ma khong co part nao: van ban nhu cu
         end
         table.sort(out, function(a, b) return (a.Position - myPos).Magnitude < (b.Position - myPos).Magnitude end)
     end)
     if not ok then return {} end
     return out
 end
-__DIO_3nn_M1 = function(target)
+-- [TS-FIX] range: 3nn ClickM1(target, true) -> AttackFunction(80) cho sea event/Terrorshark,
+-- con mob thuong la 30-45. Mac dinh 45 de khong doi hanh vi farm tren bo.
+__DIO_3nn_M1 = function(target, range)
     local char = plr.Character
     if not char then return end
     local hrp = char:FindFirstChild("HumanoidRootPart")
@@ -18126,7 +18152,7 @@ __DIO_3nn_M1 = function(target)
     -- single HumanoidRootPart. Old behaviour: M1 fired but the server dropped it
     -- whenever the stand-off exceeded the model half-size.
     local targets = {}
-    for _, __p in ipairs(__DIO_HitParts(target, hrp.Position, 45)) do
+    for _, __p in ipairs(__DIO_HitParts(target, hrp.Position, tonumber(range) or 45)) do
         if #targets < 6 then table.insert(targets, { target, __p }) end
     end
     if #targets == 0 then return end   -- 3nn attackMelee: no blade hit -> no attack sent
@@ -18461,6 +18487,77 @@ end
 --   * Fluent load loi (game:HttpGet fail / executor chan github)
 --   * dung UI Fluent nem loi giua chung
 -- =====================================================================
+-- [KEYFIX2] ------------------------------------------------------------------
+-- Tat cua so nhap key cho CHAC CHAN. Cac lop:
+--   1) Window:Destroy()            (ban Fluent moi)
+--   2) Fluent:Destroy()            -> Library:Destroy -> GUI:Destroy (don het)
+--   3) Fluent.GUI:Destroy()        (phong khi Destroy cua Window loi/nil)
+--   4) quet snapshot: moi ScreenGui xuat hien SAU khi ta bat dau load Fluent
+--      (chup truoc khi loadstring) -> day chinh la GUI cua Fluent.
+-- Ly do bug cu: trong KeyAccept, `Window` duoc khai bao `local` o DONG SAU
+-- closure -> Lua coi `Window` trong closure la BIEN GLOBAL (= nil) ->
+-- pcall(function() Window:Destroy() end) nuot loi "attempt to index nil" ->
+-- key dung, hub chay, nhung cua so Fluent van nam tren man hinh.
+-- ---------------------------------------------------------------------------
+local function __DIO_GuiHolders()
+    local list = {}
+    pcall(function()
+        local pg = game:GetService("Players").LocalPlayer:FindFirstChild("PlayerGui")
+        if pg then table.insert(list, pg) end
+    end)
+    pcall(function() if gethui then local h = gethui() if h then table.insert(list, h) end end end)
+    pcall(function() table.insert(list, game:GetService("CoreGui")) end)
+    return list
+end
+
+local function __DIO_SnapGuis()
+    local set = {}
+    for _, holder in ipairs(__DIO_GuiHolders()) do
+        pcall(function()
+            for _, c in ipairs(holder:GetChildren()) do set[c] = true end
+        end)
+    end
+    return set
+end
+
+local function __DIO_KeyUIDestroy(snap, win)
+    -- 1) UI nhap key toi gian (neu dang bat)
+    pcall(function()
+        local g = getgenv().__DIO_MiniKeyUI
+        if g then g:Destroy() end
+    end)
+    pcall(function() getgenv().__DIO_MiniKeyUI = nil end)
+    -- 2) Fluent window
+    pcall(function()
+        if win and type(win.Destroy) == "function" then win:Destroy() end
+    end)
+    -- 3) Fluent library + GUI
+    local F = nil
+    pcall(function() F = getgenv().Fluent end)
+    pcall(function()
+        if F and type(F.Destroy) == "function" then F:Destroy() end
+    end)
+    pcall(function()
+        if F and F.GUI then F.GUI:Destroy() end
+    end)
+    pcall(function() getgenv().Fluent = nil end)
+    -- 4) quet theo snapshot (bat moi truong hop Destroy khong ton tai / bi chan)
+    if type(snap) == "table" then
+        for _, holder in ipairs(__DIO_GuiHolders()) do
+            pcall(function()
+                for _, c in ipairs(holder:GetChildren()) do
+                    if not snap[c] then
+                        local cn = c.ClassName
+                        if cn == "ScreenGui" then
+                            c:Destroy()
+                        end
+                    end
+                end
+            end)
+        end
+    end
+end
+
 local function __DIO_KeyMiniUI()
     if getgenv().__DIO_MiniKeyUI and getgenv().__DIO_MiniKeyUI.Parent then
         return getgenv().__DIO_MiniKeyUI
@@ -18563,6 +18660,7 @@ local function __DIO_KeyMiniUI()
         note.Text = "Key hop le! Dang tai hub..."
         task.spawn(function()
             task.wait(0.5)
+            __DIO_KeyUIDestroy(getgenv().__DIO_KeyGuiBefore, nil)
             pcall(function() sg:Destroy() end)
             task.wait(0.2)
             __DIO_SafeStart("mini-key-" .. tostring(from or "ui"))
@@ -18644,6 +18742,8 @@ else
     --   gian neu Fluent khong load duoc.
     -- =====================================================================
     local Fluent
+    -- [KEYFIX2] chup danh sach GUI truoc khi load Fluent -> lat nua quet ra GUI cua Fluent
+    pcall(function() getgenv().__DIO_KeyGuiBefore = __DIO_SnapGuis() end)
     local okFluent, errFluent = pcall(function()
         Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
     end)
@@ -18655,6 +18755,9 @@ else
 
     local __DIO_KeyEntry = ""
     local __KEY_Log = {}
+    -- [KEYFIX2] PHAI khai bao TRUOC cac closure ben duoi (KeyAccept/KeyEl...). Khai bao
+    -- sau thi moi tham chieu `Window` trong closure la bien GLOBAL -> nil.
+    local Window, TabKey, TabInfo, TabDiag, KeyInput
     local function KeyEl(tab, method, idx, cfg)
         local fn = tab and tab[method]
         if type(fn) ~= "function" then
@@ -18701,15 +18804,16 @@ else
             Fluent:Notify({ Title = "Success", Content = "Key hop le! Dang tai hub...", Duration = 3 })
         end)
         task.spawn(function()
-            task.wait(0.5)
-            pcall(function() Window:Destroy() end)
+            task.wait(0.5)   -- cho notification hien xong
+            -- [KEYFIX2] tat UI key (nhieu lop, khong the "o lai" du Fluent phien ban nao)
+            __DIO_KeyUIDestroy(getgenv().__DIO_KeyGuiBefore, Window)
             task.wait(0.2)
             __DIO_SafeStart("key-" .. tostring(from or "ui"))
         end)
         return true
     end
 
-    local Window, TabKey, TabInfo, TabDiag, KeyInput
+    -- [KEYFIX2] (khai bao Window da duoc hoist len tren, xem A3)
     local __okBuild, __errBuild = pcall(function()
         local vp = Vector2.new(1280, 720)
         pcall(function()
