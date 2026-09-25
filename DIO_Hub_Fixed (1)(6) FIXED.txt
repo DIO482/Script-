@@ -18454,6 +18454,169 @@ local function __DIO_SafeStart(where)
     end
     return ok, err
 end
+
+-- =====================================================================
+-- [KEYFIX] UI nhap key toi gian - chi dung Instance.new, khong phu thuoc
+-- Fluent/redzlib nen khong the "chet" theo thu vien UI. Dung khi:
+--   * Fluent load loi (game:HttpGet fail / executor chan github)
+--   * dung UI Fluent nem loi giua chung
+-- =====================================================================
+local function __DIO_KeyMiniUI()
+    if getgenv().__DIO_MiniKeyUI and getgenv().__DIO_MiniKeyUI.Parent then
+        return getgenv().__DIO_MiniKeyUI
+    end
+    local plr = game:GetService("Players").LocalPlayer
+    local pg = plr:FindFirstChild("PlayerGui") or plr:WaitForChild("PlayerGui", 10)
+    if not pg then return nil end
+
+    local function mk(cls, props, parent)
+        local o = Instance.new(cls)
+        for k, v in pairs(props or {}) do pcall(function() o[k] = v end) end
+        o.Parent = parent
+        return o
+    end
+    local function corner(o, r)
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim.new(0, r or 6)
+        c.Parent = o
+        return c
+    end
+
+    local sg = Instance.new("ScreenGui")
+    sg.Name = "DIOKeyUI"
+    sg.ResetOnSpawn = false
+    sg.DisplayOrder = 999999
+    sg.Parent = pg
+    getgenv().__DIO_MiniKeyUI = sg
+
+    local fr = mk("Frame", {
+        Name = "Main",
+        Size = UDim2.fromOffset(400, 176),
+        Position = UDim2.new(0.5, -200, 0.5, -88),
+        BackgroundColor3 = Color3.fromRGB(22, 22, 26),
+        BorderSizePixel = 0,
+        Active = true,
+    }, sg)
+    corner(fr, 10)
+    mk("UIStroke", { Color = Color3.fromRGB(60, 60, 70), Transparency = 0.3 }, fr)
+
+    mk("TextLabel", {
+        Text = "DIO HUB - NHAP KEY",
+        Size = UDim2.new(1, -20, 0, 20),
+        Position = UDim2.fromOffset(10, 8),
+        BackgroundTransparency = 1,
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        Font = Enum.Font.GothamBold,
+        TextSize = 13,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, fr)
+
+    local status = "?"
+    pcall(function() status = tostring(_DIO_KeyStatusText()) end)
+    status = tostring(status):gsub("\n", "  "):sub(1, 140)
+    mk("TextLabel", {
+        Text = status,
+        Size = UDim2.new(1, -20, 0, 30),
+        Position = UDim2.fromOffset(10, 28),
+        BackgroundTransparency = 1,
+        TextColor3 = Color3.fromRGB(170, 170, 180),
+        Font = Enum.Font.Gotham,
+        TextSize = 10,
+        TextWrapped = true,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Top,
+    }, fr)
+
+    local box = mk("TextBox", {
+        Text = "",
+        PlaceholderText = "Dan key vao day...",
+        ClearTextOnFocus = false,
+        Size = UDim2.new(1, -20, 0, 28),
+        Position = UDim2.fromOffset(10, 62),
+        BackgroundColor3 = Color3.fromRGB(14, 14, 18),
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        Font = Enum.Font.Code,
+        TextSize = 12,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, fr)
+    corner(box, 6)
+    mk("UIPadding", { PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6) }, box)
+
+    local note = mk("TextLabel", {
+        Text = "",
+        Size = UDim2.new(1, -20, 0, 16),
+        Position = UDim2.fromOffset(10, 94),
+        BackgroundTransparency = 1,
+        TextColor3 = Color3.fromRGB(255, 190, 120),
+        Font = Enum.Font.Gotham,
+        TextSize = 10,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, fr)
+
+    local function startWith(key, from)
+        if not _SEC_VerifyKey(tostring(key or "")) then
+            note.Text = "Key khong hop le. Thu lai hoac bam 'Tu Clipboard'."
+            return false
+        end
+        _DIO_SetKey(key)
+        saveKeyCache()
+        note.Text = "Key hop le! Dang tai hub..."
+        task.spawn(function()
+            task.wait(0.5)
+            pcall(function() sg:Destroy() end)
+            task.wait(0.2)
+            __DIO_SafeStart("mini-key-" .. tostring(from or "ui"))
+        end)
+        return true
+    end
+
+    local function btn(text, x, w, cb, color)
+        local b = mk("TextButton", {
+            Text = text,
+            Size = UDim2.fromOffset(w, 26),
+            Position = UDim2.fromOffset(x, 116),
+            BackgroundColor3 = color or Color3.fromRGB(45, 45, 55),
+            TextColor3 = Color3.fromRGB(255, 255, 255),
+            Font = Enum.Font.GothamSemibold,
+            TextSize = 11,
+            AutoButtonColor = true,
+            BorderSizePixel = 0,
+        }, fr)
+        corner(b, 6)
+        b.MouseButton1Click:Connect(function() pcall(cb) end)
+        return b
+    end
+
+    btn("Check Key", 10, 108, function() startWith(box.Text, "mini-manual") end, Color3.fromRGB(40, 90, 60))
+    btn("Tu Clipboard", 124, 108, function()
+        local clip
+        pcall(function()
+            if type(getclipboard) == "function" then clip = getclipboard() end
+        end)
+        if type(clip) ~= "string" or #clip == 0 then
+            note.Text = "Executor khong co getclipboard - dan tay vao o tren."
+            return
+        end
+        for line in tostring(clip):gmatch("[^\r\n]+") do
+            local t = line:match("^%s*(.-)%s*$")
+            if t and #t >= 6 and _SEC_VerifyKey(t) then
+                startWith(t, "mini-clip")
+                return
+            end
+        end
+        note.Text = "Clipboard khong co key hop le."
+    end)
+    btn("Xoa cache", 238, 94, function()
+        _DIO_ResetKeyCache()
+        note.Text = "Da xoa cache key. Nhap key moi roi Check Key."
+    end, Color3.fromRGB(90, 60, 40))
+    btn("Tat UI", 338, 52, function() sg:Destroy() end, Color3.fromRGB(90, 40, 40))
+
+    warn("[DIO KEY] Dang dung UI nhap key toi gian (Fluent khong dung duoc).")
+    return sg
+end
+
+
 if isKeyValid() then
     pcall(function()
         game:GetService("StarterGui"):SetCore("SendNotification", {
@@ -18464,164 +18627,288 @@ if isKeyValid() then
     end)
     __DIO_SafeStart("main-entry")
 else
+    -- =====================================================================
+    -- [KEYFIX] Vi sao ban cu chi hien 2 nut:
+    --   Fluent co 2 kieu chu ky element KHAC NHAU:
+    --     * Button / Paragraph           : AddX(Config)              (1 bang)
+    --     * Input / Toggle / Slider /
+    --       Dropdown / Keybind / Color  : AddX(Idx, Config)          (2 tham so)
+    --   Ban cu goi Tabs.GetKey:AddInput({...}) -> Idx = config, Config = nil
+    --   => assert(Config.Title, "Input - Missing Title") nem loi NGAY, va vi
+    --   khong co pcall nen TOAN BO element tao sau do (Check Key, Use
+    --   getgenv().Key, Xoa cache, Test Api) khong bao gio duoc tao
+    --   => cua so chi con: 1 nut o tab Discord + 1 nut o tab Get Key = "2 nut".
+    --   Ban nay: helper KeyEl() thu dung ca 2 kieu + luon pcall (1 element loi
+    --   khong giet ca cua so), tach "Chan doan" sang tab rieng, them nut dan key
+    --   tu clipboard + auto-check getgenv().Key/clipboard, va UI nhap key toi
+    --   gian neu Fluent khong load duoc.
+    -- =====================================================================
     local Fluent
     local okFluent, errFluent = pcall(function()
         Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
     end)
     if not okFluent or not Fluent then
-        warn("[DIO] Failed to load Fluent UI, loading hub anyway for debug")
-        __DIO_SafeStart("fluent-fallback")
+        warn("[DIO] Fluent load loi (" .. tostring(errFluent) .. ") -> UI nhap key toi gian")
+        __DIO_KeyMiniUI()
         return
     end
-    -- [KEY-FIX] luu key qua Callback (khong dua vao .Value cua element)
-    local __DIO_KeyEntry = ""
-    local Window = Fluent:CreateWindow({
-        Title = "DIO Hub Get Key",
-        SubTitle = "By DIO",
-        TabWidth = 155,
-        Size = UDim2.fromOffset(470, 380),
-        Acrylic = false,
-        Theme = "Dark",
-        MinimizeKey = Enum.KeyCode.RightControl
-    })
-    local Tabs = {
-        Info = Window:AddTab({ Title = "Discord", Icon = "message-circle" }),
-        GetKey = Window:AddTab({ Title = "Get Key", Icon = "key" }),
-    }
-    Tabs.Info:AddParagraph({
-        Title = "Join the Community",
-        Content = "Join our Discord server for updates, support, and new scripts! Key is valid for 10 hours per device."
-    })
-    Tabs.Info:AddButton({
-        Title = "Copy Discord Link",
-        Description = "Copies the invite link to your clipboard.",
-        Callback = function()
-            pcall(function() setclipboard("https://discord.gg/NZm9MXzmzn") end) 
-            Fluent:Notify({
-                Title = "Copied!",
-                Content = "Discord link has been copied to your clipboard.",
-                Duration = 5
-            })
-        end
-    })
-    Tabs.GetKey:AddParagraph({
-        Title = "Key System",
-        Content = "Click the button below to get your key, then paste it into the text box.\n"
-            .. "Link lay key: " .. tostring(_DIO_ResolveLinkgetkey(false)) .. "\n"
-            .. "Key cua ban: " .. _DIO_KeyLabel() .. "\n"
-            .. "Cache lasts 10 hours.\n\n"
-            .. "----- CHAN DOAN KEY -----\n" .. _DIO_KeyStatusText()
-    })
-    Tabs.GetKey:AddButton({
-        Title = "Get Key Link",
-        Description = "Copies key link to clipboard.",
-        Callback = function()
-            local __link = _DIO_ResolveLinkgetkey(true)
-            if type(__link) ~= "string" or #__link <= 12 then
-                __link = "https://link4sub.com/notes/eRcc"
-            end
-            pcall(function() setclipboard(__link) end) 
-            Fluent:Notify({
-                Title = "Copied!",
-                Content = "Key link copied to clipboard!",
-                Duration = 5
-            })
-        end
-    })
-    -- [KEY-FIX] Fluent dung AddInput({Options}) (khong co ten o ngoac don nhu Orion);
-    -- goi sai kieu do thi KeyInput = nil -> nut "Check Key" crash o KeyInput.Value.
-    local KeyInput = Tabs.GetKey:AddInput({
-        Title = "Enter Key",
-        Default = "",
-        Placeholder = "Paste your key here...",
-        Numeric = false,
-        Finished = false,
-        Callback = function(Value)
-            __DIO_KeyEntry = tostring(Value or "")
-        end
-    })
-    Tabs.GetKey:AddButton({
-        Title = "Check Key",
-        Description = "Verifies your key.",
-        Callback = function()
-            local enteredKey = (KeyInput and KeyInput.Value) or __DIO_KeyEntry
-            if _SEC_VerifyKey(enteredKey) then
-                Fluent:Notify({
-                    Title = "Success",
-                    Content = "Valid Key! Loading Hub... (saved 10h)",
-                    Duration = 3
-                })
-                _DIO_SetKey(enteredKey)
-                saveKeyCache()
-                task.wait(0.5)
-                Window:Destroy()
-                task.wait(0.2)
-                __DIO_SafeStart("check-key-button")
-            else
-                warn("[DIO KEY] Key nhap tay khong khop. Bam 'Get Key Link' de lay key moi (key cu co the da doi/het han).")
-                Fluent:Notify({
-                    Title = "Error",
-                    Content = "Invalid Key! " .. (_DIO_ApiOnline
-                        and ("Key tren Api: " .. table.concat(_DIO_ApiKeys, ", "))
-                        or "Khong doc duoc Api (bam Test Api / xem console F9)"),
-                    Duration = 3
-                })
-            end
-        end
-    })
-    Tabs.GetKey:AddButton({
-        Title = "Use getgenv().Key",
-        Description = "Check key from getgenv().Key config",
-        Callback = function()
-            if _SEC_VerifyKey(tostring(getgenv().Key)) then
-                Fluent:Notify({Title="Success", Content="getgenv().Key valid! Loading...", Duration=3})
-                saveKeyCache()
-                task.wait(0.5)
-                Window:Destroy()
-                task.wait(0.2)
-                __DIO_SafeStart("getgenv-key-button")
-            else
-                Fluent:Notify({Title="Error", Content="getgenv().Key invalid or empty. Enter key manually.", Duration=3})
-            end
-        end
-    })
 
-    -- [KEY-FIX] 2 nut tien ich: xoa cache key + test Api (in log ra console F9)
-    Tabs.GetKey:AddButton({
-        Title = "Xoa cache Key (Reset)",
-        Description = "Xoa KeyCache.json + getgenv().Key de nhap lai key moi",
-        Callback = function()
-            _DIO_ResetKeyCache()
-            Fluent:Notify({
-                Title = "Da xoa cache key",
-                Content = "Nhap key moi roi bam Check Key.",
-                Duration = 5
-            })
+    local __DIO_KeyEntry = ""
+    local __KEY_Log = {}
+    local function KeyEl(tab, method, idx, cfg)
+        local fn = tab and tab[method]
+        if type(fn) ~= "function" then
+            table.insert(__KEY_Log, method .. ":missing")
+            return nil
         end
-    })
-    Tabs.GetKey:AddButton({
-        Title = "Test Api (xem log F9)",
-        Description = "In ra console: Api tra ve gi, cache dang luu gi",
-        Callback = function()
-            local data = _DIO_ResolvePendingFromPastefy()
-            print("[DIO KEY][TEST] Online=" .. tostring(_DIO_ApiOnline)
-                .. " | Keys=" .. table.concat(_DIO_ApiKeys, " | ")
-                .. " | Pending=" .. tostring(_DIO_PendingKey))
-            print("[DIO KEY][TEST] Raw=" .. tostring(_DIO_ApiRaw):sub(1, 300))
-            print("[DIO KEY][TEST] " .. _DIO_KeyStatusText():gsub("\n", " | "))
-            Fluent:Notify({
-                Title = "Test Api xong",
-                Content = _DIO_ApiOnline and "Api doc duoc - xem console (F9)" or "KHONG doc duoc Api - xem console (F9)",
-                Duration = 6
-            })
+        local ok1, res1 = pcall(fn, tab, idx, cfg)      -- chuan Fluent: (Idx, Config)
+        if ok1 and res1 ~= nil then
+            table.insert(__KEY_Log, method .. ":ok2")
+            return res1
         end
-    })
-    pcall(function() Window:SelectTab(2) end)
+        local ok2, res2 = pcall(fn, tab, cfg)           -- kieu 1 bang: Button/Paragraph
+        if ok2 and res2 ~= nil then
+            table.insert(__KEY_Log, method .. ":ok1")
+            return res2
+        end
+        table.insert(__KEY_Log, method .. ":FAIL")
+        warn(("[DIO KEY] %s loi: %s | %s"):format(method, tostring(res1), tostring(res2)))
+        return nil
+    end
+
+    local function KeyClipboard()
+        local clip
+        pcall(function()
+            if type(getclipboard) == "function" then clip = getclipboard() end
+        end)
+        if type(clip) ~= "string" or #clip == 0 then return nil end
+        for line in tostring(clip):gmatch("[^\r\n]+") do
+            local t = line:match("^%s*(.-)%s*$")
+            if t and #t >= 6 and _SEC_VerifyKey(t) then return t end
+        end
+        return nil
+    end
+
+    local __KEY_Started = false
+    local function KeyAccept(key, from)
+        if __KEY_Started then return true end
+        key = tostring(key or "")
+        if #key == 0 or not _SEC_VerifyKey(key) then return false end
+        __KEY_Started = true
+        _DIO_SetKey(key)
+        saveKeyCache()
+        pcall(function()
+            Fluent:Notify({ Title = "Success", Content = "Key hop le! Dang tai hub...", Duration = 3 })
+        end)
+        task.spawn(function()
+            task.wait(0.5)
+            pcall(function() Window:Destroy() end)
+            task.wait(0.2)
+            __DIO_SafeStart("key-" .. tostring(from or "ui"))
+        end)
+        return true
+    end
+
+    local Window, TabKey, TabInfo, TabDiag, KeyInput
+    local __okBuild, __errBuild = pcall(function()
+        local vp = Vector2.new(1280, 720)
+        pcall(function()
+            local cam = workspace.CurrentCamera
+            if cam and cam.ViewportSize then vp = cam.ViewportSize end
+        end)
+        Window = Fluent:CreateWindow({
+            Title = "DIO Hub - Key",
+            SubTitle = "By DIO",
+            TabWidth = 130,
+            Size = UDim2.fromOffset(
+                math.clamp(math.floor(vp.X) - 60, 300, 520),
+                math.clamp(math.floor(vp.Y) - 120, 240, 460)
+            ),
+            Acrylic = false,
+            Theme = "Dark",
+            MinimizeKey = Enum.KeyCode.RightControl
+        })
+        -- Tab 1 = Get Key (ban Fluent nay Window:SelectTab luon chon tab 1)
+        TabKey = Window:AddTab({ Title = "Get Key", Icon = "key" })
+        TabInfo = Window:AddTab({ Title = "Discord", Icon = "message-circle" })
+        TabDiag = Window:AddTab({ Title = "Chan doan", Icon = "activity" })
+
+        KeyEl(TabKey, "AddParagraph", nil, {
+            Title = "Key System",
+            Content = "Key dung 10 tieng / thiet bi.\n"
+                .. "1) Bam '1. Get Key Link' de lay key (tu dong copy).\n"
+                .. "2) Dan key vao o ben duoi -> bam '3. Check Key'.\n"
+                .. "Hoac bam 'Dan tu Clipboard + Check' neu key dang o clipboard."
+        })
+
+        local link = "https://link4sub.com/notes/eRcc"
+        pcall(function()
+            local l = _DIO_ResolveLinkgetkey(false)
+            if type(l) == "string" and #l > 12 then link = l end
+        end)
+        KeyEl(TabKey, "AddButton", "GetKeyLink", {
+            Title = "1. Get Key Link (copy)",
+            Description = link,
+            Callback = function()
+                local l = link
+                pcall(function()
+                    local r = _DIO_ResolveLinkgetkey(true)
+                    if type(r) == "string" and #r > 12 then l = r end
+                end)
+                pcall(function() setclipboard(l) end)
+                pcall(function()
+                    Fluent:Notify({ Title = "Da copy link key", Content = l, Duration = 5 })
+                end)
+            end
+        })
+
+        KeyInput = KeyEl(TabKey, "AddInput", "DIOKeyInput", {
+            Title = "2. Enter Key",
+            Description = "Dan key vao day",
+            Default = "",
+            Placeholder = "Paste your key here...",
+            Numeric = false,
+            Finished = false,
+            Callback = function(Value)
+                __DIO_KeyEntry = tostring(Value or "")
+            end
+        })
+
+        KeyEl(TabKey, "AddButton", "CheckKey", {
+            Title = "3. Check Key",
+            Description = "Kiem tra key vua nhap",
+            Callback = function()
+                local entered = (KeyInput and KeyInput.Value) or __DIO_KeyEntry
+                if KeyAccept(entered, "manual") then return end
+                pcall(function()
+                    Fluent:Notify({
+                        Title = "Key khong hop le",
+                        Content = "Thu 'Dan tu Clipboard + Check', hoac xem tab Chan doan.",
+                        Duration = 5
+                    })
+                end)
+                warn("[DIO KEY] Key nhap tay khong khop.")
+            end
+        })
+
+        KeyEl(TabKey, "AddButton", "CheckClip", {
+            Title = "Dan tu Clipboard + Check",
+            Description = "Lay key trong clipboard roi kiem tra (khong can dan tay)",
+            Callback = function()
+                local k = KeyClipboard()
+                if k and KeyAccept(k, "clipboard") then return end
+                pcall(function()
+                    Fluent:Notify({
+                        Title = "Clipboard khong co key hop le",
+                        Content = "Copy key truoc roi bam lai.",
+                        Duration = 5
+                    })
+                end)
+            end
+        })
+
+        KeyEl(TabKey, "AddButton", "UseEnv", {
+            Title = "Dung getgenv().Key",
+            Description = "Kiem tra key trong getgenv().Key",
+            Callback = function()
+                if KeyAccept(tostring(getgenv().Key or ""), "getgenv") then return end
+                pcall(function()
+                    Fluent:Notify({
+                        Title = "getgenv().Key khong hop le",
+                        Content = "Nhap key thu cong.",
+                        Duration = 5
+                    })
+                end)
+            end
+        })
+
+        KeyEl(TabInfo, "AddParagraph", nil, {
+            Title = "Join the Community",
+            Content = "Discord: updates, support. Key dung 10 tieng / thiet bi."
+        })
+        KeyEl(TabInfo, "AddButton", "CopyDiscord", {
+            Title = "Copy Discord Link",
+            Description = "https://discord.gg/NZm9MXzmzn",
+            Callback = function()
+                pcall(function() setclipboard("https://discord.gg/NZm9MXzmzn") end)
+                pcall(function()
+                    Fluent:Notify({ Title = "Copied!", Content = "Da copy link Discord.", Duration = 5 })
+                end)
+            end
+        })
+
+        local status = "(khong doc duoc trang thai key)"
+        pcall(function() status = tostring(_DIO_KeyStatusText()) end)
+        local label = "?"
+        pcall(function() label = tostring(_DIO_KeyLabel()) end)
+        KeyEl(TabDiag, "AddParagraph", nil, {
+            Title = "Chan doan Key",
+            Content = "Key cua ban: " .. label .. "\n" .. status
+        })
+        KeyEl(TabDiag, "AddButton", "ResetCache", {
+            Title = "Xoa cache Key (Reset)",
+            Description = "Xoa KeyCache.json + getgenv().Key de nhap lai key moi",
+            Callback = function()
+                _DIO_ResetKeyCache()
+                pcall(function()
+                    Fluent:Notify({
+                        Title = "Da xoa cache key",
+                        Content = "Nhap key moi roi bam Check Key.",
+                        Duration = 5
+                    })
+                end)
+            end
+        })
+        KeyEl(TabDiag, "AddButton", "TestApi", {
+            Title = "Test Api (xem log F9)",
+            Description = "In ra console: Api tra ve gi, cache dang luu gi",
+            Callback = function()
+                _DIO_ResolvePendingFromPastefy()
+                print("[DIO KEY][TEST] Online=" .. tostring(_DIO_ApiOnline)
+                    .. " | Keys=" .. table.concat(_DIO_ApiKeys, " | ")
+                    .. " | Pending=" .. tostring(_DIO_PendingKey))
+                print("[DIO KEY][TEST] Raw=" .. tostring(_DIO_ApiRaw):sub(1, 300))
+                pcall(function()
+                    Fluent:Notify({
+                        Title = "Test Api xong",
+                        Content = _DIO_ApiOnline
+                            and "Api doc duoc - xem console (F9)"
+                            or "KHONG doc duoc Api - xem console (F9)",
+                        Duration = 6
+                    })
+                end)
+            end
+        })
+    end)
+
+    if not __okBuild then
+        warn("[DIO KEY] Dung UI Fluent loi: " .. tostring(__errBuild) .. " -> UI nhap key toi gian")
+        pcall(function() if Window then Window:Destroy() end end)
+        __DIO_KeyMiniUI()
+        return
+    end
+
+    pcall(function() Window:SelectTab(1) end)
+    warn("[DIO KEY] Fluent elements: " .. table.concat(__KEY_Log, ", "))
+    if KeyInput == nil then
+        warn("[DIO KEY] Khong tao duoc o nhap key cua Fluent -> dung them UI toi gian cho chac.")
+        __DIO_KeyMiniUI()
+    end
     pcall(function()
         Fluent:Notify({
             Title = "DIO Hub",
-            Content = "Key System Loaded - Please enter key",
-            Duration = 5
+            Content = "Nhap key (hoac bam 'Dan tu Clipboard + Check')",
+            Duration = 6
         })
+    end)
+
+    -- Tu dong: getgenv().Key -> clipboard (khoi phai dan tay)
+    task.spawn(function()
+        task.wait(0.6)
+        if __KEY_Started then return end
+        local envKey = tostring(getgenv().Key or "")
+        if #envKey > 5 and KeyAccept(envKey, "getgenv-auto") then return end
+        local k = KeyClipboard()
+        if k then KeyAccept(k, "clipboard-auto") end
     end)
 end
