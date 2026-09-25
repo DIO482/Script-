@@ -765,9 +765,9 @@ __DIO_FarmFlagNames = {
     "StartFarm", "SailBoat_Hydra", "WardenBoss", "AutoFactory", "HighestMirage", "HCM", "PGB", "Leviathan1", "UPGDrago",
     "Complete_Trials", "TpDrago_Prehis", "BuyDrago", "BuyMelee_BuyBlackLeg", "BuyMelee_BuyElectro", "BuyMelee_BuyFishmanKarate", "BuyMelee_BuyDragonClaw", "AutoFireFlowers",
     "DT_Uzoth", "AutoBerry", "Prefully", "Prehis_Find", "Prehis_Skills", "Prehis_DB", "Prehis_DE", "FarmBlazeEM",
-    "Dojoo", "CollectPresent", "AutoLawKak", "TpLab", "AutoPhoenixF", "AutoFarmChest", "AutoHytHallow", "LongsWord",
+    "Dojoo", "CollectPresent", "AutoPhoenixF", "AutoFarmChest", "AutoHytHallow", "LongsWord",
     "BlackSpikey", "AutoHolyTorch", "TrainDrago", "AutoSaber", "FarmMastery_Dev", "CitizenQuest", "AutoEctoplasm", "KeysRen",
-    "Auto_Rainbow_Haki", "obsFarm", "AutoBigmom", "Doughv2", "AuraBoss", "Raiding", "Auto_Cavender", "TpPly",
+    "Auto_Rainbow_Haki", "obsFarm", "AutoBigmom", "Doughv2", "AuraBoss", "Raiding", "AutoRaid", "AutoMultiRaid", "AutoJoinDungeon", "AutoAttackDungeon", "AutoPickCardDungeon", "AutoBuyChipAttackLaw", "Auto_Cavender", "TpPly",
     "Bartilo_Quest", "Level", "FarmEliteHunt", "AutoZou", "AutoFarm_Bone", "AutoMaterial", "CraftVM", "FrozenTP",
     "ShotHL", "TPDoor", "AcientOne", "AutoFarmNear", "AutoRaidCastle", "DarkBladev3", "AutoFarmRaid", "Auto_Cake_Prince",
     "Addealer", "TPNpc", "TwinHook", "FindMirage", "FrozenDimension", "FarmChestM", "Shark", "TerrorShark",
@@ -781,10 +781,9 @@ __DIO_FarmFlagNames = {
     "Lvthan", "beasthunter", "DangerLV", "Relic123", "tweenKitsune", "Collect_Ember", "AutofindKitIs", "Snaguine",
     "TwFruits", "tweenKitShrine", "Tp_LgS", "Tp_MasterA", "tweenShrine", "FarmMastery_G", "FarmMastery_S", "FarmBoss",
     "AutoFarmAllBoss", "AutoFishSlap", "TweenBoatOwner", "FarmTyrant", "FarmPhaBinh", "AutoSpawnCP", "AutoBerryH", "AutoChestBP",
-    "FarmEliteHop", "AutoHop_Dough", "AutoDoughKing", "AutoAttackDoughKing", "AutoChipFruit", "AutoChipBeli", "Auto_StartRaid", "StartEvent",
-    "AutoMysticIsland", "AutoPlayerHunter", "SafeMode", "AutoKillMob", "AutoStartPrehistoric", "AutoFarmIsland", "AutoFarmDungeon", "AutoFarmCandy",
-    "AutoTP_Gift", "AutoTPGift", "AutoTPAndCollect", "MasterAutoLevel", "MasterAutoCandy", "TPFloor1", "TPFloor2", "TPFloor3",
-    "TPFloor4", "FarmEliteH", "Safemode", "Greybeard", "ResetPH", "NextIs", "senth", "senth2",
+    "FarmEliteHop", "AutoAttackDoughKing", "AutoSummonDoughKing", "AutoHopDoughKing", "StartEvent",
+    "AutoMysticIsland", "AutoPlayerHunter", "SafeMode", "AutoKillMob", "AutoStartPrehistoric", "AutoFarmIsland", "AutoFarmCandy",
+    "AutoTP_Gift", "AutoTPGift", "AutoTPAndCollect", "MasterAutoLevel", "MasterAutoCandy", "FarmEliteH", "Safemode", "Greybeard", "ResetPH", "NextIs", "senth", "senth2",
 }
 __DIO_TWEEN_LEASE  = 30         
 __DIO_MOVE_GRACE   = 12         
@@ -1873,6 +1872,7 @@ local Attack = {}
 			else
 				_tp(__DIO_FarmPos(model, 30, 0, 180))
 			end
+		pcall(__DIO_3nn_M1, model)
 			if RandomCFrame then
 				__DIO_wait(.5)
 				_tp(model.HumanoidRootPart.CFrame * CFrame.new(0, 30, 25))
@@ -1912,6 +1912,7 @@ local Attack = {}
 			else
 				_tp(__DIO_FarmPos(model, 30, 8, 180))
 			end
+		pcall(__DIO_3nn_M1, model)
 			if RandomCFrame then
 				__DIO_wait(0.1)
 				_tp(model.HumanoidRootPart.CFrame * CFrame.new(0, 30, 25))
@@ -1954,6 +1955,7 @@ local Attack = {}
 				notween(model.HumanoidRootPart.CFrame * CFrame.new(0, 400, 0))
 				__DIO_wait(1)
 			end
+		pcall(__DIO_3nn_M1, model)
 		end
 	end
 	Attack.Sword = function(model, Succes)
@@ -1982,6 +1984,7 @@ local Attack = {}
 				__DIO_wait(0.1)
 				_tp(model.HumanoidRootPart.CFrame * CFrame.new(-25, 30, 0))
 			end
+		pcall(__DIO_3nn_M1, model)
 		end
 	end
 	Attack.Mas = function(model, Succes)
@@ -2088,7 +2091,7 @@ end
 -- =====================================================================
 -- [3nn PORT] Same-name BringMob stacking (spawn-part anchor + netowner check)
 -- Replaces the old tween-based BringEnemy. Wired to DIO UI:
---   _B (Bring Mobs toggle), _G.MaxBringMobs (mobs Bring slider),
+--   BringEnemyFarm (Bring Mobs toggle), _G.MaxBringMobs (mobs Bring slider),
 --   _G.BringRange (Bring Distance slider).
 -- =====================================================================
 __DIO_3nn_TableMobSpawn = __DIO_3nn_TableMobSpawn or {}
@@ -2197,7 +2200,7 @@ __DIO_3nn_BringTarget = nil
 __DIO_3nn_BringAnchor = nil
 __DIO_3nn_BringDeb = false
 BringEnemy = function(Mon)
-    if not _B then return end
+    if not BringEnemyFarm then return end
     if not Mon or not Mon.Parent or not Mon:FindFirstChild("HumanoidRootPart") then return end
     if type(IsRaidMob) == "function" and IsRaidMob(Mon) then return end
     pcall(function()
@@ -2728,8 +2731,14 @@ UpdStFruit = function()
   for z,x in next, plr.Backpack:GetChildren() do
   StoreFruit = x:FindFirstChild("EatRemote", true)
     if StoreFruit then
-      replicated.Remotes.CommF_:InvokeServer("StoreFruit",StoreFruit.Parent:GetAttribute("OriginalName"),
+      local __fname = StoreFruit.Parent:GetAttribute("OriginalName")
+      replicated.Remotes.CommF_:InvokeServer("StoreFruit", __fname,
       plr.Backpack:FindFirstChild(x.Name))
+      pcall(function()
+        if _G.WebhookStoreFruit and not plr.Backpack:FindFirstChild(x.Name) then
+          __DIO_WH_Send("Store Fruit", __fname, true)
+        end
+      end)
     end
   end
 end
@@ -3595,7 +3604,7 @@ function BTP(p)
     until (p.Position - humanoidRootPart.Position).Magnitude <= 2000
 end
 __DIO_FarmFlagsOn = function()
-    return (_G.StartFarm or _G.SailBoat_Hydra or _G.WardenBoss or _G.AutoFactory or _G.HighestMirage or _G.HCM or _G.PGB or _G.Leviathan1 or _G.UPGDrago or _G.Complete_Trials or _G.TpDrago_Prehis or _G.BuyDrago or __DIO_BuyFlying or _G.BuyMelee_BuyBlackLeg or _G.BuyMelee_BuyElectro or _G.BuyMelee_BuyFishmanKarate or _G.BuyMelee_BuyDragonClaw or _G.AutoFireFlowers or _G.DT_Uzoth or _G.AutoBerry or _G.Prefully or _G.Prehis_Find or _G.Prehis_Skills or _G.Prehis_DB or _G.Prehis_DE or _G.FarmBlazeEM or _G.Dojoo or _G.CollectPresent or _G.AutoLawKak or _G.TpLab or _G.AutoPhoenixF or _G.AutoFarmChest or _G.AutoHytHallow or _G.LongsWord or _G.BlackSpikey or _G.AutoHolyTorch or _G.TrainDrago  or _G.AutoSaber or _G.FarmMastery_Dev or _G.CitizenQuest or _G.AutoEctoplasm or _G.KeysRen or _G.Auto_Rainbow_Haki or _G.obsFarm or _G.AutoBigmom or _G.Doughv2 or _G.AuraBoss or _G.Raiding or _G.Auto_Cavender or _G.TpPly or _G.Bartilo_Quest or _G.Level or _G.FarmEliteHunt or _G.AutoZou or _G.AutoFarm_Bone or getgenv().AutoMaterial or _G.CraftVM or _G.FrozenTP or _G.ShotHL or _G.TPDoor or _G.AcientOne or _G.AutoFarmNear or _G.AutoRaidCastle or _G.DarkBladev3 or _G.AutoFarmRaid or _G.Auto_Cake_Prince or _G.Addealer or _G.TPNpc or _G.TwinHook or _G.FindMirage or _G.FrozenDimension or _G.FarmChestM or _G.Shark or _G.TerrorShark or _G.Piranha or _G.MobCrew or _G.SeaBeast1 or _G.FishBoat or _G.AutoPole or _G.AutoPoleV2 or _G.Auto_SuperHuman or _G.AutoDeathStep or _G.Auto_SharkMan_Karate or _G.Auto_Electric_Claw or _G.AutoDragonTalon or _G.Auto_Def_DarkCoat or _G.Auto_God_Human or _G.Auto_Tushita or _G.AutoMatSoul or _G.AutoKenVTWO or _G.AutoSerpentBow or _G.AutoFMon or _G.Auto_Soul_Guitar or _G.TPGEAR or _G.AutoSaw or _G.AutoTridentW2 or _G.AutoEvoRace or _G.AutoGetQuestBounty or _G.MarinesCoat or _G.TravelDres or _G.Defeating or _G.DummyMan or _G.Auto_Yama or _G.Auto_SwanGG or _G.SwanCoat or _G.AutoEcBoss or _G.Auto_Mink or _G.Auto_Human or _G.Auto_Skypiea or _G.Auto_Fish or _G.CDK_TS or _G.CDK_YM or _G.CDK or _G.AutoFarmGodChalice or _G.AutoFistDarkness or _G.AutoMiror or _G.Teleport or _G.AutoKilo or _G.AutoGetUsoap or _G.Praying or _G.TryLucky or _G.AutoColShad or _G.AutoUnHaki or _G.Auto_DonAcces or _G.AutoRipIngay or _G.DragoV3 or _G.DragoV1 or _G.SailBoats or NextIs or _G.FarmGodChalice or _G.IceBossRen or senth or senth2 or _G.Lvthan or _G.beasthunter or _G.DangerLV or _G.Relic123 or _G.tweenKitsune or _G.Collect_Ember or _G.AutofindKitIs or _G.Snaguine or _G.TwFruits or _G.tweenKitShrine or _G.Tp_LgS or _G.Tp_MasterA or _G.tweenShrine or _G.FarmMastery_G or _G.FarmMastery_S or _G.FarmBoss or _G.AutoFarmAllBoss or _G.AutoFishSlap or _G.TweenBoatOwner or _G.FarmTyrant or _G.FarmPhaBinh or _G.AutoSpawnCP or _G.AutoBerryH or _G.AutoChestBP or _G.FarmEliteHop or _G.AutoHop_Dough or _G.AutoDoughKing or _G.AutoAttackDoughKing or _G.AutoChipFruit or _G.AutoChipBeli or _G.Auto_StartRaid or _G.StartEvent or _G.AutoMysticIsland or _G.AutoPlayerHunter or _G.SafeMode or _G.AutoKillMob or _G.AutoStartPrehistoric or _G.AutoUnHaki or _G.AutoFarmIsland or _G.AutoFarmDungeon or _G.AutoFarmCandy or _G.AutoTP_Gift or _G.AutoTPGift or _G.AutoTPAndCollect or _G.MasterAutoLevel or _G.MasterAutoCandy or _G.TPFloor1 or _G.TPFloor2 or _G.TPFloor3 or _G.TPFloor4 or _G.FarmEliteH or _G.Safemode or _G.Greybeard or _G.ResetPH) and true or false
+    return (_G.StartFarm or _G.SailBoat_Hydra or _G.WardenBoss or _G.AutoFactory or _G.HighestMirage or _G.HCM or _G.PGB or _G.Leviathan1 or _G.UPGDrago or _G.Complete_Trials or _G.TpDrago_Prehis or _G.BuyDrago or __DIO_BuyFlying or _G.BuyMelee_BuyBlackLeg or _G.BuyMelee_BuyElectro or _G.BuyMelee_BuyFishmanKarate or _G.BuyMelee_BuyDragonClaw or _G.AutoFireFlowers or _G.DT_Uzoth or _G.AutoBerry or _G.Prefully or _G.Prehis_Find or _G.Prehis_Skills or _G.Prehis_DB or _G.Prehis_DE or _G.FarmBlazeEM or _G.Dojoo or _G.CollectPresent or _G.AutoPhoenixF or _G.AutoFarmChest or _G.AutoHytHallow or _G.LongsWord or _G.BlackSpikey or _G.AutoHolyTorch or _G.TrainDrago  or _G.AutoSaber or _G.FarmMastery_Dev or _G.CitizenQuest or _G.AutoEctoplasm or _G.KeysRen or _G.Auto_Rainbow_Haki or _G.obsFarm or _G.AutoBigmom or _G.Doughv2 or _G.AuraBoss or _G.Raiding or _G.AutoRaid or _G.AutoMultiRaid or _G.AutoJoinDungeon or _G.AutoAttackDungeon or _G.AutoPickCardDungeon or _G.AutoBuyChipAttackLaw or _G.Auto_Cavender or _G.TpPly or _G.Bartilo_Quest or _G.Level or _G.FarmEliteHunt or _G.AutoZou or _G.AutoFarm_Bone or getgenv().AutoMaterial or _G.CraftVM or _G.FrozenTP or _G.ShotHL or _G.TPDoor or _G.AcientOne or _G.AutoFarmNear or _G.AutoRaidCastle or _G.DarkBladev3 or _G.AutoFarmRaid or _G.Auto_Cake_Prince or _G.Addealer or _G.TPNpc or _G.TwinHook or _G.FindMirage or _G.FrozenDimension or _G.FarmChestM or _G.Shark or _G.TerrorShark or _G.Piranha or _G.MobCrew or _G.SeaBeast1 or _G.FishBoat or _G.AutoPole or _G.AutoPoleV2 or _G.Auto_SuperHuman or _G.AutoDeathStep or _G.Auto_SharkMan_Karate or _G.Auto_Electric_Claw or _G.AutoDragonTalon or _G.Auto_Def_DarkCoat or _G.Auto_God_Human or _G.Auto_Tushita or _G.AutoMatSoul or _G.AutoKenVTWO or _G.AutoSerpentBow or _G.AutoFMon or _G.Auto_Soul_Guitar or _G.TPGEAR or _G.AutoSaw or _G.AutoTridentW2 or _G.AutoEvoRace or _G.AutoGetQuestBounty or _G.MarinesCoat or _G.TravelDres or _G.Defeating or _G.DummyMan or _G.Auto_Yama or _G.Auto_SwanGG or _G.SwanCoat or _G.AutoEcBoss or _G.Auto_Mink or _G.Auto_Human or _G.Auto_Skypiea or _G.Auto_Fish or _G.CDK_TS or _G.CDK_YM or _G.CDK or _G.AutoFarmGodChalice or _G.AutoFistDarkness or _G.AutoMiror or _G.Teleport or _G.AutoKilo or _G.AutoGetUsoap or _G.Praying or _G.TryLucky or _G.AutoColShad or _G.AutoUnHaki or _G.Auto_DonAcces or _G.AutoRipIngay or _G.DragoV3 or _G.DragoV1 or _G.SailBoats or NextIs or _G.FarmGodChalice or _G.IceBossRen or senth or senth2 or _G.Lvthan or _G.beasthunter or _G.DangerLV or _G.Relic123 or _G.tweenKitsune or _G.Collect_Ember or _G.AutofindKitIs or _G.Snaguine or _G.TwFruits or _G.tweenKitShrine or _G.Tp_LgS or _G.Tp_MasterA or _G.tweenShrine or _G.FarmMastery_G or _G.FarmMastery_S or _G.FarmBoss or _G.AutoFarmAllBoss or _G.AutoFishSlap or _G.TweenBoatOwner or _G.FarmTyrant or _G.FarmPhaBinh or _G.AutoSpawnCP or _G.AutoBerryH or _G.AutoChestBP or _G.FarmEliteHop or _G.AutoAttackDoughKing or _G.AutoSummonDoughKing or _G.AutoHopDoughKing or _G.StartEvent or _G.AutoMysticIsland or _G.AutoPlayerHunter or _G.SafeMode or _G.AutoKillMob or _G.AutoStartPrehistoric or _G.AutoUnHaki or _G.AutoFarmIsland or _G.AutoFarmCandy or _G.AutoTP_Gift or _G.AutoTPGift or _G.AutoTPAndCollect or _G.MasterAutoLevel or _G.MasterAutoCandy or _G.FarmEliteH or _G.Safemode or _G.Greybeard or _G.ResetPH) and true or false
 end
 __DIO_HlOn = function()
     local __ch = plr.Character
@@ -4176,7 +4185,7 @@ local Tabs = {
     Travel = Window:MakeTab({ Title = "Teleport Island", Icon = "" }),
     Settings = Window:MakeTab({ Title = "Setting", Icon = "" }),
     Main = Window:MakeTab({ Title = "Farming", Icon = "" }),
-    Quests = Window:MakeTab({ Title = "Quest And Item", Icon = "" }),
+    Quests = Window:MakeTab({ Title = "Other And Item", Icon = "" }),
     SeaEvent = Window:MakeTab({ Title = "Sea Event", Icon = "" }),
     Race = Window:MakeTab({ Title = "Mirage And Race", Icon = "" }),
     Prehistoric = Window:MakeTab({ Title = "Prehistoric Event", Icon = "" }),
@@ -4184,6 +4193,7 @@ local Tabs = {
     Esp = Window:MakeTab({ Title = "Stats And Esp", Icon = "" }),
     Raids = Window:MakeTab({ Title = "Fruit And Raid", Icon = "" }),
     Combat = Window:MakeTab({ Title = "PvP", Icon = "" }),
+    Webhook = Window:MakeTab({ Title = "Webhook Notify", Icon = "" }),
     Misc = Window:MakeTab({ Title = "Misc", Icon = "" })
 }
 __DIO_T = setmetatable({
@@ -4203,8 +4213,9 @@ __DIO_T = setmetatable({
     ["Auto Kill Mob"] = "Auto Kill Mob",
     ["Select Island"] = "Select Island",
     ["Auto Farm All Island"] = "Auto Farm All Island",
-    ["Auto Dough King [Fully]"] = "Auto Dough King [Fully]",
-    ["Auto Farm Dough King + Hop"] = "Auto Farm Dough King + Hop",
+    ["Attack Dough King"] = "Attack Dough King",
+    ["Summon Dough King"] = "Summon Dough King",
+    ["Hop Find Dough King"] = "Hop Find Dough King",
     ["Choose Material"] = "Choose Material",
     ["Auto Farm Materials"] = "Auto Farm Materials",
     ["Select Boss"] = "Select Boss",
@@ -4215,12 +4226,10 @@ __DIO_T = setmetatable({
     ["Auto Mastery Fruits"] = "Auto Mastery Fruits",
     ["Auto Mastery Gun"] = "Auto Mastery Gun",
     ["Auto Mastery All Sword"] = "Auto Mastery All Sword",
-    ["Fast Attack"] = "Fast Attack",
     ["Auto Use Skill Melee/Sword If lag Mob or Ghost Mob"] = "Auto Use Skill Melee/Sword If lag Mob or Ghost Mob",
     ["Tween speed 600 if near"] = "Tween speed 600 if near",
     ["Bring Mobs"] = "Bring Mobs",
     ["Up Y When Low Health"] = "Up Y When Low Health",
-    ["Fast Attack Delay"] = "Fast Attack Delay",
     ["Mode Farm"] = "Mode Farm",
     ["Orbit Speed"] = "Orbit Speed",
     ["Orbit Height"] = "Orbit Height",
@@ -4366,6 +4375,7 @@ __DIO_T = setmetatable({
     ["Auto Start Prehistoric Event"] = "Auto Start Prehistoric Event",
     ["Auto Patch Prehistoric Event"] = "Auto Patch Prehistoric Event",
     ["Kill Aura"] = "Kill Aura",
+    ["Kill aura Raid and Prehistoric Event"] = "Kill aura Raid and Prehistoric Event",
     ["Auto Collect Dino Bones"] = "Auto Collect Dino Bones",
     ["Auto Collect Dragon Eggs"] = "Auto Collect Dragon Eggs",
     ["Auto Reset When Complete Volcano"] = "Auto Reset When Complete Volcano",
@@ -4502,6 +4512,13 @@ __DIO_T = setmetatable({
     ["Remove Hit VFX"] = "Remove Hit VFX",
     ["Remove Death & Respawned VFX"] = "Remove Death & Respawned VFX",
     ["Disable Notify"] = "Disable Notify",
+    ["Input Url Webhook"] = "Input Url Webhook",
+    ["Input Discord Ping (Everyone/ID)"] = "Input Discord Ping (Everyone/ID)",
+    ["Ping Everyone/Id Discord"] = "Ping Everyone/Id Discord",
+    ["Webhook Store Fruit"] = "Webhook Store Fruit",
+    ["Webhook Find Prehistoric Island"] = "Webhook Find Prehistoric Island",
+    ["Webhook Find Leviathan"] = "Webhook Find Leviathan",
+    ["Webhook Find Mirage"] = "Webhook Find Mirage",
     ["Turn on Walk on Water"] = "Turn on Walk on Water",
     ["Turn on Ice Walk"] = "Turn on Ice Walk",
 }, { __index = function(_, k) return k end })
@@ -4873,6 +4890,40 @@ end
 spawn(function()
     while true do
         UpdateGameTime()
+        __DIO_wait(2)
+    end
+end)
+-- [3nn PORT] Next FoD/God's Chalice spawn countdown (Banana NextTimerServerLabel logic).
+-- Oldest island in _WorldOrigin.Locations by TimeIn attr; elapsed = tick()-25200-TimeIn; 4h (14400s) cycle.
+local NextFoDSpawn = Tabs.Status:AddParagraph("Next Time Spawn Fist of Darkness or God's Chalice", "")
+local function __DIO_GetOldestLocation()
+    local oldest, oldestTime = nil, 1 / 0
+    local origin = workspace:FindFirstChild("_WorldOrigin")
+    local locs = origin and origin:FindFirstChild("Locations")
+    if not locs then return nil end
+    for _, l in ipairs(locs:GetChildren()) do
+        local t = l:GetAttribute("TimeIn")
+        if t and t < oldestTime then oldestTime, oldest = t, l end
+    end
+    return oldest
+end
+function UpdateNextFoDSpawn()
+    local loc = __DIO_GetOldestLocation()
+    if not loc then return end
+    local elapsed = tick() - 25200 - loc:GetAttribute("TimeIn")
+    local cycle = 14400
+    local remain = cycle - elapsed % cycle
+    local h = math.floor(remain / 3600)
+    local mnt = math.floor(remain % 3600 / 60)
+    local s = math.floor(remain % 60)
+    NextFoDSpawn:SetDesc(string.format("%.0fh %.0fm %.0fs", h, mnt, s))
+    if h == 0 and mnt == 0 and s <= 5 then
+        getgenv().GoCollectChest = true
+    end
+end
+spawn(function()
+    while true do
+        pcall(UpdateNextFoDSpawn)
         __DIO_wait(2)
     end
 end)
@@ -5557,10 +5608,9 @@ __DIO_SafeLoop(function()
                 pcall(__DIO_GhostClean)
                 local enemyName = questData[1]
                 local target = __DIO_NearestMob(enemyName, RootF.Position)
-                if target then
+                while target and _G.Level do
                     local switched = false
                     repeat
-                        __DIO_wait(Sec)
                         if not _G.Level then break end
                         local curRoot = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
                         if not curRoot then break end
@@ -5572,14 +5622,18 @@ __DIO_SafeLoop(function()
                         Attack.Kill(target, _G.Level)
                         if not qGUI.Visible then break end
                         if __DIO_GhostCheck(target) then switched = true break end
+                        __DIO_wait()
                     until not target.Parent
                        or not target:FindFirstChild("Humanoid")
                        or target.Humanoid.Health <= 0
-                    if not switched then
-                        __DIO_wait(0.8)
-                    end
-                    return
+                    -- [BANANA] re-pick immediately: no 0.8s nap, no outer wait
+                    if not _G.Level then break end
+                    if switched then break end
+                    if not qGUI.Visible then break end
+                    __DIO_wait()
+                    target = __DIO_NearestMob(enemyName, RootF.Position)
                 end
+                if target then return end
                 local moved = false
                 local sp = workspace:FindFirstChild("_WorldOrigin")
                 sp = sp and sp:FindFirstChild("EnemySpawns")
@@ -5606,7 +5660,7 @@ __DIO_SafeLoop(function()
     end
 end, "L3585")
 __DIO_SafeLoop(function()
-  while __DIO_wait(1) do
+  while __DIO_wait() do
     pcall(function()
       if _G.AutoFarmNear then
         -- [3nn PORT] Aura Farm: nearest alive mob within AuraDistance (default 300)
@@ -5625,7 +5679,7 @@ __DIO_SafeLoop(function()
           end
           if __best then
             pcall(__DIO_3nn_SizePart, __best)
-            repeat __DIO_wait(0.25) Attack.Kill(__best, _G.AutoFarmNear) until not _G.AutoFarmNear or not __best.Parent or not __best:FindFirstChildOfClass("Humanoid") or __best:FindFirstChildOfClass("Humanoid").Health <= 0
+            repeat Attack.Kill(__best, _G.AutoFarmNear); __DIO_wait() until not _G.AutoFarmNear or not __best.Parent or not __best:FindFirstChildOfClass("Humanoid") or __best:FindFirstChildOfClass("Humanoid").Health <= 0
           end
         end
       end
@@ -5648,6 +5702,7 @@ __DIO_SafeLoop(function()
           repeat __DIO_wait(0.25)
             EquipWeapon(_G.SelectWeapon)
             _tp(CFrame.new(448.46756, 199.356781, -441.389252))
+            pcall(__DIO_3nn_M1, v)
           until v.Humanoid.Health <= 0 or _G.AutoFactory == false
         else
           _tp(CFrame.new(448.46756, 199.356781, -441.389252))
@@ -5664,7 +5719,7 @@ Callback = function(Value)
   _G.AutoRaidCastle = Value
 end})
 __DIO_SafeLoop(function()
-  while __DIO_wait(1) do
+  while __DIO_wait() do
     if _G.AutoRaidCastle then
       pcall(function()
       local CFrameCastleRaid = CFrame.new(-5496.17432, 313.768921, -2841.53027, 0.924894512, 7.37058015e-09, 0.380223751, 3.5881019e-08, 1, -1.06665446e-07, -0.380223751, 1.12297109e-07, 0.924894512)
@@ -5673,7 +5728,7 @@ __DIO_SafeLoop(function()
             if v:FindFirstChild("HumanoidRootPart") and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
               if v.Name then
                 if (v.HumanoidRootPart.Position - Root.Position).Magnitude <= 2000 then
-                  repeat __DIO_wait(0.25) Attack.Kill(v,_G.AutoRaidCastle) until not _G.AutoRaidCastle or not v.Parent or v.Humanoid.Health <= 0 or not workspace.Enemies:FindFirstChild(v.Name)
+                  repeat Attack.Kill(v,_G.AutoRaidCastle); __DIO_wait() until not _G.AutoRaidCastle or not v.Parent or v.Humanoid.Health <= 0 or not workspace.Enemies:FindFirstChild(v.Name)
                 end
               end
             end
@@ -5706,7 +5761,7 @@ __DIO_SafeLoop(function()
         local EctoTable = {"Ship Deckhand","Ship Engineer","Ship Steward","Ship Officer","Arctic Warrior"}
         local v = GetConnectionEnemies(EctoTable)
 		if Attack.Alive(v) then
-		  repeat __DIO_wait(0.25) Attack.Kill(v, _G.AutoEctoplasm)until not _G.AutoEctoplasm or not v.Parent or v.Humanoid.Health <= 0
+		  repeat Attack.Kill(v, _G.AutoEctoplasm); __DIO_wait() until not _G.AutoEctoplasm or not v.Parent or v.Humanoid.Health <= 0
 	    else
 	      replicated.Remotes.CommF_:InvokeServer("requestEntrance",Vector3.new(923.21252441406, 126.9760055542, 32852.83203125))
 	    end
@@ -6444,7 +6499,7 @@ Tabs.Main:AddToggle({
     end
 })
 __DIO_SafeLoop(function()
-    while __DIO_wait(1) do
+    while __DIO_wait() do
         if not _G.AutoFarmIsland then continue end
         if not _G.SelectIsland then continue end
         if not IslandData then continue end
@@ -6464,10 +6519,10 @@ __DIO_SafeLoop(function()
             and v.Humanoid.Health > 0 then
                 found = true
                 repeat
-                    __DIO_wait(0.25)
                     _tp(v.HumanoidRootPart.CFrame * CFrame.new(0,10,0))
                     Attack.Kill(v, true)
                     if __DIO_GhostCheck(v) then break end
+                    __DIO_wait()
                 until not _G.AutoFarmIsland
                    or not v.Parent
                    or v.Humanoid.Health <= 0
@@ -6563,7 +6618,7 @@ __DIO_SafeLoop(function()
 		end)
 	end
 end, "L4601")
-Tabs.Main:AddSection("Farm Cake")
+Tabs.Main:AddSection("Dough king Farm")
 TELEPORT_DISTANCE_THRESHOLD = 15
 TeleportConditional = function(hrp, targetCFrame, threshold)
     if not hrp or not targetCFrame then return end
@@ -6584,7 +6639,7 @@ local __DIO_CAKE_MOBS = {
 __DIO_CakeBoss = nil
 __DIO_CakeQuestT = 0
 __DIO_SafeLoop(function()
-    while __DIO_wait(1) do
+    while __DIO_wait() do
         if _G.Auto_Cake_Prince then
             pcall(function()
                 local char = plr.Character
@@ -6613,7 +6668,6 @@ __DIO_SafeLoop(function()
                     local broot = boss:FindFirstChild("HumanoidRootPart")
                     if hum and broot and hum.Health > 0 then
                         repeat
-                            __DIO_wait(Sec)
                             if not _G.Auto_Cake_Prince then break end
                             local hr2 = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
                             if not hr2 then break end
@@ -6629,6 +6683,7 @@ __DIO_SafeLoop(function()
                                 __DIO_CakeBoss = nil
                                 break
                             end
+                            __DIO_wait()
                         until not _G.Auto_Cake_Prince
                            or not boss.Parent
                            or (boss:FindFirstChild("Humanoid") and boss.Humanoid.Health <= 0)
@@ -6661,7 +6716,6 @@ __DIO_SafeLoop(function()
                 end
                 if bestMob then
                     repeat
-                        __DIO_wait(Sec)
                         if not _G.Auto_Cake_Prince then break end
                         if not bestMob.Parent then break end
                         local bmH = bestMob:FindFirstChild("Humanoid")
@@ -6673,6 +6727,7 @@ __DIO_SafeLoop(function()
                         if other and other.Transparency == 0 then break end
                         Attack.Kill2(bestMob, true)
                         if __DIO_GhostCheck(bestMob) then break end
+                        __DIO_wait()
                     until not _G.Auto_Cake_Prince or not bestMob.Parent
                        or (bestMob:FindFirstChild("Humanoid") and bestMob.Humanoid.Health <= 0)
                     return
@@ -6698,203 +6753,198 @@ __DIO_SafeLoop(function()
         end
     end
 end, "L4825")
-local __dkWasHunting = false
-local function __DIO_DKHasItem(itemName)
-    local ok, item = pcall(GetBP, itemName)
-    return ok and item ~= nil
-end
-local function __DIO_DKSetChestSearch(enabled)
-    if enabled then
-        pcall(__DIO_BorrowFlag, "AutoDoughKing", "AutoFarmChest")
-    else
-        pcall(__DIO_ReleaseFlag, "AutoDoughKing", "AutoFarmChest")
+-- =====================================================================
+-- [3nn PORT] Section "Boss Dough King" (3nn 5800-5831 toggles, 6566-6745 flow).
+-- Old DIO "Auto Dough King [Fully]" + "Auto Farm Dough King + Hop" deleted.
+-- Mapped: CheckNameBoss -> RS+Enemies scan, DetectItemPlr -> GetBP, cocoa -> GetM,
+-- elites {Deandre,Urban,Diablo}, SweetChaliceNpc exchange, CakePrinceSpawner
+-- (3nn: no 2nd arg), hop -> DIO HopServer (5s throttle like 3nn SpecialHop).
+-- Skipped vs 3nn: y-filler-farm branch (unresolved upvalue, unreachable once mats
+-- ready - we stage at the arena instead), spawn-part micro-hunt (DIO
+-- GetConnectionEnemies + known CFrames instead), UsedualFlock (DIO re-equips in
+-- Attack.Kill already).
+-- Flags: _G.AutoAttackDoughKing (reused, already in tween registries),
+-- _G.AutoSummonDoughKing, _G.AutoHopDoughKing (both registered).
+-- =====================================================================
+_G.AutoAttackDoughKing = false
+_G.AutoSummonDoughKing = false
+_G.AutoHopDoughKing = false
+local __DK_COCOA_MOBS = { "Cocoa Warrior", "Chocolate Bar Battler" }
+local __DK_ELITE = { "Deandre", "Urban", "Diablo" }
+local __DK_STAGE = CFrame.new(-1943.6765, 251.5095, -12337.8809)
+local __DK_COCOA_CF = CFrame.new(402.7189025878906, 81.06050109863281, -12259.54296875)
+__DIO_DKFindBoss = function()
+    for _, __root in ipairs({ __SVC_RS, workspace:FindFirstChild("Enemies") }) do
+        if __root then
+            local b = __root:FindFirstChild("Dough King")
+            if b and __DIO_MobAliveRoot(b) then return b end
+        end
     end
 end
-local function __DIO_DKHasChalice()
-    return __DIO_DKHasItem("God's Chalice") or __DIO_DKHasItem("Sweet Chalice")
-end
-__DIO_DKMode, __DIO_DKModeT = nil, 0
-__DIO_DKSetMode = function(mode, force)
-    if mode == __DIO_DKMode and not force then return end
-    if not force and __DIO_DKMode ~= nil and (tick() - (__DIO_DKModeT or 0)) < 2 then return end
-    __DIO_DKMode  = mode
-    __DIO_DKModeT = tick()
-    if mode == "elite" then
-        pcall(function() __DIO_BorrowFlag("AutoDoughKing", "FarmEliteHunt") end)
-        __DIO_DKSetChestSearch(false)
-    elseif mode == "chest" then
-        pcall(function() __DIO_ReleaseFlag("AutoDoughKing", "FarmEliteHunt") end)
-        __DIO_DKSetChestSearch(true)
-    else
-        pcall(function() __DIO_ReleaseFlag("AutoDoughKing", "FarmEliteHunt") end)
-        __DIO_DKSetChestSearch(false)
-    end
+__DIO_DKSmack = function(mob)
+    if not mob or not mob.Parent then return end
+    pcall(__DIO_3nn_SizePart, mob)
+    local __ch = plr.Character
+    local __eq = __ch and __ch:FindFirstChildOfClass("Tool")
+    local __off = (__eq and __eq.ToolTip == "Blox Fruit") and -7 or 7
+    local __mr = mob:FindFirstChild("HumanoidRootPart")
+    if __mr then _tp(__mr.CFrame * CFrame.new(__off, 20, 0)) end
+    pcall(__DIO_3nn_M1, mob)
 end
 Tabs.Main:AddToggle({
-    Name = __DIO_T["Auto Dough King [Fully]"],
+    Name = __DIO_T["Attack Dough King"],
+    Description = "",
     Default = false,
     Callback = function(Value)
-        _G.AutoDoughKing = (Value == true)
-        if _G.AutoDoughKing then
+        _G.AutoAttackDoughKing = (Value == true)
+        if _G.AutoAttackDoughKing then
             __DIO_TweenAllowT = tick()
             __DIO_TweenBlockT = 0
             __DIO_FalseSince = nil
-            __dkWasHunting = false
-            if not __DIO_DKHasChalice() then
-                __DIO_DKSetMode("chest", true)
-            end
             pcall(function() __DIO_TweenOnIfAnyFlag() end)
             pcall(function() __DIO_Wake(true) end)
         else
-            __dkWasHunting = false
-            pcall(function() __DIO_DKSetMode("off", true) end)
-            pcall(function() __DIO_ReleaseAll("AutoDoughKing") end)
             StopTween(false)
             __DIO_CurTarget = nil
             if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
         end
     end
 })
-__DIO_SafeLoop(function()
-    while __DIO_wait(1) do
-        if _G.AutoDoughKing then
-            pcall(function()
-                local __bossDK = GetConnectionEnemies("Dough King")
-                if __bossDK then
-                    repeat
-                        __DIO_wait(0.25)
-                        if not _G.AutoDoughKing then break end
-                        if not __bossDK.Parent or not __DIO_MobAliveRoot(__bossDK) then break end
-                        Attack.Kill(__bossDK, true)
-                    until not _G.AutoDoughKing or not __bossDK.Parent or not __DIO_MobAliveRoot(__bossDK)
-                    return
-                end
-                local __mapDK = workspace:FindFirstChild("Map")
-                local __cakeLoaf = __mapDK and __mapDK:FindFirstChild("CakeLoaf")
-                if not __cakeLoaf then
-                    __DIO_TweenDrop()
-                    return
-                end
-                if not __cakeLoaf:FindFirstChild("RedDoor") then
-                    if GetBP("Red Key") then
-                        replicated.Remotes.CommF_:InvokeServer("CakeScientist", "Check")
-                        replicated.Remotes.CommF_:InvokeServer("RaidsNpc", "Check")
-                    end
-                elseif GetBP("Red Key") then
-                    repeat
-                        __DIO_wait(0.25)
-                        _tp(CFrame.new(-2681.97998, 64.3921585, -12853.7363,0.149007782, -1.87902192e-08, 0.98883605,3.60619588e-08, 1, 1.35681812e-08,-0.98883605, 3.36376011e-08, 0.149007782))
-                    until not _G.AutoDoughKing or (plr.Character.HumanoidRootPart.Position - CFrame.new(-2681.97998, 64.3921585, -12853.7363,0.149007782, -1.87902192e-08, 0.98883605,3.60619588e-08, 1, 1.35681812e-08,-0.98883605, 3.36376011e-08, 0.149007782).Position).Magnitude <= 5
-                    EquipWeapon("Red Key")
-                end
-                if GetBP("Sweet Chalice") then
-                    replicated.Remotes.CommF_:InvokeServer("CakePrinceSpawner", true)
-                    __DIO_ReleaseFlag("AutoDoughKing","FarmEliteHunt")
-                    pcall(function() __DIO_ReleaseFlag("AutoDoughKing","AutoFarmChest") end)
-                    __dkWasHunting = false
-                    return
-                end
-                pcall(function()
-                    if GetBP("God's Chalice") and GetM("Conjured Cocoa") >= 10 then
-                        replicated.Remotes.CommF_:InvokeServer("SweetChaliceNpc")
-                        __DIO_wait(0.5)
-                    end
-                end)
-                local __eliteSpawnedDK = false
-                pcall(function()
-                    __eliteSpawnedDK = (__SVC_RS:FindFirstChild("Diablo")
-                        or __SVC_RS:FindFirstChild("Deandre")
-                        or __SVC_RS:FindFirstChild("Urban")
-                        or __SVC_WS.Enemies:FindFirstChild("Diablo")
-                        or __SVC_WS.Enemies:FindFirstChild("Deandre")
-                        or __SVC_WS.Enemies:FindFirstChild("Urban")) ~= nil
-                end)
-                local __hasChaliceDK = __DIO_DKHasChalice()
-                if not __hasChaliceDK then
-                    __DIO_DKSetMode(__eliteSpawnedDK and "elite" or "chest")
-                    if __dkWasHunting == false then
-                        __dkWasHunting = true
-                        __DIO_TweenDrop("dk-no-cakeloaf")
-                        pcall(function() __DIO_Wake(true) end)
-                    end
-                    return
-                end
-                __dkWasHunting = false
-                pcall(function() __DIO_DKSetMode("off") end)
-                __DIO_DKSetChestSearch(false)
-                if GetM("Conjured Cocoa") <= 10 then
-                    local v = GetConnectionEnemies{"Cocoa Warrior", "Chocolate Bar Battler"}
-                    if v then
-                        repeat
-                            __DIO_wait(0.25)
-                            if not _G.AutoDoughKing then break end
-                            if not v.Parent or not __DIO_MobAliveRoot(v) then break end
-                            Attack.Kill(v, true)
-                        until _G.AutoDoughKing == false or not v.Parent or not __DIO_MobAliveRoot(v)
-                    else
-                        _tp(CFrame.new(402.7189025878906, 81.06050109863281, -12259.54296875))
-                    end
-                else
-                    local __waitDK = CFrame.new(-1943.6765, 251.5095, -12337.8809)
-                    local __hrpDK = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
-                    if __hrpDK and (__waitDK.Position - __hrpDK.Position).Magnitude > 20 then
-                        _tp(__waitDK)
-                    end
-                end
-            end)
-        end
-    end
-end, "L4855")
 Tabs.Main:AddToggle({
-    Name = __DIO_T["Auto Farm Dough King + Hop"],
+    Name = __DIO_T["Summon Dough King"],
+    Description = "",
     Default = false,
     Callback = function(Value)
-        _G.AutoHop_Dough = Value
-        if not Value then
-            StopTween(false)
-            __DIO_CurTarget = nil
-            if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+        _G.AutoSummonDoughKing = (Value == true)
+        if Value and not _G.AutoAttackDoughKing then
+            print("[DIO] Turn On Attack Dough King Plz")
         end
     end
 })
-local function HopServer()
-    pcall(function()
-        local Http = __SVC_HTTP
-        local Servers = {}
-        local req = game:HttpGet("https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100")
-        local data = Http:JSONDecode(req)
-        for i,v in pairs(data.data) do
-            if v.playing < v.maxPlayers then
-                table.insert(Servers, v.id)
-            end
+Tabs.Main:AddToggle({
+    Name = __DIO_T["Hop Find Dough King"],
+    Description = "",
+    Default = false,
+    Callback = function(Value)
+        _G.AutoHopDoughKing = (Value == true)
+        if Value and not _G.AutoAttackDoughKing then
+            print("[DIO] Turn On Attack Dough King Plz")
         end
-        if #Servers > 0 then
-            __SVC_TP:TeleportToPlaceInstance(game.PlaceId, Servers[math.random(1,#Servers)], game.Players.LocalPlayer)
-        end
-    end)
-end
+    end
+})
 __DIO_SafeLoop(function()
-    while __DIO_wait(1) do
-        if _G.AutoHop_Dough then
+    while __DIO_wait(0.5) do
+        if _G.AutoSummonDoughKing then
             pcall(function()
-                local v = GetConnectionEnemies("Dough King")
-                if v then
-                    repeat
-                        __DIO_wait(0.25)
-                        Attack.Kill(v, _G.AutoHop_Dough)
-                    until not _G.AutoHop_Dough or not v.Parent or v.Humanoid.Health <= 0
-                else
-                    _tp(CFrame.new(-1943.6765, 251.5095, -12337.8809))
+                if GetBP("Sweet Chalice") and not __DIO_DKFindBoss() then
+                    replicated.Remotes.CommF_:InvokeServer("CakePrinceSpawner")
                     __DIO_wait(2)
-                    local checkAgain = GetConnectionEnemies("Dough King")
-                    if not checkAgain and _G.AutoHop_Dough then
-                        HopServer()
-                    end
                 end
             end)
         end
     end
-end, "L4947")
+end, "L-DKSUM")
+__DIO_DKHopT = 0
+__DIO_SafeLoop(function()
+    while __DIO_wait(0.25) do
+        if _G.AutoAttackDoughKing then
+            pcall(function()
+                local char = plr.Character
+                if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+                local boss = __DIO_DKFindBoss()
+                if boss then
+                    repeat
+                        __DIO_wait()
+                        if not _G.AutoAttackDoughKing then break end
+                        if not boss.Parent or not __DIO_MobAliveRoot(boss) then break end
+                        __DIO_DKSmack(boss)
+                    until not _G.AutoAttackDoughKing or not boss.Parent or not __DIO_MobAliveRoot(boss)
+                    return
+                end
+                if _G.AutoHopDoughKing then
+                    if tick() - (__DIO_DKHopT or 0) > 5 then
+                        __DIO_DKHopT = tick()
+                        if not __DIO_DKFindBoss() and _G.AutoHopDoughKing then
+                            HopServer()
+                        end
+                    end
+                    return
+                end
+                if not _G.AutoSummonDoughKing then return end
+                if GetBP("Sweet Chalice") then
+                    local __hrp = char:FindFirstChild("HumanoidRootPart")
+                    if __hrp and (__DK_STAGE.Position - __hrp.Position).Magnitude > 20 then
+                        _tp(__DK_STAGE)
+                    end
+                    return
+                end
+                if (GetM("Conjured Cocoa") or 0) < 10 then
+                    local mob = GetConnectionEnemies(__DK_COCOA_MOBS)
+                    if mob then
+                        repeat
+                            __DIO_wait()
+                            if not _G.AutoAttackDoughKing then break end
+                            if not mob.Parent or not __DIO_MobAliveRoot(mob) then break end
+                            __DIO_DKSmack(mob)
+                        until not _G.AutoAttackDoughKing or not mob.Parent or not __DIO_MobAliveRoot(mob)
+                    else
+                        _tp(__DK_COCOA_CF)
+                    end
+                    return
+                end
+                if not GetBP("God's Chalice") then
+                    local elite
+                    for _, __root in ipairs({ __SVC_RS, workspace:FindFirstChild("Enemies") }) do
+                        if __root then
+                            for _, __nm in ipairs(__DK_ELITE) do
+                                local __e = __root:FindFirstChild(__nm)
+                                if __e and __DIO_MobAliveRoot(__e) then elite = __e break end
+                            end
+                        end
+                        if elite then break end
+                    end
+                    if elite then
+                        local __take = false
+                        pcall(function()
+                            local __q = plr.PlayerGui:FindFirstChild("Main")
+                            __q = __q and __q:FindFirstChild("Quest")
+                            local __vis = __q and __q.Visible
+                            local __txt = ""
+                            if __vis then
+                                local __c = __q:FindFirstChild("Container")
+                                __c = __c and __c:FindFirstChild("QuestTitle")
+                                __c = __c and __c:FindFirstChild("Title")
+                                __txt = (__c and __c.Text) or ""
+                            end
+                            if (not __vis) or not string.find(__txt, elite.Name, 1, true) then
+                                __take = true
+                            end
+                        end)
+                        if __take then
+                            replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
+                            replicated.Remotes.CommF_:InvokeServer("EliteHunter")
+                        else
+                            repeat
+                                __DIO_wait()
+                                if not _G.AutoAttackDoughKing then break end
+                                if not elite.Parent or not __DIO_MobAliveRoot(elite) then break end
+                                __DIO_DKSmack(elite)
+                            until not _G.AutoAttackDoughKing or not elite.Parent or not __DIO_MobAliveRoot(elite)
+                        end
+                    else
+                        __DIO_wait(2)
+                    end
+                    return
+                end
+                pcall(function()
+                    replicated.Remotes.CommF_:InvokeServer("SweetChaliceNpc")
+                end)
+                __DIO_wait(1)
+            end)
+        end
+    end
+end, "L-DK")
+
 task.spawn(function()
     while true do
         local __okAR, __errAR = pcall(function()
@@ -6941,7 +6991,7 @@ local __DIO_BoneNpcCF = CFrame.new(-9516.99, 172.01, 6078.46)
 local __DIO_BoneSpawn = CFrame.new(-9495.68, 453.58, 5977.34)
 __DIO_BoneQuestT = 0
 __DIO_SafeLoop(function()
-    while __DIO_wait(1) do
+    while __DIO_wait() do
         if _G.AutoFarm_Bone then
             pcall(function()
                 local char = plr.Character
@@ -6976,7 +7026,6 @@ __DIO_SafeLoop(function()
                 if mob then
                     __DIO_EquipFarmWeapon(mob)
                     repeat
-                        __DIO_wait(Sec)
                         if not _G.AutoFarm_Bone then break end
                         if not mob.Parent then break end
                         local th = mob:FindFirstChild("Humanoid")
@@ -6987,6 +7036,7 @@ __DIO_SafeLoop(function()
                             _tp(__DIO_BoneSpawn)
                             break
                         end
+                        __DIO_wait()
                     until not _G.AutoFarm_Bone or not mob.Parent
                        or (mob:FindFirstChild("Humanoid") and mob.Humanoid.Health <= 0)
                     return
@@ -7059,7 +7109,7 @@ __DIO_SafeLoop(function()
                         if Attack and Attack.Kill then
                             Attack.Kill(boss, _G.FarmTyrant)
                         end
-                        __DIO_wait(0.25)
+                        __DIO_wait()
                     until not _G.FarmTyrant or not boss.Parent or boss.Humanoid.Health <= 0
                     return
                 end
@@ -7082,7 +7132,7 @@ __DIO_SafeLoop(function()
                                 if Attack and Attack.Kill then
                                     Attack.Kill(mob, _G.FarmTyrant)
                                 end
-                                __DIO_wait(0.25)
+                                __DIO_wait()
                             until not _G.FarmTyrant or not mob.Parent or mob.Humanoid.Health <= 0
                         end
                     end
@@ -7590,13 +7640,7 @@ __DIO_SafeLoop(function()
   end
 end, "L5655")
 Tabs.Settings:AddSection("Settings Farm")
-Initialize = Tabs.Settings:AddToggle({
-Name = __DIO_T["Fast Attack"],
-Description = "",
-Default = true,
-Callback = function(Value)
-  _G.Seriality = Value
-end})
+-- [3nn PORT] "Fast Attack" toggle deleted (Banana M1 is always-on per-target).
 SkilluserFarm = Tabs.Settings:AddToggle({
 Name = __DIO_T["Auto Use Skill Melee/Sword If lag Mob or Ghost Mob"],
 Description = "",
@@ -7723,8 +7767,11 @@ Name = __DIO_T["Bring Mobs"],
 Description = "",
 Default = true,
 Callback = function(Value)
-  _B = Value
+  BringEnemyFarm = Value
 end})
+-- [FIX] toggle callbacks don't fire at startup: without this BringEnemyFarm stays nil and
+-- BringEnemy (called from every Attack.Kill) early-returns -> farm feels old DIO.
+BringEnemyFarm = (GetSetting("UI/Settings/Bring Mobs", true) == true)
 -- =====================================================================
 -- [3nn PORT] "Kill Aura With DragonStorm" (3nn 3773-3814, 4041-4070, 4132-4152,
 -- 4433-4453): nearest vulnerable rig within 150 studs + gun remote spam with
@@ -7851,7 +7898,42 @@ __DIO_SafeLoop(function()
         end
     end
 end, "L-DSKA")
-FastAttackModule = FastAttackModule or {}
+-- [FIX] moved here from Tabs.Prehistoric (sits under Dragon Strom Kill aura), renamed.
+do
+Kaura = Tabs.Settings:AddToggle({
+    Name = __DIO_T["Kill aura Raid and Prehistoric Event"],
+    Description = "",
+    Default = false,
+    Callback = function(Value)
+    _G.KillAuraFull = Value
+end})
+local Range = 500
+local Delay = 2
+__DIO_SafeLoop(function()
+    while __DIO_wait(Delay) do
+        if _G.KillAuraFull then
+            pcall(function()
+                local plr = game.Players.LocalPlayer
+                local char = plr.Character
+                local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                if not hrp then return end
+                sethiddenproperty(plr, "SimulationRadius", math.huge)
+                for _, enemy in pairs(workspace.Enemies:GetChildren()) do
+                    if enemy:FindFirstChild("Humanoid") and enemy:FindFirstChild("HumanoidRootPart") then
+                        local dist = (enemy.HumanoidRootPart.Position - hrp.Position).Magnitude
+                        if dist <= Range and enemy.Humanoid.Health > 0 then
+                            enemy.Humanoid.Health = 0
+                            enemy.HumanoidRootPart.CanCollide = false
+                            enemy:BreakJoints()
+                        end
+                    end
+                end
+            end)
+        end
+    end
+end, "L10657")
+end
+
 Tabs.Settings:AddSection("Tween")
 Tabs.Settings:AddButton({
     Name = "Stop Tween",
@@ -7871,16 +7953,7 @@ Tabs.Settings:AddButton({
         pcall(__DIO_TweenBlock, 0.6)
     end
 })
-Tabs.Settings:AddSlider({
-    Name = __DIO_T["Fast Attack Delay"],
-    Min = 1,
-    Max = 30,
-    Default = 1,
-    Increment = 1,
-    Callback = function(Value)
-        FastAttackModule.Rate = math.clamp(Value, 1, 30) / 100
-    end
-})
+-- [3nn PORT] "Fast Attack Delay" slider deleted (Banana M1: no delay gate).
 SafeModes = Tabs.Settings:AddToggle({
 Name = __DIO_T["Safe Mode"],
 Description = "",
@@ -12548,38 +12621,7 @@ __DIO_SafeLoop(function()
         end
     end
 end, "L10596")
-Kaura = Tabs.Prehistoric:AddToggle({
-    Name = __DIO_T["Kill Aura"],
-    Description = "",
-    Default = false,
-    Callback = function(Value)
-    _G.KillAuraFull = Value
-end})
-local Range = 500
-local Delay = 2
-__DIO_SafeLoop(function()
-    while __DIO_wait(Delay) do
-        if _G.KillAuraFull then
-            pcall(function()
-                local plr = game.Players.LocalPlayer
-                local char = plr.Character
-                local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                if not hrp then return end
-                sethiddenproperty(plr, "SimulationRadius", math.huge)
-                for _, enemy in pairs(workspace.Enemies:GetChildren()) do
-                    if enemy:FindFirstChild("Humanoid") and enemy:FindFirstChild("HumanoidRootPart") then
-                        local dist = (enemy.HumanoidRootPart.Position - hrp.Position).Magnitude
-                        if dist <= Range and enemy.Humanoid.Health > 0 then
-                            enemy.Humanoid.Health = 0
-                            enemy.HumanoidRootPart.CanCollide = false
-                            enemy:BreakJoints()
-                        end
-                    end
-                end
-            end)
-        end
-    end
-end, "L10657")
+
 Vocan = Tabs.Prehistoric:AddToggle({
 Name = __DIO_T["Auto Collect Dino Bones"],
 Description = "",
@@ -12644,6 +12686,33 @@ end, "L10725")
 Tabs.SeaEvent:AddSection("Sea Event / Setting Sail")
 local ListSeaBoat={"Guardian","PirateGrandBrigade","MarineGrandBrigade","PirateBrigade","MarineBrigade","PirateSloop","MarineSloop","Beast Hunter"}
 local ListSeaZone={"Lv 1","Lv 2","Lv 3","Lv 4","Lv 5","Lv 6","Lv Infinite"}
+-- [FIX] moved above first use: dropdowns below need these at creation time.
+__DIO_SeaWpOpts   = {"Melee","Sword","Gun","Blox Fruit"}
+__DIO_SeaSkillOpts = {"Z","X","C","V","F"}
+__DIO_SeaNormList = function(Value, opts, def)
+    local __raw = {}
+    if type(Value) == "table" then
+        for __k, __v in pairs(Value) do
+            if __v == true then
+                if type(__k) == "string" and table.find(opts, __k) then
+                    table.insert(__raw, __k)
+                elseif type(__k) == "number" and table.find(opts, Value[__k]) then
+                    table.insert(__raw, Value[__k])
+                end
+            end
+        end
+    elseif type(Value) == "string" and table.find(opts, Value) then
+        table.insert(__raw, Value)
+    end
+    if #__raw == 0 and def then table.insert(__raw, def) end
+    local __out = {}
+    for _, __o in ipairs(opts) do
+        if table.find(__raw, __o) then table.insert(__out, __o) end
+    end
+    return __out
+end
+_G.SeaEventWeaponList = __DIO_SeaNormList(GetSetting("UI/SeaEvent/Select Weapon Sea Event", nil), __DIO_SeaWpOpts, "Melee")
+_G.SeaEventSkillList  = __DIO_SeaNormList(GetSetting("UI/SeaEvent/Select Skill", nil), __DIO_SeaSkillOpts, "Z")
 Q = Tabs.SeaEvent:AddDropdown({
     Name = __DIO_T["Select Weapon Sea Event"],
     Options = __DIO_SeaWpOpts,
@@ -12827,32 +12896,7 @@ _G.BoatTweenSpeed = math.clamp(math.floor((tonumber(GetSetting("UI/SeaEvent/Boat
 _G.SelectedBoat = _G.SelectedBoat or GetSetting("UI/SeaEvent/Select Boats", "Guardian") or "Guardian"
 _G.DangerSc = _G.DangerSc or GetSetting("UI/SeaEvent/Select Sea Level", "Lv 6") or "Lv 6"
 Tabs.SeaEvent:AddSection("Skill And Boat Sea Event")
-__DIO_SeaWpOpts   = {"Melee","Sword","Gun","Blox Fruit"}
-__DIO_SeaSkillOpts = {"Z","X","C","V","F"}
-__DIO_SeaNormList = function(Value, opts, def)
-    local __raw = {}
-    if type(Value) == "table" then
-        for __k, __v in pairs(Value) do
-            if __v == true then
-                if type(__k) == "string" and table.find(opts, __k) then
-                    table.insert(__raw, __k)
-                elseif type(__k) == "number" and table.find(opts, Value[__k]) then
-                    table.insert(__raw, Value[__k])
-                end
-            end
-        end
-    elseif type(Value) == "string" and table.find(opts, Value) then
-        table.insert(__raw, Value)
-    end
-    if #__raw == 0 and def then table.insert(__raw, def) end
-    local __out = {}
-    for _, __o in ipairs(opts) do
-        if table.find(__raw, __o) then table.insert(__out, __o) end
-    end
-    return __out
-end
-_G.SeaEventWeaponList = __DIO_SeaNormList(GetSetting("UI/SeaEvent/Select Weapon Sea Event", nil), __DIO_SeaWpOpts, "Melee")
-_G.SeaEventSkillList  = __DIO_SeaNormList(GetSetting("UI/SeaEvent/Select Skill", nil), __DIO_SeaSkillOpts, "Z")
+
 Tabs.SeaEvent:AddToggle({
 Name = __DIO_T["Auto Dodge Skill Terrorshark"],
 Description = "",
@@ -14643,7 +14687,7 @@ __RAID_MobRaid = function()
 end
 __RAID_BringAnchorM, __RAID_BringAnchorCF, __RAID_BringBusy = nil, nil, false
 __RAID_BringRaid = function(b)
-    if _B == false then return end
+    if BringEnemyFarm == false then return end
     if b and __RAID_BringAnchorM ~= b then
         __RAID_BringAnchorM = b
         __RAID_BringAnchorCF = b.HumanoidRootPart.CFrame
@@ -14717,9 +14761,21 @@ end
 __RAID_RaidList = {}
 pcall(function()
     local s = require(__SVC_RS:WaitForChild("Raids", 10))
+    -- [FIX] 3nn inserts inner VALUES ("for b, b in next, y" double-assign ends
+    -- on value). Inner tables are arrays of raid-name strings, so inner KEYS
+    -- are 1..N -> the "1-9" bug. Take values, filter strings, sort.
+    local __seen = {}
     for _, y in next, s do
-        for b, _ in next, y do table.insert(__RAID_RaidList, b) end
+        if type(y) == "table" then
+            for _, b in next, y do
+                if type(b) == "string" and not __seen[b] then
+                    __seen[b] = true
+                    table.insert(__RAID_RaidList, b)
+                end
+            end
+        end
     end
+    table.sort(__RAID_RaidList)
 end)
 if #__RAID_RaidList == 0 then __RAID_RaidList = { "Flame" } end
 __RAID_NormMulti = function(Value, opts)
@@ -17459,14 +17515,8 @@ __DIO_SafeLoop(function()
     end)
   end
 end, "L14876")
--- [V7] restore Misc group header for items below the moved block.
-Tabs.Misc:AddSection("Graphics / Haki Stats")
-__DIO_VolleyGate = function(gap)
-    local n = tick()
-    if n - (__DIO_LastVolley or 0) < gap then return false end
-    __DIO_LastVolley = n
-    return true
-end
+-- [FIX] dangling duplicate "Graphics / Haki Stats" header removed (zero Misc items below it).
+-- [3nn PORT] __DIO_VolleyGate deleted with DIO Fast Attack (Banana M1: no delay gate).
 pcall(function()
     local u = game:GetService("ReplicatedStorage"):FindFirstChild("Util")
     u = u and u:FindFirstChild("CameraShaker")
@@ -17475,66 +17525,15 @@ pcall(function()
         if CameraShakerR and CameraShakerR.Stop then CameraShakerR:Stop() end
     end
 end)
-get_Monster = function() 
-    local __chGM = plr and plr.Character
-    local __hrpGM = __chGM and __chGM:FindFirstChild("HumanoidRootPart")
-    if not __hrpGM then return end
-    local __enemiesFolder = workspace:FindFirstChild("Enemies")
-    if __enemiesFolder then
-        for _, b in pairs(__enemiesFolder:GetChildren()) do
-            local c = b:FindFirstChild("UpperTorso") or b:FindFirstChild("Head")
-            if b:FindFirstChild("HumanoidRootPart", true) and c then
-                if (c.Position - __hrpGM.Position).Magnitude <= 50 then return true, c.Position end
-            end
-        end
-    end
-    local __seaBeasts = workspace:FindFirstChild("SeaBeasts")
-    if __seaBeasts then
-        for _, d in pairs(__seaBeasts:GetChildren()) do
-            if d:FindFirstChild("HumanoidRootPart") and d:FindFirstChild("Health") and d.Health.Value > 0 then
-                return true, d.HumanoidRootPart.Position
-            end
-        end
-    end
-    if __enemiesFolder then
-        for _, d in pairs(__enemiesFolder:GetChildren()) do
-            if d:FindFirstChild("Health") and d.Health.Value > 0 and d:FindFirstChild("VehicleSeat") and d:FindFirstChild("Engine") then
-                return true, d.Engine.Position
-            end
-        end
-    end
-end
-Actived=function()local a=game.Players.LocalPlayer.Character:FindFirstChildOfClass("Tool")if not a then return end
-if a.Name == (__DIO_LastActivedTool or "") then return end
-__DIO_LastActivedTool = a.Name
-if getconnections then pcall(function() for b,c in next,getconnections(a.Activated) do if typeof(c.Function) == "function" then getupvalues(c.Function) end end end) end 
-end 
-task.spawn(function()
-  RunSer.Heartbeat:Connect(function()
-    pcall(function()
-      if not _G.Seriality then return end
-      if tick() - (_G.__DIONoCdLast or 0) < 0.25 then return end
-      _G.__DIONoCdLast = tick()
-      local Pretool = game.Players.LocalPlayer.Character:FindFirstChildOfClass("Tool")
-      local ToolTip = Pretool and Pretool.ToolTip
-      if tick() - (__DIO_LastGM or 0) >= 0.3 then
-        __DIO_LastGM = tick()
-        __DIO_GMa, __DIO_GMb = get_Monster()
-      end
-      local MobAura, Mon = __DIO_GMa, __DIO_GMb
-      if ToolTip == "Blox Fruit" then
-        if MobAura then
-          local LeftClickRemote = Pretool:FindFirstChild('LeftClickRemote');
-          if LeftClickRemote then Actived() LeftClickRemote:FireServer(Vector3.new(0.01,-500,0.01),1,true);LeftClickRemote:FireServer(false)end
-        end
-      end
-    end)
-  end)
-end)
-FastAttackModule = FastAttackModule or {}
-__DIO_BOOT("Fast Attack Module Last")
-FastAttackModule.Rate = FastAttackModule.Rate or 0.03
-FastAttackModule.Enabled = true
+-- [3nn PORT] DIO Seriality clicker (get_Monster+Actived+heartbeat) deleted.
+-- =====================================================================
+-- [3nn PORT] Banana M1 engine (ClickM1 gate m(E) + UseFruitM1 + attackMelee remotes).
+-- Replaces DIO's global Fast Attack aura + Seriality clicker (both deleted):
+-- damage is now per-target, fired from Attack.Kill* after positioning
+-- (3nn order: toTarget -> ClickM1). Same remotes 3nn uses (E/l):
+-- RE/RegisterAttack + RE/RegisterHit. No artificial delay gate (like 3nn).
+-- =====================================================================
+__DIO_3nn_M1N = 1
 local __FA_attackEvent, __FA_hitEvent
 __FA_GetTargets = function(playerPos)
     local targets = {}
@@ -17592,16 +17591,59 @@ __FA_GetTargets = function(playerPos)
     end
     return targets
 end
-function FastAttackModule.ExecuteFastAttack()
-    local character = plr.Character
-    if not character then return end
-    local __humFA = character:FindFirstChildOfClass("Humanoid")
-    if __humFA and (__humFA.Sit or __humFA.Health <= 0) then return end
-    if not __DIO_VolleyGate(math.max(FastAttackModule.Rate or 0.1, 0.01)) then return end
-    local tool = character:FindFirstChildOfClass("Tool")
-    if not tool then return end
-    local hrp = character:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
+-- 3nn UseFruitM1 (3-arg m engine, non-boat): TAP path or LeftClickRemote spam.
+__DIO_3nn_FruitM1 = function(target)
+    local char = plr.Character
+    local hrp = char and (char.PrimaryPart or char:FindFirstChild("HumanoidRootPart"))
+    if not hrp or not target or not target.Parent then return false end
+    local tgtPos = (target.PrimaryPart and target.PrimaryPart.Position)
+        or (target:FindFirstChild("HumanoidRootPart") and target.HumanoidRootPart.Position)
+    if not tgtPos then return false end
+    local fruitName
+    pcall(function()
+        for _, cont in ipairs({ plr.Backpack, char }) do
+            for _, t in ipairs(cont:GetChildren()) do
+                if t:IsA("Tool") and t.ToolTip == "Blox Fruit" then fruitName = t.Name break end
+            end
+            if fruitName then break end
+        end
+    end)
+    local tool = fruitName and char:FindFirstChild(fruitName)
+    if not tool then return false end
+    local leftRemote = tool:FindFirstChild("LeftClickRemote")
+    local remoteFn = tool:FindFirstChild("RemoteFunction")
+    local remoteEv = tool:FindFirstChild("RemoteEvent")
+    if not leftRemote and remoteFn then
+        if remoteEv then pcall(function() remoteEv:FireServer(tgtPos) end) end
+        pcall(function() remoteFn:InvokeServer("TAP") end)
+        return true
+    end
+    if leftRemote and fruitName == "Mammoth-Mammoth" then
+        pcall(function() leftRemote:FireServer(tgtPos) end)
+        return true
+    end
+    if leftRemote then
+        __DIO_3nn_M1N = (__DIO_3nn_M1N % 5) + 1
+        pcall(function() leftRemote:FireServer((tgtPos - hrp.Position).Unit, __DIO_3nn_M1N) end)
+        return true
+    end
+    return false
+end
+-- 3nn ClickM1: gate m(E) + fruit? UseFruitM1 : melee remotes (3nn attackMelee E/l).
+__DIO_3nn_M1 = function(target)
+    local char = plr.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local th = target and target:FindFirstChildOfClass("Humanoid")
+    local tr = target and target:FindFirstChild("HumanoidRootPart")
+    if not hrp or not th or not tr or th.Health <= 0 then return end
+    if (hrp.Position - tr.Position).Magnitude >= 70 then return end
+    local stun = char:FindFirstChild("Stun")
+    if stun and stun.Value ~= 0 then return end
+    local tool = char:FindFirstChildOfClass("Tool")
+    if tool and tool.ToolTip == "Blox Fruit" then
+        if __DIO_3nn_FruitM1(target) then return end
+    end
     if not __FA_attackEvent then
         local modules = replicated:FindFirstChild("Modules")
         if not modules then return end
@@ -17611,21 +17653,14 @@ function FastAttackModule.ExecuteFastAttack()
         __FA_hitEvent = net:FindFirstChild("RE/RegisterHit")
         if not __FA_attackEvent or not __FA_hitEvent then __FA_attackEvent, __FA_hitEvent = nil, nil return end
     end
-    local targets = __FA_GetTargets(hrp.Position)
-    if #targets == 0 then return end
+    local targets = { { target, tr } }
+    for _, __hit in ipairs(__FA_GetTargets(hrp.Position)) do
+        if __hit[1] ~= target and #targets < 6 then table.insert(targets, __hit) end
+    end
     __FA_attackEvent:FireServer(0)
     __FA_hitEvent:FireServer(targets[1][2], targets)
 end
-task.spawn(function()
-    while true do
-        if FastAttackModule.Enabled and _G.Seriality then
-            pcall(function() FastAttackModule.ExecuteFastAttack() end)
-            __DIO_wait(math.max(FastAttackModule.Rate or 0.1, 0.01))
-        else
-            __DIO_wait(0.25)
-        end
-    end
-end)
+-- [3nn PORT] global FA aura loop deleted: M1 now fires per-target from Attack.Kill*.
 getBeastHunter = function()
     local character = plr.Character 
     if not character or not character:FindFirstChild("HumanoidRootPart") then return nil end
@@ -17745,6 +17780,198 @@ local function __DIO_SafeStart(where)
     end
     return ok, err
 end
+-- =====================================================================
+-- [3nn PORT] "Tab Webhook" (3nn 18854-18980 UI+sender, 19221-19256 toggles;
+-- detectors: Mirage 10733/10796 MysticIsland, Volcano 12972/13215
+-- PrehistoricIsland, Leviathan 11129/11288 Frozen Dimension).
+-- Improvements vs 3nn: standalone edge-watcher (3nn only notifies while its
+-- parent finder runs), request fallback chain (3nn = syn.request only),
+-- store hook verifies the fruit left the backpack (no dupe on failed store).
+-- Skipped vs 3nn: "Webhook Destroy IDK" (trigger lives inside 3nn's leviathan
+-- boat-farm subroutine DestroyIDK; DIO has no equivalent flow - no placebo
+-- toggle shipped), Webhookprofile inventory reporter (not island notify).
+-- Watchers don't move -> no tween-flag registration (like AutoAwakeFruit).
+-- Brand block below is Banana's - edit to taste.
+-- =====================================================================
+Tabs.Webhook:AddSection("Webhook")
+_G.WebhookUrl = GetSetting("UI/Webhook/Input Url Webhook", "") or ""
+_G.WebhookPing = GetSetting("UI/Webhook/Input Discord Ping", "") or ""
+_G.PingDiscord = false
+_G.WebhookStoreFruit = false
+_G.WebhookFindPrehistoric = false
+_G.WebhookFindLeviathan = false
+_G.WebhookFindMirage = false
+__DIO_WH_Brand = {
+    Username = "Binini Hub",
+    AvatarURL = "https://images-ext-1.discordapp.net/external/9LSZu__Uvs7I0N8MWag-JmwF2iT-pHCHSe2UdixGEXQ/%3Fsize%3D4096/https/cdn.discordapp.com/avatars/1262364141968949308/a_0c5fb64e2cbb35d029d73b44576c6a60.gif",
+    BannerURL = "https://cdn.discordapp.com/attachments/1017024488665264218/1262729537578471504/banner_server.jpg",
+    Title = "Banana Hub Notification",
+    FooterText = "Binini Hub",
+    Color = 16776960,
+}
+__DIO_WH_SafeStr = function(s)
+    local ok, v = pcall(function() return tostring(s) end)
+    return (ok and v) or "nil"
+end
+__DIO_WH_PingTag = function()
+    if _G.PingDiscord ~= true then return "" end
+    local g = _G.WebhookPing
+    if g and tonumber(g) then return "<@" .. g .. ">" end
+    return "@everyone"
+end
+__DIO_WH_Req = (syn and syn.request) or request or http_request or (fluxus and fluxus.request) or nil
+__DIO_WH_Warned = false
+__DIO_WH_Send = function(event, detail, isFruit)
+    local url = _G.WebhookUrl
+    if not url or url == "" then return end
+    local fields
+    if isFruit then
+        fields = {
+            { name = "Stored Fruit", value = "```" .. __DIO_WH_SafeStr(detail) .. "```", inline = false },
+            { name = "Username", value = "||" .. __DIO_WH_SafeStr(plr and plr.Name or "Unknown") .. "||", inline = true },
+            { name = "Time", value = os.date("%Y-%m-%d %H:%M:%S"), inline = true },
+            { name = "PlaceId", value = "`" .. __DIO_WH_SafeStr(game.PlaceId) .. "`", inline = true },
+        }
+    else
+        fields = {
+            { name = "Event", value = "`" .. __DIO_WH_SafeStr(event) .. "`", inline = true },
+            { name = "Detail", value = "`" .. __DIO_WH_SafeStr(detail) .. "`", inline = true },
+            { name = "Username", value = "||" .. __DIO_WH_SafeStr(plr and plr.Name or "Unknown") .. "||", inline = true },
+            { name = "PlaceId", value = "`" .. __DIO_WH_SafeStr(game.PlaceId) .. "`", inline = true },
+            { name = "JobId", value = "`" .. __DIO_WH_SafeStr(game.JobId) .. "`", inline = true },
+        }
+    end
+    local payload = {
+        content = __DIO_WH_PingTag(),
+        username = __DIO_WH_Brand.Username,
+        avatar_url = __DIO_WH_Brand.AvatarURL,
+        embeds = {
+            {
+                title = __DIO_WH_Brand.Title,
+                description = "**Main Status**\nUsername : ||" .. __DIO_WH_SafeStr(plr and plr.Name or "Unknown") .. "||",
+                color = __DIO_WH_Brand.Color,
+                footer = { text = __DIO_WH_Brand.FooterText },
+                fields = fields,
+                thumbnail = { url = __DIO_WH_Brand.BannerURL },
+                timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
+            },
+        },
+    }
+    pcall(function()
+        if __DIO_WH_Req then
+            __DIO_WH_Req({
+                Url = url,
+                Method = "POST",
+                Headers = { ["Content-Type"] = "application/json" },
+                Body = __SVC_HTTP:JSONEncode(payload),
+            })
+        elseif not __DIO_WH_Warned then
+            __DIO_WH_Warned = true
+            warn("[DIO] Webhook: no request function (need syn.request/request/http_request)")
+        end
+    end)
+end
+Tabs.Webhook:AddInput("WebhookUrl", {
+    Title = __DIO_T["Input Url Webhook"],
+    Default = _G.WebhookUrl,
+    Placeholder = "https://discord.com/api/webhooks/...",
+    Numeric = false,
+    Finished = true,
+    Callback = function(Value)
+        _G.WebhookUrl = Value or ""
+        SetSetting("UI/Webhook/Input Url Webhook", _G.WebhookUrl)
+    end
+})
+Tabs.Webhook:AddInput("WebhookPing", {
+    Title = __DIO_T["Input Discord Ping (Everyone/ID)"],
+    Default = _G.WebhookPing,
+    Placeholder = "Discord user ID (empty = @everyone)",
+    Numeric = false,
+    Finished = true,
+    Callback = function(Value)
+        _G.WebhookPing = Value or ""
+        SetSetting("UI/Webhook/Input Discord Ping", _G.WebhookPing)
+    end
+})
+Tabs.Webhook:AddToggle({
+    Name = __DIO_T["Ping Everyone/Id Discord"],
+    Description = "",
+    Default = false,
+    Callback = function(Value)
+        _G.PingDiscord = (Value == true)
+    end
+})
+Tabs.Webhook:AddToggle({
+    Name = __DIO_T["Webhook Store Fruit"],
+    Description = "",
+    Default = false,
+    Callback = function(Value)
+        _G.WebhookStoreFruit = (Value == true)
+    end
+})
+Tabs.Webhook:AddToggle({
+    Name = __DIO_T["Webhook Find Prehistoric Island"],
+    Description = "",
+    Default = false,
+    Callback = function(Value)
+        _G.WebhookFindPrehistoric = (Value == true)
+    end
+})
+Tabs.Webhook:AddToggle({
+    Name = __DIO_T["Webhook Find Leviathan"],
+    Description = "",
+    Default = false,
+    Callback = function(Value)
+        _G.WebhookFindLeviathan = (Value == true)
+    end
+})
+Tabs.Webhook:AddToggle({
+    Name = __DIO_T["Webhook Find Mirage"],
+    Description = "",
+    Default = false,
+    Callback = function(Value)
+        _G.WebhookFindMirage = (Value == true)
+    end
+})
+__DIO_WH_ArmM, __DIO_WH_ArmV, __DIO_WH_ArmL = true, true, true
+__DIO_SafeLoop(function()
+    while __DIO_wait(0.5) do
+        if _G.WebhookFindMirage or _G.WebhookFindPrehistoric or _G.WebhookFindLeviathan then
+            pcall(function()
+                local map = workspace:FindFirstChild("Map")
+                if _G.WebhookFindMirage then
+                    local present = map and map:FindFirstChild("MysticIsland")
+                    if not present then
+                        __DIO_WH_ArmM = true
+                    elseif __DIO_WH_ArmM then
+                        __DIO_WH_ArmM = false
+                        __DIO_WH_Send("Mirage", "Spawned", false)
+                    end
+                end
+                if _G.WebhookFindPrehistoric then
+                    local present = map and map:FindFirstChild("PrehistoricIsland")
+                    if not present then
+                        __DIO_WH_ArmV = true
+                    elseif __DIO_WH_ArmV then
+                        __DIO_WH_ArmV = false
+                        __DIO_WH_Send("Prehistoric Island", "Spawned", false)
+                    end
+                end
+                if _G.WebhookFindLeviathan then
+                    local wo = workspace:FindFirstChild("_WorldOrigin")
+                    local loc = wo and wo:FindFirstChild("Locations")
+                    local present = loc and loc:FindFirstChild("Frozen Dimension")
+                    if not present then
+                        __DIO_WH_ArmL = true
+                    elseif __DIO_WH_ArmL then
+                        __DIO_WH_ArmL = false
+                        __DIO_WH_Send("Frozen Dimension", "Spawned", false)
+                    end
+                end
+            end)
+        end
+    end
+end, "L-WH")
 if isKeyValid() then
     pcall(function()
         game:GetService("StarterGui"):SetCore("SendNotification", {
