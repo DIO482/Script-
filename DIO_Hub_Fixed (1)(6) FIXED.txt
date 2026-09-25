@@ -1757,12 +1757,22 @@ __DIO_FarmPos = function(model, h, zOff, yawDeg)
         modelCF = root.CFrame
     end
     local mode = _G.ModeFarm
-    if mode == "Obrit" or mode == "Dodge" then
+    if mode == "Obrit" then
         if mdl then
             __DIO_CurTarget = mdl
             __DIO_TargetT = tick()
         end
         return nil
+    end
+    if mode == "Dodge" then
+        -- [FA-FIX] loi cu: mode "Dodge" tra ve nil -> _tp(nil) khong di chuyen -> player
+        -- khong bi lai gan mob -> __DIO_3nn_M1 cut "dist >= 70 return" -> fast attack
+        -- KHONG gây duoc damage. Mode nay khong co loop nào đưa player lên vị trí,
+        -- nên phải tự trả CFrame (orbit "Obrit" thi van tra nil nhu cu, loop lo làm).
+        if mdl then
+            __DIO_CurTarget = mdl
+            __DIO_TargetT = tick()
+        end
     end
     local h2 = tonumber(_G.FarmDistance) or h
     return modelCF * CFrame.new(0, h2, zOff or 0) * CFrame.Angles(0, math.rad(yawDeg or 0), 0)
@@ -2609,6 +2619,24 @@ _G.AutoDodgeSeabeast = (_G.AutoDodgeSeabeast == true)
 __DIO_BananaTerrorDodge = false
 __DIO_BananaSeaDodge = 0
 __DIO_BananaSeaBusy = false
+-- [DODGE-FIX] cong dodge: chi doc offset khi user BAT switch tuong ung.
+-- Loi cu: offset +200Y / +600Y duoc cong thang vao moi lan di chuyen (_tp, notween,
+-- farm SeaBeast) ma KHONG hoi _G.AutoDodgeTerrorshark/_G.AutoDodgeSeabeast -> khi
+-- co flag cu/dang treo thi nhan bay len bay xuong du turn off.
+__DIO_TerrorDodgeOn = function()
+    return (_G.AutoDodgeTerrorshark == true) and (__DIO_BananaTerrorDodge == true)
+end
+__DIO_SeaDodgeOff = function()
+    __DIO_BananaSeaDodge = 0
+    __DIO_BananaSeaBusy = false
+end
+__DIO_TerrorDodgeOff = function()
+    __DIO_BananaTerrorDodge = false
+end
+__DIO_SeaDodgeY = function()
+    if _G.AutoDodgeSeabeast ~= true then return 0 end
+    return tonumber(__DIO_BananaSeaDodge) or 0
+end
 __DIO_BANANA_SEA_ANIMS = {
     ["rbxassetid://8708221792"] = true,
     ["rbxassetid://8708222556"] = true,
@@ -3242,7 +3270,8 @@ _tp = function(target)
     end
     if not gg then return end
     -- [BANANA PORT] Terror dodge: +200Y on every move while active (3nn toTarget offset)
-    if __DIO_BananaTerrorDodge == true then
+    -- [DODGE-FIX] them dieu kien _G.AutoDodgeTerrorshark (flag co the treo tu lan chay truoc)
+    if __DIO_TerrorDodgeOn and __DIO_TerrorDodgeOn() then
         gg = gg + Vector3.new(0, 200, 0)
     end
     local character = plr.Character
@@ -3575,7 +3604,8 @@ TeleportToTarget = function(targetCFrame)
 end
 notween = function(p)
     -- [BANANA PORT] Terror dodge: +200Y (covers KillSea melee path, 3nn toTarget offset)
-    if __DIO_BananaTerrorDodge == true and typeof(p) == "CFrame" then
+    -- [DODGE-FIX] chi ap dung khi switch Auto Dodge Skill Terrorshark dang ON
+    if typeof(p) == "CFrame" and __DIO_TerrorDodgeOn and __DIO_TerrorDodgeOn() then
         p = p + Vector3.new(0, 200, 0)
     end
     if __DIO_Dodging == true then
@@ -13182,6 +13212,10 @@ Description = "",
 Default = false,
 Callback = function(Value)
   _G.AutoDodgeTerrorshark = (Value == true)
+  -- [DODGE-FIX] tat la xoa offset ngay, khong de treo +200Y
+  if _G.AutoDodgeTerrorshark ~= true and type(__DIO_TerrorDodgeOff) == "function" then
+      __DIO_TerrorDodgeOff()
+  end
 end})
 Tabs.SeaEvent:AddToggle({
 Name = __DIO_T["Auto Dodge Skill Seabeast"],
@@ -13189,6 +13223,10 @@ Description = "",
 Default = false,
 Callback = function(Value)
   _G.AutoDodgeSeabeast = (Value == true)
+  -- [DODGE-FIX] tat la xoa +600Y + mo khoa busy, khong de treo / khong nhay nua
+  if _G.AutoDodgeSeabeast ~= true and type(__DIO_SeaDodgeOff) == "function" then
+      __DIO_SeaDodgeOff()
+  end
 end})
 Tabs.SeaEvent:AddSlider({
     Name = __DIO_T["Teleport Y boat If have Sea Event (ALL)"],
@@ -13451,7 +13489,7 @@ __DIO_SafeLoop(function()
       if _G.Piranha then local a={"Piranha"}if CheckPiranha()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) Attack.Kill(c,_G.Piranha)until _G.Piranha==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
       if _G.MobCrew then local a={"Fish Crew Member"}if CheckFishCrew()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) Attack.Kill(c,_G.MobCrew)until _G.MobCrew==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
       if _G.HCM then local a={"Haunted Crew Member"}if CheckHauntedCrew()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) Attack.Kill(c,_G.HCM)until _G.HCM==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
-      if _G.SeaBeast1 then if workspace:FindFirstChild("SeaBeasts") and workspace.SeaBeasts:FindFirstChild("SeaBeast1")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)_tp(CFrame.new(b.HumanoidRootPart.Position.X,__DIO_WaterY()+200+(tonumber(__DIO_BananaSeaDodge) or 0),b.HumanoidRootPart.Position.Z))if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then AitSeaSkill_Custom=b.HumanoidRootPart.CFrame;MousePos=AitSeaSkill_Custom.Position;__DIO_SeaSkillAtk() end until _G.SeaBeast1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
+      if _G.SeaBeast1 then if workspace:FindFirstChild("SeaBeasts") and workspace.SeaBeasts:FindFirstChild("SeaBeast1")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)_tp(CFrame.new(b.HumanoidRootPart.Position.X,__DIO_WaterY()+200+((__DIO_SeaDodgeY and __DIO_SeaDodgeY()) or (tonumber(__DIO_BananaSeaDodge) or 0)),b.HumanoidRootPart.Position.Z))if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then AitSeaSkill_Custom=b.HumanoidRootPart.CFrame;MousePos=AitSeaSkill_Custom.Position;__DIO_SeaSkillAtk() end until _G.SeaBeast1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
       if _G.Leviathan1 then if workspace:FindFirstChild("SeaBeasts") and workspace.SeaBeasts:FindFirstChild("Leviathan")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Leviathan Segment")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)_tp(CFrame.new(b.HumanoidRootPart.Position.X,__DIO_WaterY()+200,b.HumanoidRootPart.Position.Z))if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then MousePos=b:FindFirstChild("Leviathan Segment").Position;__DIO_SeaSkillAtk() end until _G.Leviathan1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
       if _G.FishBoat then
         if CheckEnemiesBoat() then
@@ -17814,20 +17852,39 @@ end)
 -- =====================================================================
 __DIO_3nn_M1N = 1
 local __FA_attackEvent, __FA_hitEvent
+__FA_SitWarned = false
 __FA_GetTargets = function(playerPos)
     local targets = {}
     local __cFA = plr.Character
     local __hFA = __cFA and __cFA:FindFirstChildOfClass("Humanoid")
-    if not __cFA or not __hFA or __hFA.Sit or __hFA.Health <= 0 then
+    if not __cFA or not __hFA or __hFA.Health <= 0 then
         return targets
     end
-    local enemies = workspace.Enemies:GetChildren()
+    -- [FA-FIX] Ngai (lai thuyen) thi khong attack bang hitbox duoc; tan cong van co the
+    if __hFA.Sit then
+        if not __FA_SitWarned then
+            __FA_SitWarned = true
+            warn("[DIO][FA] Player dang Ngai (lai thuyen) -> Fast Attack tam dung ngung, dung M1 duoc")
+        end
+        return targets
+    end
+    -- [FA-FIX] "workspace.Enemies" index tho: folder khong ton tai (bay sea event) -> throw
+    local __okEn, enemies = pcall(function()
+        local e = workspace:FindFirstChild("Enemies")
+        return e and e:GetChildren() or {}
+    end)
+    if not __okEn then enemies = {} end
     for i = 1, #enemies do
         local enemy = enemies[i]
         local hum = enemy:FindFirstChild("Humanoid")
         local hrp = enemy:FindFirstChild("HumanoidRootPart")
         if hum and hrp and hum.Health > 0 then
-            if (hrp.Position - playerPos).Magnitude <= 75 then
+            -- [FA-FIX] do tren mang ngang (bo chieu cao) giong __DIO_3nn_M1 de player
+            -- dang bay cao (dodge/orbit) van tim thay mob gan do ma tan cong
+            local __okP, __dP = pcall(function()
+                return Vector3.new(hrp.Position.X - playerPos.X, 0, hrp.Position.Z - playerPos.Z).Magnitude
+            end)
+            if __okP and __dP and __dP <= 75 then
                 table.insert(targets, {enemy, hrp})
                 if #targets >= 6 then break end
             end
@@ -17916,7 +17973,18 @@ __DIO_3nn_M1 = function(target)
     local th = target and target:FindFirstChildOfClass("Humanoid")
     local tr = target and target:FindFirstChild("HumanoidRootPart")
     if not hrp or not th or not tr or th.Health <= 0 then return end
-    if (hrp.Position - tr.Position).Magnitude >= 70 then return end
+    -- [FA-FIX] GATE TAN CONG: loi cu dung magnitude 3 chieu `>= 70` la cat. Chi can
+    -- player bi keo len cao (dodge +200/+600, tp Y 400, OrbitHeight) la dist luon > 70
+    -- -> M1 khong fire remote nao => "fast attack khong gây damage". Hub tu do "den noi"
+    -- bang mang ngang (Vector3.new(dx,0,dz) - xem __planeDist trong _tp) nen do day do
+    -- giong hub, van giu duoi __DIO_HitRange(70) de khong danh chenh ra ngoai tam.
+    -- pcall: hrp/tr vua bi Destroy (mob chet/nhan doi giua 2 lan FindFirstChild) truoc day
+    -- lam ham throw, ma moi noi goi deu boc pcall -> chet tham, khong loi gi ca.
+    local __okD, __dPl = pcall(function()
+        return Vector3.new(hrp.Position.X - tr.Position.X, 0, hrp.Position.Z - tr.Position.Z).Magnitude
+    end)
+    if not __okD or __dPl == nil then return end
+    if __dPl > (__DIO_HitRange and __DIO_HitRange(70) or 70) then return end
     local stun = char:FindFirstChild("Stun")
     if stun and stun.Value ~= 0 then return end
     local tool = char:FindFirstChildOfClass("Tool")
@@ -17936,8 +18004,17 @@ __DIO_3nn_M1 = function(target)
     for _, __hit in ipairs(__FA_GetTargets(hrp.Position)) do
         if __hit[1] ~= target and #targets < 6 then table.insert(targets, __hit) end
     end
-    __FA_attackEvent:FireServer(0)
-    __FA_hitEvent:FireServer(targets[1][2], targets)
+    -- [FA-FIX] FireServer ngoai pcall: loi o day truoc day bi nuot den het (xem Attack.Kill)
+    local __okF, __errF = pcall(function()
+        __FA_attackEvent:FireServer(0)
+        __FA_hitEvent:FireServer(targets[1][2], targets)
+    end)
+    if not __okF then
+        warn("[DIO][FA] M1 FireServer loi: " .. tostring(__errF))
+        if __FA_attackEvent and __FA_hitEvent then
+            __FA_attackEvent, __FA_hitEvent = nil, nil   -- RemoteEvent bi thay doi -> tim lai lan sau
+        end
+    end
 end
 -- [3nn PORT] global FA aura loop deleted: M1 now fires per-target from Attack.Kill*.
 getBeastHunter = function()
