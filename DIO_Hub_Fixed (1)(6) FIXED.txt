@@ -1172,9 +1172,11 @@ __DIO_TweenValid = function()
         if __DIO_Dodging == true then return false end
     end
     if __DIO_FlyBusy == true then return true end
+    -- [3NN TWEEN PORT] Cho phep tween vua duoc feed bang _tp/topos chay ke ca khi toggle chua nam trong list flag DIO.
+    -- Neu loop dung feed, MoveFresh het han thi watchdog se huy -> khong treo tween.
+    if __DIO_MoveFresh() then return true end
     local featOn = __DIO_AnyFeatureOn()
     if not featOn then return false end
-    if __DIO_MoveFresh() then return true end
     if __DIO_Approaching() and (tick() - (__DIO_MoveT or 0)) < (__DIO_KEEP_APPROACH or 90) then
         return true
     end
@@ -1208,6 +1210,10 @@ __DIO_TweenDropHard = function(reason)
     pcall(function()
         if __DIO_LastTween then __DIO_LastTween:Cancel() end
         __DIO_LastTween = nil
+    end)
+    pcall(function()
+        local __eng = __DIO_TweenEngine or getgenv().__DIO_TweenEngine3nn
+        if __eng and __eng.CancelAll then __eng.CancelAll() end
     end)
 end
 __DIO_TweenDrop = function(reason)
@@ -1265,6 +1271,10 @@ __DIO_TweenKill = function(keepHighlight, force)
     pcall(function()
         if __DIO_LastTween then __DIO_LastTween:Cancel() end
         __DIO_LastTween = nil
+    end)
+    pcall(function()
+        local __eng = __DIO_TweenEngine or getgenv().__DIO_TweenEngine3nn
+        if __eng and __eng.CancelAll then __eng.CancelAll() end
     end)
     pcall(function()
         local char = plr.Character
@@ -1980,15 +1990,6 @@ local Attack = {}
 				Equipped = __chK3 and __chK3:FindFirstChildOfClass("Tool")
 			end)
 			local ToolTip = Equipped and Equipped.ToolTip
-			-- ================= [FA-SEA] SWORD / MELEE = FAST ATTACK, KHONG SKILL =========
-			-- 3nn sea event (11359-11362): UsedualFlock() + ClickM1(target, true)
-			--   -> AttackFunction(80) = M1 spam MOI FRAME. Skill chi dung cho GUN
-			--   (11341-11352: SpamGunDragonStorm + UseSkillGun).
-			-- Ban cu o day goi __DIO_SeaSkillAtk() khi dodge bat -> skill co cooldown +
-			-- animation dai => giết Terrorshark "bao gio moi xong". Bo han voi sword/melee.
-			-- __DIO_DodgeBypass: chi trong 1 lan di chuyen cua buoc danh, khong cong offset
-			-- +200Y cua dodge (dodge +200 => player o +260, melee khong toi = khong dam).
-			-- Gun giu nguyen: remote cua gun ban theo TOA DO nen van an dam tu tren cao.
 			if ToolTip == "Blox Fruit" then
 				__DIO_DodgeBypass = true
 				pcall(function() _tp(__DIO_FarmPos(model, 10, 0, 90)) end)
@@ -3318,6 +3319,462 @@ __DIO_CanPivotBoat = function(hum)
     if not __DIO_BoatHasVehicleSeat(boat) then return true, boat end
     return false, boat
 end
+
+--[[ ============================================================================================
+    [3NN TWEEN PORT -> DIO]
+    Core mover thay cho DIO Heartbeat smoother cu.
+    - Mot mover rieng cho tung BasePart: HRP / VehicleSeat / part khac.
+    - Goi _tp/topos lien tuc chi update goal, KHONG huy tao tween moi -> het giat/standing lock.
+    - Chay RunService.Stepped (pre-physics): noclip truoc, ghi CFrame sau -> physics kho keo nguoc.
+    - Ho tro boat: move VehicleSeat, noclip boat model, giu player ngoi lai moi 0.25s.
+    - Van sync voi DIO: __DIO_LastTween, __DIO_TweenTarget, shouldTween, TweenBoat/getgenv().Tween.
+============================================================================================ ]]
+do
+    local RunService = __SVC_RUN or game:GetService("RunService")
+    local Players = __SVC_PLR or game:GetService("Players")
+    local LP = plr or Players.LocalPlayer
+
+    pcall(function()
+        local old = getgenv().__DIO_TweenEngine3nn
+        if old and old.StepConnection then old.StepConnection:Disconnect() end
+    end)
+
+    local Engine = {}
+    __DIO_TweenEngine = Engine
+    getgenv().__DIO_TweenEngine3nn = Engine
+
+    Engine.Movers = setmetatable({}, { __mode = "k" })
+    Engine.Active = nil
+    Engine.MaxStep = 27
+    Engine.Eps = 2.5
+    Engine.SnapRange = 7
+    Engine.ResyncDev = 150
+    Engine.AutoNoClip = true
+    Engine.NoClip = false
+    Engine.Debug = false
+
+    local collideCache = setmetatable({}, { __mode = "k" })
+    local listCache = setmetatable({}, { __mode = "k" })
+
+    local function log(...)
+        if Engine.Debug then
+            print("[DIO-3nnTween]", ...)
+        end
+    end
+
+    local function getParts(root, force)
+        local list, seen = {}, {}
+        if not root then return list end
+        local c = listCache[root]
+        if force or not c or tick() - c.t >= 0.25 or not c.list then
+            c = { t = tick(), list = {} }
+            local ok, desc = pcall(function() return root:GetDescendants() end)
+            if ok and type(desc) == "table" then
+                for _, p in ipairs(desc) do
+                    if p:IsA("BasePart") then c.list[#c.list + 1] = p end
+                end
+            end
+            listCache[root] = c
+        end
+        for _, p in ipairs(c.list or {}) do
+            if p and not seen[p] then
+                seen[p] = true
+                list[#list + 1] = p
+            end
+        end
+        local ok2, kids = pcall(function() return root:GetChildren() end)
+        if ok2 and type(kids) == "table" then
+            for _, p in ipairs(kids) do
+                if p:IsA("BasePart") and not seen[p] then
+                    seen[p] = true
+                    list[#list + 1] = p
+                end
+            end
+        end
+        return list
+    end
+
+    function Engine.SetNoClip(root, state, force)
+        if not root then return end
+        if state then
+            for _, p in ipairs(getParts(root, force)) do
+                if collideCache[p] == nil then collideCache[p] = p.CanCollide end
+                if p.CanCollide then p.CanCollide = false end
+            end
+        else
+            for _, p in ipairs(getParts(root, true)) do
+                if collideCache[p] ~= nil then
+                    local orig = collideCache[p]
+                    collideCache[p] = nil
+                    pcall(function() p.CanCollide = orig end)
+                end
+            end
+            listCache[root] = nil
+        end
+    end
+
+    function Engine.RestoreAllNoClip()
+        for p, orig in pairs(collideCache) do
+            if p then pcall(function() p.CanCollide = orig end) end
+        end
+        collideCache = setmetatable({}, { __mode = "k" })
+    end
+
+    local function fireCompleted(handle, state)
+        if not handle then return end
+        handle.PlaybackState = state or handle.PlaybackState
+        local callbacks = handle.__callbacks
+        if callbacks then
+            for _, cb in ipairs(callbacks) do
+                if cb and cb.alive ~= false and type(cb.fn) == "function" then
+                    task.spawn(cb.fn, handle.PlaybackState)
+                end
+            end
+        end
+    end
+
+    local function anyMover(kind)
+        for _, m in pairs(Engine.Movers) do
+            if m and not m.dead and (kind == nil or m[kind] == true) then return true end
+        end
+        return false
+    end
+
+    local function destroy(m, state, reason)
+        if not m or m.dead then return end
+        m.dead = true
+        if m.part and Engine.Movers[m.part] == m then Engine.Movers[m.part] = nil end
+        if Engine.Active == m then Engine.Active = nil end
+        if m.key and getgenv()[m.key] == m.handle then getgenv()[m.key] = nil end
+        if getgenv().Tween == m.handle then getgenv().Tween = nil end
+
+        if m.player then
+            if __DIO_LastTween == m.handle then __DIO_LastTween = nil end
+            if state == Enum.PlaybackState.Cancelled then
+                __DIO_TweenTarget = nil
+                __DIO_LastDist = nil
+                __DIO_LastHRPPos = nil
+                __DIO_Parked = false
+            end
+        end
+
+        fireCompleted(m.handle, state or Enum.PlaybackState.Cancelled)
+
+        if m.player and not anyMover("player") then
+            getgenv().noclip = false
+            local c = LP and LP.Character
+            if c then pcall(function() Engine.SetNoClip(c, false) end) end
+            pcall(function()
+                local hrp = c and c:FindFirstChild("HumanoidRootPart")
+                local bv = hrp and hrp:FindFirstChild("BodyClip")
+                if bv then bv:Destroy() end
+            end)
+        end
+        log("stop", reason or "", m.part and m.part.Name)
+    end
+
+    Engine.Stop = destroy
+
+    function Engine.CancelAll()
+        for _, m in pairs(Engine.Movers) do
+            pcall(function() destroy(m, Enum.PlaybackState.Cancelled, "CancelAll") end)
+        end
+        Engine.Active = nil
+        pcall(function() Engine.RestoreAllNoClip() end)
+    end
+
+    function Engine.CancelPart(part)
+        local m = part and Engine.Movers[part]
+        if m then destroy(m, Enum.PlaybackState.Cancelled, "CancelPart") end
+    end
+
+    function Engine.IsMoving(part)
+        local m = part and Engine.Movers[part]
+        return m ~= nil and not m.dead
+    end
+
+    local function newHandle(m, goal, speed, key, part)
+        local handle = {
+            PlaybackState = Enum.PlaybackState.Playing,
+            Target = goal,
+            Speed = speed,
+            TweenKey = key,
+            Part = part,
+            __callbacks = {},
+        }
+        function handle:Pause()
+            if m.dead then return end
+            m.paused = true
+            self.PlaybackState = Enum.PlaybackState.Paused
+        end
+        function handle:Play()
+            if m.dead then return end
+            m.paused = false
+            m.lastFeed = tick()
+            self.PlaybackState = Enum.PlaybackState.Playing
+        end
+        function handle:Cancel()
+            destroy(m, Enum.PlaybackState.Cancelled, "Cancel")
+        end
+        function handle:Destroy()
+            destroy(m, Enum.PlaybackState.Cancelled, "Destroy")
+        end
+        function handle:IsAlive()
+            return not m.dead
+        end
+        handle.Completed = {
+            Wait = function()
+                while handle.PlaybackState == Enum.PlaybackState.Playing or handle.PlaybackState == Enum.PlaybackState.Paused do
+                    task.wait()
+                end
+                return handle.PlaybackState
+            end,
+            Connect = function(self, cb)
+                if type(self) == "function" and cb == nil then cb = self end
+                local item = { fn = cb, alive = true }
+                handle.__callbacks[#handle.__callbacks + 1] = item
+                return { Disconnect = function() item.alive = false end }
+            end,
+            Once = function(self, cb)
+                if type(self) == "function" and cb == nil then cb = self end
+                local conn
+                conn = handle.Completed:Connect(function(state)
+                    if conn then conn:Disconnect() end
+                    if type(cb) == "function" then cb(state) end
+                end)
+                return conn
+            end,
+        }
+        return handle
+    end
+
+    function Engine.Move(part, goal, speed, opts)
+        opts = opts or {}
+        if not part or typeof(goal) ~= "CFrame" or not part:IsA("BasePart") or not part.Parent then return nil end
+        speed = math.max(tonumber(speed) or 350, 1)
+        local eps = tonumber(opts.eps) or (opts.boat and 6 or Engine.Eps)
+
+        local cur = Engine.Movers[part]
+        if cur and not cur.dead then
+            cur.goal, cur.speed, cur.eps = goal, speed, eps
+            cur.lastFeed = tick()
+            cur.paused = false
+            if cur.handle then
+                cur.handle.Target = goal
+                cur.handle.Speed = speed
+                cur.handle.PlaybackState = Enum.PlaybackState.Playing
+            end
+            if opts.key then
+                cur.key = opts.key
+                getgenv()[opts.key] = cur.handle
+            end
+            return cur.handle
+        end
+
+        local m = {
+            part = part,
+            goal = goal,
+            speed = speed,
+            eps = eps,
+            path = part.Position,
+            holdDev = tonumber(opts.holdDev) or (opts.boat and 90 or Engine.ResyncDev),
+            resyncDev = tonumber(opts.resyncDev) or (opts.boat and 400 or Engine.ResyncDev),
+            lastFeed = tick(),
+            startedAt = tick(),
+            player = opts.player == true,
+            boat = opts.boat == true,
+            holdPath = not opts.boat,
+            key = opts.key,
+            paused = false,
+            dead = false,
+        }
+        m.char = m.player and LP.Character or nil
+        m.boatModel = m.boat and part:FindFirstAncestorOfClass("Model") or nil
+        m.handle = newHandle(m, goal, speed, opts.key, part)
+
+        Engine.Movers[part] = m
+        if m.player then
+            Engine.Active = m
+            getgenv().Tween = m.handle
+            getgenv().noclip = true
+            __DIO_LastTween = m.handle
+            shouldTween = true
+        end
+        if m.boat then
+            if m.boatModel then Engine.SetNoClip(m.boatModel, true, true) end
+            if m.key then getgenv()[m.key] = m.handle end
+            __DIO_LastTween = m.handle
+        end
+        log("start", part.Name, speed, opts.boat and "boat" or opts.player and "player" or "part")
+        return m.handle
+    end
+
+    local function stepMover(part, m, dt)
+        if not m or m.dead then return false end
+        if not part or not part.Parent then
+            destroy(m, Enum.PlaybackState.Cancelled, "part gone")
+            return false
+        end
+
+        if m.player then
+            local c = LP.Character
+            if not c or c ~= m.char then
+                destroy(m, Enum.PlaybackState.Cancelled, "character changed")
+                return false
+            end
+            local hum = c:FindFirstChildOfClass("Humanoid")
+            if not hum or hum.Health <= 0 then
+                destroy(m, Enum.PlaybackState.Cancelled, "dead")
+                return false
+            end
+            if hum.SeatPart then
+                destroy(m, Enum.PlaybackState.Cancelled, "seated")
+                return false
+            end
+            if type(__DIO_TweenValid) == "function" and not __DIO_TweenValid() then
+                destroy(m, Enum.PlaybackState.Cancelled, "invalid")
+                return false
+            end
+            Engine.SetNoClip(c, true)
+            getgenv().noclip = true
+        elseif m.boat then
+            if tick() >= (m.nextBoatCheck or 0) then
+                m.nextBoatCheck = tick() + 0.25
+                if m.boatModel then Engine.SetNoClip(m.boatModel, true) end
+                local c = LP.Character
+                local hum = c and c:FindFirstChildOfClass("Humanoid")
+                if hum and (part:IsA("Seat") or part:IsA("VehicleSeat")) then
+                    if hum.SeatPart ~= part then pcall(function() part:Sit(hum) end) end
+                end
+                if hum and not hum.Sit and m.boatModel then
+                    -- Neu server day khoi ghe thi van co gang seat lai, khong huy ngay de tranh "dung thuyen".
+                    pcall(function() part:Sit(hum) end)
+                end
+            end
+        end
+
+        if m.paused then return true end
+
+        local goal = m.goal
+        local rot = part.CFrame - part.CFrame.Position
+        local pos = part.Position
+        local dev = (pos - m.path).Magnitude
+        if not m.holdPath or dev > m.resyncDev then
+            m.path = pos
+        elseif dev > 0.05 then
+            part.CFrame = CFrame.new(m.path) * rot
+            pos = m.path
+        end
+
+        local delta = goal.Position - m.path
+        local dist = delta.Magnitude
+        if dist <= m.eps then
+            part.CFrame = CFrame.new(goal.Position) * rot
+            if not part.Anchored then
+                part.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                part.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+            end
+            if m.player then
+                __DIO_LastDist = 0
+                __DIO_LastHRPPos = goal.Position
+                __DIO_Parked = true
+                pcall(function() if __DIO_Block then __DIO_Block.CFrame = part.CFrame end end)
+            end
+            if tick() - m.lastFeed > 0.30 then
+                destroy(m, Enum.PlaybackState.Completed, "arrived")
+                return false
+            end
+            return true
+        end
+
+        dt = math.min(tonumber(dt) or 0.0167, 0.1)
+        local step = math.min(m.speed * dt, Engine.MaxStep, dist)
+        local dir = delta / dist
+        local newPos = m.path + dir * step
+        local look = goal.LookVector
+        if look.Magnitude < 0.01 or math.abs(look.Y) > 0.99 then
+            part.CFrame = CFrame.new(newPos) * rot
+        else
+            part.CFrame = CFrame.new(newPos, newPos + look)
+        end
+        m.path = newPos
+        if not part.Anchored then
+            part.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            part.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+        end
+        if m.player then
+            __DIO_LastDist = (goal.Position - newPos).Magnitude
+            __DIO_LastHRPPos = newPos
+            __DIO_WasTweenActive = true
+            pcall(function() if __DIO_Block then __DIO_Block.CFrame = part.CFrame end end)
+        end
+        return true
+    end
+    Engine.StepMover = stepMover
+
+    Engine.StepConnection = RunService.Stepped:Connect(function(_, dt)
+        dt = tonumber(dt) or 0.0167
+        if dt <= 0 or dt > 0.5 then dt = 0.0167 end
+        local char = LP.Character
+        if char then
+            local wantNoClip = Engine.NoClip or getgenv().noclip or shouldTween == true
+            if wantNoClip then
+                Engine.SetNoClip(char, true)
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                if hum and hum.PlatformStand then hum.PlatformStand = false end
+            end
+        end
+        for part, m in pairs(Engine.Movers) do
+            stepMover(part, m, dt)
+        end
+    end)
+
+    __DIO_TweenEngineMove = function(goal, rootPart, character)
+        local char = character or (LP and LP.Character)
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        local hrp = rootPart or (char and char:FindFirstChild("HumanoidRootPart"))
+        if not goal or typeof(goal) ~= "CFrame" or not hum or not hrp or hum.Health <= 0 then return nil end
+
+        local dist = (goal.Position - hrp.Position).Magnitude
+        local speed = 300
+        if type(__DIO_PickTweenSpeed) == "function" then
+            speed = __DIO_PickTweenSpeed(dist, hrp.Position, hum)
+        else
+            speed = math.max(tonumber(_G.TweenSpeed) or tonumber(Settings and Settings["Tween Speed"]) or 300, 1)
+        end
+
+        if hum.Sit then
+            local canBoat, boat = true, nil
+            if type(__DIO_CanPivotBoat) == "function" then
+                canBoat, boat = __DIO_CanPivotBoat(hum)
+            end
+            if not canBoat then return nil end
+            local seat = hum.SeatPart
+            if not seat or not seat:IsA("BasePart") then return nil end
+            if boat then
+                __DIO_BoatCache = boat
+                Engine.SetNoClip(boat, true, true)
+            end
+            local boatSpeed = math.max(tonumber(_G.BoatTweenSpeed) or tonumber(speed) or 300, 1)
+            local rot = goal - goal.Position
+            local seatGoal = CFrame.new(goal.Position) * rot
+            return Engine.Move(seat, seatGoal, boatSpeed, { boat = true, key = "TweenBoat", eps = 6 })
+        end
+
+        if dist <= (tonumber(Engine.SnapRange) or 7) then
+            Engine.CancelPart(hrp)
+            Engine.SetNoClip(char, true)
+            getgenv().noclip = true
+            hrp.CFrame = goal
+            hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+            pcall(function() if __DIO_Block then __DIO_Block.CFrame = hrp.CFrame end end)
+            return __DIO_NewFakeTween and __DIO_NewFakeTween() or nil
+        end
+        return Engine.Move(hrp, goal, speed, { player = true, key = "Tween", eps = 2.5 })
+    end
+end
+
 __DIO_TweenTarget = nil
 __DIO_LastTpT = 0
 __DIO_LastDist = nil
@@ -3441,216 +3898,23 @@ __DIO_TweenArmedFlags = nil
     __DIO_FalseSince = nil
     if type(__DIO_Move) == "function" then __DIO_Move() end
     if type(__DIO_TweenClearBlock) == "function" and __DIO_AnyFeatureOn() then __DIO_TweenClearBlock() end
+    local __tw = nil
+    pcall(function()
+        if type(__DIO_TweenEngineMove) == "function" then
+            __tw = __DIO_TweenEngineMove(gg, rootPart, character)
+        end
+    end)
+    if __tw then
+        __DIO_LastTween = __tw
+        return __tw
+    end
     local __ft = __DIO_NewFakeTween()
     __DIO_LastTween = __ft
     return __ft
 end
-if not __DIO_SmoothCtl then
-    __DIO_SmoothCtl = true
-    task.spawn(function()
-        __SVC_RUN.Heartbeat:Connect(function(dt)
-            pcall(function()
-                if __DIO_Dodging then
-                    __DIO_LastDist = nil __DIO_LastHRPPos = nil
-                    return
-                end
-                if not __DIO_TweenValid() then
-                    if __DIO_WasTweenActive then
-                        __DIO_WasTweenActive = false
-                        local rc = plr.Character
-                        local rh = rc and rc:FindFirstChildOfClass("Humanoid")
-                        if rh and rh.Health > 0 and not rh.Sit then
-                            rh:ChangeState(Enum.HumanoidStateType.GettingUp)
-                        end
-                    end
-                    __DIO_TweenTarget = nil
-                    __DIO_TweenArmedFlags = nil
-                    __DIO_TweenArmedT = 0
-                    __DIO_FalseSince = nil
-                    __DIO_Parked = false
-                    __DIO_LastDist = nil __DIO_LastHRPPos = nil
-                    if type(__DIO_TweenSync) == "function" then pcall(__DIO_TweenSync) end
-                    return
-                end
-                __DIO_FalseSince = nil
-                local target = __DIO_TweenTarget
-                if not target then
-                    __DIO_LastDist = nil __DIO_LastHRPPos = nil
-                    return
-                end
-                local char = plr.Character
-                local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                local hum = char and char:FindFirstChildOfClass("Humanoid")
-                if not hrp or not hum or hum.Health <= 0 then return end
-                if __DIO_LastChar ~= char then
-                    if __DIO_LastChar ~= nil then
-                        __DIO_TweenTarget = nil
-                        __DIO_LastDist = nil __DIO_LastHRPPos = nil
-                        __DIO_LastChar = char
-                        return
-                    end
-                    __DIO_LastChar = char
-                end
-                local sitting = hum.Sit
-                if sitting then
-                    local __canBoat, __boatS = true, nil
-                    if type(__DIO_CanPivotBoat) == "function" then
-                        __canBoat, __boatS = __DIO_CanPivotBoat(hum)
-                    end
-                    if not __canBoat then
-                        __DIO_TweenTarget = nil
-                        __DIO_TweenArmedFlags = nil
-                        __DIO_TweenArmedT = 0
-                        __DIO_LastDist = nil __DIO_LastHRPPos = nil
-                        pcall(function()
-                            local __bvS = hrp:FindFirstChild("BodyClip")
-                            if __bvS then __bvS:Destroy() end
-                        end)
-                        return
-                    end
-                    if __boatS then __DIO_BoatCache = __boatS end
-                end
-                local cur = hrp.Position
-                local want = target.Position
-                if cur.X ~= cur.X or cur.Y ~= cur.Y or cur.Z ~= cur.Z then return end
-                do
-                    if want.X ~= want.X or want.Y ~= want.Y or want.Z ~= want.Z then
-                        __DIO_TweenTarget = nil
-                        return
-                    end
-                end
-                local delta = want - cur
-                local dist = delta.Magnitude
-                if __DIO_Parked and not __DIO_MoveFresh() then
-                    __DIO_LastDist = dist
-                    __DIO_LastHRPPos = cur
-                    return
-                end
-                if __DIO_Parked and dist > 25 and __DIO_MoveFresh() then
-                    __DIO_Parked = false
-                end
-                local __fm = _G.ModeFarm
-                if __fm == "Obrit" or __fm == "Dodge" then
-                    if dist <= 250 or (tick() - (__DIO_LastTpT or 0)) > 1.5 then
-                        __DIO_LastDist = dist __DIO_LastHRPPos = cur
-                        return
-                    end
-                end
-                if __DIO_LastHRPPos then
-                    local jump
-                    if sitting then
-                        jump = Vector3.new(cur.X - __DIO_LastHRPPos.X, 0, cur.Z - __DIO_LastHRPPos.Z).Magnitude
-                    else
-                        jump = (cur - __DIO_LastHRPPos).Magnitude
-                    end
-                    if jump > 80 then
-                        __DIO_LastHRPPos = cur
-                        __DIO_LastDist = dist
-                        if not __DIO_MoveFresh() and not __DIO_AnyFeatureOn()
-                           and __DIO_FlyBusy ~= true then
-                            __DIO_Parked = false
-                            __DIO_TweenTarget = nil
-                            return
-                        end
-                    end
-                end
-                __DIO_WasTweenActive = true
-                local speed = __DIO_PickTweenSpeed(dist, cur, hum)
-                local arriveR = sitting and 4 or 2.5
-                local rot = target - target.Position
-                local __planeDist = sitting and Vector3.new(want.X - cur.X, 0, want.Z - cur.Z).Magnitude or dist
-                if __planeDist <= arriveR then
-                    local __shift = want - cur
-                    if sitting then
-                        local seat0 = hum.SeatPart
-                        if seat0 then
-                            local boat0 = seat0:FindFirstAncestorOfClass("Model")
-                            if boat0 then
-                                if getgenv().NoClipShip ~= false then
-                                    for _, __bp in ipairs(boat0:GetDescendants()) do
-                                        if __bp:IsA("BasePart") and __bp.CanCollide then __bp.CanCollide = false end
-                                    end
-                                end
-                                local bcf0 = boat0:GetPivot()
-                                boat0:PivotTo(CFrame.new(bcf0.Position + __shift) * (bcf0 - bcf0.Position))
-                            end
-                        end
-                        local __bvA = hrp:FindFirstChild("BodyClip")
-                        if not __bvA then
-                            __bvA = Instance.new("BodyVelocity")
-                            __bvA.Name = "BodyClip"
-                            __bvA.MaxForce = Vector3.new(100000, 100000, 100000)
-                            __bvA.Velocity = Vector3.new(0, 0, 0)
-                            __bvA.Parent = hrp
-                        end
-                    end
-                    hrp.CFrame = CFrame.new(want) * (hrp.CFrame - hrp.CFrame.Position)
-                    hrp.AssemblyLinearVelocity = Vector3.zero
-                    hrp.AssemblyAngularVelocity = Vector3.zero
-                    if block then block.CFrame = hrp.CFrame end
-                    __DIO_Parked = true
-                    __DIO_ParkT  = tick()
-                    __DIO_LastDist = 0 __DIO_LastHRPPos = want
-                    return
-                end
-                dt = math.min(dt or 0.016, 0.1)
-                local newPos
-                if sitting then
-                    local xz = Vector3.new(want.X - cur.X, 0, want.Z - cur.Z)
-                    local xzDist = xz.Magnitude
-                    local step = math.min(xzDist, math.max(speed, 1) * dt)
-                    if xzDist > 0.05 then
-                        local dirxz = xz / xzDist
-                        newPos = Vector3.new(cur.X + dirxz.X * step, want.Y, cur.Z + dirxz.Z * step)
-                    else
-                        newPos = Vector3.new(cur.X, want.Y, cur.Z)
-                    end
-                    local __bv = hrp:FindFirstChild("BodyClip")
-                    if not __bv then
-                        __bv = Instance.new("BodyVelocity")
-                        __bv.Name = "BodyClip"
-                        __bv.MaxForce = Vector3.new(100000, 100000, 100000)
-                        __bv.Velocity = Vector3.new(0, 0, 0)
-                        __bv.Parent = hrp
-                    end
-                    local seat = hum.SeatPart
-                    if seat then
-                        local boat = seat:FindFirstAncestorOfClass("Model")
-                        if boat then
-                            if getgenv().NoClipShip ~= false then
-                                for _, __bp in ipairs(boat:GetDescendants()) do
-                                    if __bp:IsA("BasePart") and __bp.CanCollide then __bp.CanCollide = false end
-                                end
-                            end
-                            local bcf = boat:GetPivot()
-                            boat:PivotTo(CFrame.new(bcf.Position + (newPos - cur)) * (bcf - bcf.Position))
-                        end
-                    end
-                    hrp.CFrame = CFrame.new(newPos) * (hrp.CFrame - hrp.CFrame.Position)
-                else
-                    local step = math.min(dist, math.max(speed, 1) * dt)
-                    local dir = delta / dist
-                    newPos = cur + dir * step
-                    local __curRot = hrp.CFrame - hrp.CFrame.Position
-                    local __rk = math.min(1, (dt or 0.016) * 6)
-                    local __blend = __curRot:Lerp(rot, __rk)
-                    hrp.CFrame = CFrame.new(newPos) * (__blend - __blend.Position)
-                end
-                if not sitting then
-                    hrp.AssemblyLinearVelocity = Vector3.zero
-                    hrp.AssemblyAngularVelocity = Vector3.zero
-                    hrp.CanCollide = false
-                else
-                    hrp.AssemblyLinearVelocity = Vector3.zero
-                    hrp.AssemblyAngularVelocity = Vector3.zero
-                end
-                if block then block.CFrame = hrp.CFrame end
-                __DIO_LastDist = sitting and Vector3.new(want.X - newPos.X, 0, want.Z - newPos.Z).Magnitude or (want - newPos).Magnitude
-                __DIO_LastHRPPos = newPos
-            end)
-        end)
-    end)
-end
+-- [3NN TWEEN PORT] Old DIO Heartbeat smoother removed.
+-- Movement is now handled by __DIO_TweenEngine3nn on RunService.Stepped.
+__DIO_SmoothCtl = true
 old_tp = function(p)
     local char = plr.Character
     if char and char:FindFirstChild("HumanoidRootPart") then
@@ -14138,11 +14402,20 @@ __DIO_SafeLoop(function()
                 if (targetCF.Position - vseat.Position).Magnitude > 5 then
                     if hum.SeatPart and hum.SeatPart.Name == "VehicleSeat" then
                         local dist = (targetCF.Position - vseat.Position).Magnitude
-                        local tw = TweenService:Create(vseat,
-                            TweenInfo.new(dist / 150, Enum.EasingStyle.Quad),
-                            { CFrame = targetCF })
-                        tw:Play()
-                        tw.Completed:Wait()
+                        local tw = nil
+                        pcall(function()
+                            local __eng = __DIO_TweenEngine or getgenv().__DIO_TweenEngine3nn
+                            if __eng and __eng.Move then
+                                tw = __eng.Move(vseat, targetCF, 150, { boat = true, key = "TweenBoat", eps = 6 })
+                            end
+                        end)
+                        if not tw then
+                            tw = TweenService:Create(vseat,
+                                TweenInfo.new(dist / 150, Enum.EasingStyle.Quad),
+                                { CFrame = targetCF })
+                            tw:Play()
+                        end
+                        if tw and tw.Completed then tw.Completed:Wait() end
                         __DIO_wait(1)
                         local pp = boat.PrimaryPart
                         if pp then
