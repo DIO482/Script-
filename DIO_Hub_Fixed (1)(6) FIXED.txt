@@ -877,6 +877,12 @@ __DIO_FlagSet = function(name, val)
 end
 __DIO_QuestGone = function()
     local __okQ, __gone = pcall(function()
+        -- [3nn PORT] Uu tien doc quest o TrackedQuestFrame (UI moi cua game),
+        -- Main.Quest (UI cu) chi la fallback. Main.Quest.Visible=false khong con
+        -- nghia la "het quest" nua -> day la nguon gay nhan quest lien tuc.
+        if type(__DIO_3nn_GetTrackedQuestText) == "function" then
+            return (__DIO_3nn_GetTrackedQuestText() or "") == ""
+        end
         local __pg = plr and plr:FindFirstChild("PlayerGui")
         local __main = __pg and __pg:FindFirstChild("Main")
         local __q = __main and __main:FindFirstChild("Quest")
@@ -5380,9 +5386,8 @@ __DIO_3nn_AutoQuest = function(mode)
     local lvl = (plr.Data and plr.Data.Level and plr.Data.Level.Value) or 0
     if lvl < C then return false end
     if __DIO_3nn_HasActiveQuestFor(mobs) then return false end
-    local qm = plr.PlayerGui:FindFirstChild("Main")
-    qm = qm and qm:FindFirstChild("Quest")
-    if qm and qm.Visible then return false end
+    -- [3nn PORT] quest hien thi o TrackedQuestFrame: text != "" nghia la DANG co quest
+    if __DIO_3nn_GetTrackedQuestText() ~= "" then return false end
     if not npcCF then return false end
     local hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
     local hum = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
@@ -5504,16 +5509,13 @@ __DIO_SafeLoop(function()
                 local RootF = char.HumanoidRootPart
                 local level = plr.Data.Level.Value
                 local inSub = IsInSubmergedIsland()
-                local mainGui = plr.PlayerGui:FindFirstChild("Main")
-                local qGUI = mainGui and mainGui:FindFirstChild("Quest")
-                if not qGUI then return end
-                local questTitle = ""
-                if qGUI.Visible then
-                    local t = qGUI:FindFirstChild("Container")
-                    t = t and t:FindFirstChild("QuestTitle")
-                    t = t and t:FindFirstChild("Title")
-                    questTitle = t and t.Text or ""
+                -- [3nn PORT] Lay text quest tu TrackedQuestFrame (UI moi) truoc,
+                -- Main.Quest chi la fallback -> het loi "khong thay quest" -> nhan lai lien tuc.
+                local questText = ""
+                if type(__DIO_3nn_GetTrackedQuestText) == "function" then
+                    questText = __DIO_3nn_GetTrackedQuestText() or ""
                 end
+                local hasQuest = (questText ~= "")
                 if level >= 2600 and not inSub then
                     if not alreadyTeleported or tick() - __DIO_LvlTryT > 20 then
                         alreadyTeleported = true
@@ -5547,62 +5549,69 @@ __DIO_SafeLoop(function()
                     __DIO_wait(1)
                     return
                 end
-                if _G.AutoQuest and qGUI.Visible and questTitle ~= ""
-                   and not string.find(questTitle, questData[1]) then
-                    replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
-                    __DIO_wait(0.3)
-                    return
-                end
-                if _G.AutoQuest and not qGUI.Visible then
-                    local PosQ = questData[6]
-                    local __qBlock = false
-                    if PosQ then
-                        local far = (PosQ.Position - RootF.Position).Magnitude
-                        if far > 10000 and PosQ.Position.X > 50000 then
-                            pcall(function()
-                                replicated.Remotes.CommF_:InvokeServer("requestEntrance",
-                                    Vector3.new(61163.8515625, 11.6796875, 1819.7841796875))
-                            end)
-                        elseif PosQ.Position.Z > 32000 then
-                            pcall(function()
-                                replicated.Remotes.CommF_:InvokeServer("requestEntrance",
-                                    Vector3.new(923.21252441406, 126.9760055542, 32852.83203125))
-                            end)
-                        elseif far > 4000 and PosQ.Position.X < -4000
-                           and PosQ.Position.Y > 3000 and PosQ.Position.Z < 0 then
-                            pcall(function()
-                                replicated.Remotes.CommF_:InvokeServer("requestEntrance",
-                                    Vector3.new(-7894.6176757813, 5547.1416015625, -380.29119873047))
-                            end)
-                        elseif far > 4000 and PosQ.Position.X < -4000
-                           and PosQ.Position.Y > 500 and PosQ.Position.Z < 0 then
-                            pcall(function()
-                                replicated.Remotes.CommF_:InvokeServer("requestEntrance",
-                                    Vector3.new(-4607.82275, 872.54248, -1667.55688))
-                            end)
-                        end
-                        _tp(PosQ)
-                        local t0 = tick()
-                        while _G.Level and not qGUI.Visible
-                           and (RootF.Position - PosQ.Position).Magnitude > 50
-                           and tick() - t0 < 15 do
-                            __DIO_wait(0.25)
+                -- [3nn PORT] LOGIC NHAN QUEST (ghep tu 3nn TakeQuestLevel):
+                --  1) dang co DUNG quest  -> bo qua het (chan spam nhan lai moi 0.5s)
+                --  2) dang co quest SAI   -> AbandonQuest (so sanh kieu plain, khong pattern)
+                --  3) chua co quest       -> chay toi NPC, chi StartQuest khi cach NPC <= 8 studs
+                if _G.AutoQuest then
+                    if hasQuest and __DIO_3nn_HasActiveQuestFor(questData[1]) then
+                        -- quest hien tai da dung -> khong lam gi, di danh tiep
+                    elseif hasQuest then
+                        pcall(function()
+                            replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
+                        end)
+                        __DIO_wait(0.5)
+                        return
+                    else
+                        local PosQ = questData[6]
+                        local __qBlock = false
+                        if PosQ then
+                            local far = (PosQ.Position - RootF.Position).Magnitude
+                            if far > 10000 and PosQ.Position.X > 50000 then
+                                pcall(function()
+                                    replicated.Remotes.CommF_:InvokeServer("requestEntrance",
+                                        Vector3.new(61163.8515625, 11.6796875, 1819.7841796875))
+                                end)
+                            elseif PosQ.Position.Z > 32000 then
+                                pcall(function()
+                                    replicated.Remotes.CommF_:InvokeServer("requestEntrance",
+                                        Vector3.new(923.21252441406, 126.9760055542, 32852.83203125))
+                                end)
+                            elseif far > 4000 and PosQ.Position.X < -4000
+                               and PosQ.Position.Y > 3000 and PosQ.Position.Z < 0 then
+                                pcall(function()
+                                    replicated.Remotes.CommF_:InvokeServer("requestEntrance",
+                                        Vector3.new(-7894.6176757813, 5547.1416015625, -380.29119873047))
+                                end)
+                            elseif far > 4000 and PosQ.Position.X < -4000
+                               and PosQ.Position.Y > 500 and PosQ.Position.Z < 0 then
+                                pcall(function()
+                                    replicated.Remotes.CommF_:InvokeServer("requestEntrance",
+                                        Vector3.new(-4607.82275, 872.54248, -1667.55688))
+                                end)
+                            end
                             _tp(PosQ)
+                            local t0 = tick()
+                            while _G.Level and (RootF.Position - PosQ.Position).Magnitude > 8
+                               and tick() - t0 < 15 do
+                                __DIO_wait(0.25)
+                                _tp(PosQ)
+                                if type(__DIO_3nn_GetTrackedQuestText) == "function"
+                                   and __DIO_3nn_GetTrackedQuestText() ~= "" then
+                                    break
+                                end
+                            end
+                            if (RootF.Position - PosQ.Position).Magnitude > 8 then
+                                __qBlock = true
+                            end
                         end
-                        if (RootF.Position - PosQ.Position).Magnitude > 50 then
-                            __qBlock = true
-                        end
-                    end
-                    if not __qBlock then
-                        if tick() - __DIO_LvlQTryT > 8 then
+                        if not __qBlock and tick() - __DIO_LvlQTryT > 2 then
                             __DIO_LvlQTryT = tick()
                             pcall(function()
                                 replicated.Remotes.CommF_:InvokeServer("StartQuest", questData[3], questData[2])
                             end)
                             __DIO_wait(1)
                         end
-                    end
-                    if __qBlock then
                         return
                     end
                 end
@@ -5621,7 +5630,7 @@ __DIO_SafeLoop(function()
                         if not th or not tr then break end
                         if th.Health <= 0 then break end
                         Attack.Kill(target, _G.Level)
-                        if not qGUI.Visible then break end
+                        if __DIO_3nn_GetTrackedQuestText() == "" then break end
                         if __DIO_GhostCheck(target) then switched = true break end
                         __DIO_wait()
                     until not target.Parent
@@ -5630,7 +5639,7 @@ __DIO_SafeLoop(function()
                     -- [BANANA] re-pick immediately: no 0.8s nap, no outer wait
                     if not _G.Level then break end
                     if switched then break end
-                    if not qGUI.Visible then break end
+                    if __DIO_3nn_GetTrackedQuestText() == "" then break end
                     __DIO_wait()
                     target = __DIO_NearestMob(enemyName, RootF.Position)
                 end
@@ -6563,61 +6572,79 @@ local function HopServer()
 		if not foundServer then __DIO_wait(0.3) end
 	until foundServer or attempts >= 8 or not Cursor
 end
+-- =====================================================================
+-- [3nn PORT] Elite Hunter: phai TIM THAY BOSS truoc (ReplicatedStorage hoac
+-- workspace.Enemies) roi moi lay quest, giong 3nn DetectEliteHunter().
+-- Nguyen nhan "chi nhan quest khong farm elite": __DIO_GetCurrentQuest() cu
+-- chi doc Main.Quest.Visible (UI cu) -> IsActive luon false -> goi EliteHunter
+-- mai mai, khong bao gio vao nhanh di danh boss.
+-- =====================================================================
+__DIO_EliteNames = { Diablo = true, Urban = true, Deandre = true }
+__DIO_DetectEliteHunter = function()
+    local __ok, __boss = pcall(function()
+        local __rs = game:GetService("ReplicatedStorage")
+        for _, __v in pairs(__rs:GetChildren()) do
+            if __v:IsA("Model") and __DIO_EliteNames[__v.Name] and Attack.Alive(__v) then
+                return __v
+            end
+        end
+        local __en = workspace:FindFirstChild("Enemies")
+        if __en then
+            for _, __v in pairs(__en:GetChildren()) do
+                if __v:IsA("Model") and __DIO_EliteNames[__v.Name] and Attack.Alive(__v) then
+                    return __v
+                end
+            end
+        end
+        return nil
+    end)
+    if __ok then return __boss end
+    return nil
+end
+__DIO_EliteTakeQuest = function()
+    pcall(function() replicated.Remotes.CommF_:InvokeServer("AbandonQuest") end)
+    __DIO_wait(0.35)
+    local __res = nil
+    pcall(function() __res = replicated.Remotes.CommF_:InvokeServer("EliteHunter") end)
+    return __res
+end
+__DIO_EliteFight = function(boss, flag)
+    if not boss or not boss.Parent then return end
+    pcall(__DIO_3nn_SizePart, boss)
+    local __hrp = boss:FindFirstChild("HumanoidRootPart")
+    if __hrp then _tp(__hrp.CFrame * CFrame.new(0, 30, 0)) end
+    repeat
+        __DIO_wait(0.25)
+        pcall(__DIO_3nn_SizePart, boss)
+        Attack.Kill(boss, flag)
+    until not flag or not boss.Parent or not Attack.Alive(boss)
+end
 __DIO_SafeLoop(function()
-	while __DIO_wait(1) do
-		pcall(function()
-			if _G.FarmEliteH then
-				local questGui = plr.PlayerGui.Main.Quest
-				local __qE2 = __DIO_GetCurrentQuest()
-				local questTitle = __qE2.QuestText or ""
-				if not __qE2.IsActive then
-					local result = replicated.Remotes.CommF_:InvokeServer("EliteHunter")
-					if result == nil or string.find(result, "Cooldown") then
-						HopServer()
-						return
-					end
-					__DIO_wait(1)
-				else
-					local eliteName = nil
-					for _, name in pairs({"Diablo", "Urban", "Deandre"}) do
-						if string.find(questTitle, name) then
-							eliteName = name
-							break
-						end
-					end
-					if eliteName then
-						local boss = nil
-						for _, v in pairs(replicated:GetChildren()) do
-							if v.Name == eliteName and v:FindFirstChild("HumanoidRootPart") then
-								boss = v
-								break
-							end
-						end
-						for _, v in pairs(workspace.Enemies:GetChildren()) do
-							if v.Name == eliteName and Attack.Alive(v) then
-								boss = v
-								break
-							end
-						end
-						if boss and boss:FindFirstChild("HumanoidRootPart") then
-							_tp(boss.HumanoidRootPart.CFrame * CFrame.new(0, 30, 0))
-							repeat
-								__DIO_wait(0.25)
-								Attack.Kill(boss, _G.FarmEliteH)
-							until not _G.FarmEliteH or not boss.Parent or boss.Humanoid.Health <= 0 or not questGui.Visible
-						else
-							__DIO_wait(5)
-							HopServer()
-						end
-					else
-						replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
-						__DIO_wait(1)
-						HopServer()
-					end
-				end
-			end
-		end)
-	end
+    while __DIO_wait(1) do
+        pcall(function()
+            if _G.FarmEliteH then
+                local __boss = __DIO_DetectEliteHunter()
+                if __boss then
+                    local __q = __DIO_GetCurrentQuest()
+                    local __txt = __q.QuestText or ""
+                    if (not __q.IsActive) or (not string.find(__txt, __boss.Name, 1, true)) then
+                        local __res = __DIO_EliteTakeQuest()
+                        if __res == nil or string.find(tostring(__res), "Cooldown")
+                           or string.find(tostring(__res), "Wait") then
+                            HopServer()
+                            return
+                        end
+                        __DIO_wait(1)
+                    else
+                        __DIO_EliteFight(__boss, _G.FarmEliteH)
+                    end
+                else
+                    __DIO_wait(5)
+                    HopServer()
+                end
+            end
+        end)
+    end
 end, "L4601")
 Tabs.Main:AddSection("Dough king Farm")
 TELEPORT_DISTANCE_THRESHOLD = 15
@@ -6907,17 +6934,9 @@ __DIO_SafeLoop(function()
                     if elite then
                         local __take = false
                         pcall(function()
-                            local __q = plr.PlayerGui:FindFirstChild("Main")
-                            __q = __q and __q:FindFirstChild("Quest")
-                            local __vis = __q and __q.Visible
-                            local __txt = ""
-                            if __vis then
-                                local __c = __q:FindFirstChild("Container")
-                                __c = __c and __c:FindFirstChild("QuestTitle")
-                                __c = __c and __c:FindFirstChild("Title")
-                                __txt = (__c and __c.Text) or ""
-                            end
-                            if (not __vis) or not string.find(__txt, elite.Name, 1, true) then
+                            -- [3nn PORT] doc quest tu TrackedQuestFrame (UI moi), Main.Quest la fallback
+                            local __txt = __DIO_3nn_GetTrackedQuestText() or ""
+                            if __txt == "" or not string.find(__txt, elite.Name, 1, true) then
                                 __take = true
                             end
                         end)
@@ -8974,56 +8993,32 @@ EliteQ = Tabs.Quests:AddToggle({
     Description = "",
     Default = false,
     Callback = function(Value)
-    _G.FarmEliteHunt = Value
+    _G.FarmEliteHunt = (Value == true)
+    -- [FIX] dang ky UI owner de Auto_Yama/Dojoo Borrow->Release khong tat nham toggle nay
+    pcall(__DIO_UIWant, "FarmEliteHunt", "EliteQ", Value == true)
+    if Value == true and type(__DIO_Wake) == "function" then pcall(__DIO_Wake, true) end
 end})
 __DIO_SafeLoop(function()
     while __DIO_wait(1) do
         pcall(function()
             if _G.FarmEliteHunt then
-                local questGui = plr.PlayerGui.Main.Quest
-                local __qE1 = __DIO_GetCurrentQuest()
-                local questTitle = __qE1.QuestText or ""
-                if not __qE1.IsActive then
-                    local result = replicated.Remotes.CommF_:InvokeServer("EliteHunter")
-                    if result == nil or string.find(result, "Cooldown") then
-                        __DIO_wait(10)
-                        return
-                    end
-                    __DIO_wait(1)
-                else
-                    local eliteName = nil
-                    for _, name in pairs({"Diablo", "Urban", "Deandre"}) do
-                        if string.find(questTitle, name) then
-                            eliteName = name
-                            break
+                local __boss = __DIO_DetectEliteHunter()
+                if __boss then
+                    local __q = __DIO_GetCurrentQuest()
+                    local __txt = __q.QuestText or ""
+                    if (not __q.IsActive) or (not string.find(__txt, __boss.Name, 1, true)) then
+                        local __res = __DIO_EliteTakeQuest()
+                        if __res == nil or string.find(tostring(__res), "Cooldown") then
+                            __DIO_wait(10)
+                            return
                         end
-                    end
-                    if eliteName then
-                        local boss = nil
-                        for _, v in pairs(replicated:GetChildren()) do
-                            if v.Name == eliteName and v:FindFirstChild("HumanoidRootPart") then
-                                boss = v
-                                break
-                            end
-                        end
-                        for _, v in pairs(Enemies:GetChildren()) do
-                            if v.Name == eliteName and Attack.Alive(v) then
-                                boss = v
-                                break
-                            end
-                        end
-                        if boss and boss:FindFirstChild("HumanoidRootPart") then
-                            _tp(boss.HumanoidRootPart.CFrame * CFrame.new(0, 30, 0))
-                            repeat
-                                __DIO_wait(0.25)
-                                Attack.Kill(boss, _G.FarmEliteHunt)
-                            until not _G.FarmEliteHunt or not boss.Parent or boss.Humanoid.Health <= 0 or not questGui.Visible
-                        else
-                            __DIO_wait(5)
-                        end
+                        __DIO_wait(1)
                     else
-                        replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
+                        __DIO_EliteFight(__boss, _G.FarmEliteHunt)
                     end
+                else
+                    -- chua thay elite -> doi (3nn: "Waiting Elite Hunter")
+                    __DIO_wait(5)
                 end
             end
         end)
@@ -9034,7 +9029,10 @@ EliteH = Tabs.Quests:AddToggle({
 	Description = "",
 	Default = false,
 	Callback = function(Value)
-	_G.FarmEliteH = Value
+	_G.FarmEliteH = (Value == true)
+	-- [FIX] dang ky UI owner de Auto_Yama/Dojoo Borrow->Release khong tat nham toggle nay
+	pcall(__DIO_UIWant, "FarmEliteH", "EliteH", Value == true)
+	if Value == true and type(__DIO_Wake) == "function" then pcall(__DIO_Wake, true) end
 end})
 Tabs.Quests:AddToggle({
     Name = __DIO_T["Auto Get PlayerQuest"],
@@ -10569,13 +10567,12 @@ __DIO_SafeLoop(function()
 end, "L8378")
 __DIO_GetCurrentQuest = function()
   local __ok, __res = pcall(function()
-    local __main = plr and plr.PlayerGui and plr.PlayerGui:FindFirstChild("Main")
-    local __q = __main and __main:FindFirstChild("Quest")
-    if not (__q and __q.Visible) then return { IsActive = false } end
-    local __t = __q:FindFirstChild("Container")
-    __t = __t and __t:FindFirstChild("QuestTitle")
-    __t = __t and __t:FindFirstChild("Title")
-    local __text = (__t and __t.Text) or ""
+    -- [3nn PORT] doc tu TrackedQuestFrame truoc (UI moi), Main.Quest la fallback
+    local __text = ""
+    if type(__DIO_3nn_GetTrackedQuestText) == "function" then
+      __text = __DIO_3nn_GetTrackedQuestText() or ""
+    end
+    if __text == "" then return { IsActive = false } end
     local __req, __mob = __text:match("^Defeat%s+(%d+)%s+(.+)$")
     if not __req then __mob = __text:match("^Defeat%s+(.+)$") end
     return { IsActive = true, QuestText = __text, MobTarget = __mob or __text, Required = tonumber(__req), Done = false }
@@ -10689,10 +10686,10 @@ __DIO_SafeLoop(function()
   while __DIO_wait(1) do
     pcall(function()
       if _G.Bartilo_Quest and plr.Data.Level.Value >= 850 then
-      local Qbart = plr.PlayerGui.Main.Quest
+      local Qbart = plr.PlayerGui:FindFirstChild("Main") and plr.PlayerGui.Main:FindFirstChild("Quest")  -- [FIX] tranh nil index neu UI quest doi ten
         if replicated.Remotes.CommF_:InvokeServer("BartiloQuestProgress","Bartilo") == 0 then
           __DIO_SetFlag("Level","Bartilo_Quest",true,true)
-          if Qbart.Visible == true then
+          if __DIO_3nn_GetTrackedQuestText() ~= "" then
             local v = GetConnectionEnemies("Swan Pirate")
             if v then
               local x = GetConnectionEnemies(BartMon)
@@ -10700,7 +10697,7 @@ __DIO_SafeLoop(function()
                 repeat __DIO_wait(Sec)
                   if not string.find(__DIO_GetCurrentQuest().QuestText or "", "Swan Pirate", 1, true)then replicated.Remotes.CommF_:InvokeServer("AbandonQuest")
                   else Attack.Kill(x,_G.Bartilo_Quest)end
-                until _G.Bartilo_Quest == false or not x.Parent or x.Humanoid.Health <= 0 or Qbart.Visible == false or not x:FindFirstChild("HumanoidRootPart")
+                until _G.Bartilo_Quest == false or not x.Parent or x.Humanoid.Health <= 0 or __DIO_3nn_GetTrackedQuestText() == "" or not x:FindFirstChild("HumanoidRootPart")
               end
             else
               _tp(CFrame.new(970.369446, 142.653198, 1217.3667, 0.162079468, -4.85452638e-08, -0.986777723, 1.03357589e-08, 1, -4.74980872e-08, 0.986777723, -2.50063148e-09, 0.162079468))
@@ -10717,7 +10714,7 @@ __DIO_SafeLoop(function()
             __DIO_SetFlag("Level","Bartilo_Quest",true,true)
             local je = GetConnectionEnemies("Jeremy")
             if je then
-              repeat __DIO_wait(Sec) Attack.Kill(je,_G.Bartilo_Quest) until _G.Bartilo_Quest == false or not je.Parent or je.Humanoid.Health <= 0 or Qbart.Visible == false or not je:FindFirstChild("HumanoidRootPart")
+              repeat __DIO_wait(Sec) Attack.Kill(je,_G.Bartilo_Quest) until _G.Bartilo_Quest == false or not je.Parent or je.Humanoid.Health <= 0 or __DIO_3nn_GetTrackedQuestText() == "" or not je:FindFirstChild("HumanoidRootPart")
             else
               _tp(CFrame.new(2158.97412, 449.056244, 705.411682, -0.754199564, -4.17389057e-09, -0.656645238, -4.47752875e-08, 1, 4.50709301e-08, 0.656645238, 6.3393955e-08, -0.754199564))
             end
