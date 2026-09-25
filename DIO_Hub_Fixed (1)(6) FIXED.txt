@@ -4203,6 +4203,287 @@ local Tabs = {
     Webhook = Window:MakeTab({ Title = "Webhook Notify", Icon = "" }),
     Misc = Window:MakeTab({ Title = "Misc", Icon = "" })
 }
+-- ==== [ADDINPUT-FIX] begin ====
+-- Tuong thich UI library. Hub nay goi Tabs.Webhook:AddInput(name, {...}) (kieu Orion/Fluent)
+-- nhung redzlib chi co AddTextBox -> "attempt to call missing method 'AddInput' of table"
+-- va TOAN BO hub chet o dong do (khong len duoc menu). Khoi nay:
+--   1) AddInput -> AddTextBox (thu vien co san)
+--   2) AddInput / AddParagraph kieu table -> doi thanh (title, content) dung chu ky thu vien
+--   3) thu vien thieu element nao (AddInput/AddSection/AddParagraph) -> tu ve hang don gian,
+--      KHONG bao gio crash ca hub nua.
+do
+    local function __DIO_IsInstance(o)
+        if o == nil or type(o) ~= "table" then return false end
+        if typeof ~= nil then
+            local ok, t = pcall(typeof, o)
+            if ok and t == "Instance" then return true end
+        end
+        return o.IsA ~= nil and o.ClassName ~= nil and type(o.GetChildren) == "function"
+    end
+
+    local function __DIO_CallBacks(self, v)
+        local list = self.CALLBACKS or self.Callbacks
+        if type(list) == "table" then
+            for _, fn in ipairs(list) do
+                if type(fn) == "function" then pcall(fn, v) end
+            end
+        end
+        if type(self.Callback) == "function" then pcall(self.Callback, v) end
+    end
+
+    -- lay container cua tab: thu truc tiep, xong tim ScrollingFrame trong cua so
+    local function __DIO_TabContainer(tab)
+        if type(tab) ~= "table" then return nil end
+        local direct = rawget(tab, "Container")
+        if __DIO_IsInstance(direct) then return direct end
+        local root = rawget(tab, "Parent") or rawget(tab, "WindowFrame") or rawget(tab, "MainFrame")
+        if not __DIO_IsInstance(root) then return nil end
+        local ok, list = pcall(function() return root:GetDescendants() end)
+        if not ok then return nil end
+        for _, d in ipairs(list or {}) do
+            local okIs, isScroll = pcall(function() return d:IsA("ScrollingFrame") end)
+            if okIs and isScroll then return d end
+        end
+        return nil
+    end
+
+    -- hanh don gian tu ve (Frame + chu + gia tri), dung khi thu vien khong co element do
+    local function __DIO_FallbackRow(tab, kind, cfg)
+        cfg = type(cfg) == "table" and cfg or {}
+        local self = {
+            Kind = kind,
+            Title = tostring(cfg.Name or cfg.Title or ""),
+            Description = tostring(cfg.Desc or cfg.Description or cfg.Content or ""),
+            Value = cfg.Default,
+            Callbacks = type(cfg.Callback) == "function" and { cfg.Callback } or nil,
+            Dummy = true,
+        }
+        local holder = __DIO_TabContainer(tab)
+        if not __DIO_IsInstance(holder) then
+            if warn then warn("[DIO] UI compat: khong tim thay container cua tab -> bo qua element " .. tostring(self.Title)) end
+            return self
+        end
+
+        local row, titleLabel, valueLabel
+        local ok, perr = pcall(function()
+            row = Instance.new("Frame")
+            row.Name = self.Title ~= "" and self.Title or ("DIO_" .. kind)
+            row.Size = UDim2.new(1, 0, 0, 26)
+            row.BackgroundTransparency = 0.25
+            row.BackgroundColor3 = Color3.fromRGB(28, 28, 30)
+            row.Parent = holder
+
+            local corner = Instance.new("UICorner")
+            corner.CornerRadius = UDim.new(0, 8)
+            corner.Parent = row
+
+            titleLabel = Instance.new("TextLabel")
+            titleLabel.BackgroundTransparency = 1
+            titleLabel.Position = UDim2.new(0, 10, 0, 0)
+            titleLabel.Size = UDim2.new(0.42, 0, 1, 0)
+            titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+            titleLabel.TextTruncate = Enum.TextTruncate.AtEnd
+            titleLabel.Font = Enum.Font.GothamMedium
+            titleLabel.TextSize = 11
+            titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            titleLabel.Text = self.Title
+            titleLabel.Parent = row
+
+            valueLabel = Instance.new("TextLabel")
+            valueLabel.BackgroundTransparency = 1
+            valueLabel.Position = UDim2.new(0.45, 0, 0, 0)
+            valueLabel.Size = UDim2.new(0.53, -10, 1, 0)
+            valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+            valueLabel.TextTruncate = Enum.TextTruncate.AtEnd
+            valueLabel.Font = Enum.Font.Gotham
+            valueLabel.TextSize = 10
+            valueLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+            valueLabel.Text = self.Description
+            valueLabel.Parent = row
+        end)
+        if not ok or row == nil then
+            if warn then warn("[DIO] UI compat: bo qua element " .. tostring(self.Title) .. " (" .. tostring(perr) .. ")") end
+            return self
+        end
+
+        self.DESTROY_ELEMENT = row
+        self.VISIBLE_ELEMENT = row
+        self._ROW = row
+        self.TITLE_LABEL = titleLabel
+        self.DESCRIPTION_LABEL = valueLabel
+
+        local function paint()
+            pcall(function()
+                if kind == "Toggle" then
+                    valueLabel.Text = (self.Value == true) and "ON" or "OFF"
+                    valueLabel.TextColor3 = (self.Value == true) and Color3.fromRGB(120, 255, 150) or Color3.fromRGB(255, 120, 120)
+                else
+                    valueLabel.Text = tostring(self.Value or self.Description or "")
+                end
+            end)
+        end
+
+        if kind == "TextBox" then
+            pcall(function()
+                valueLabel:Destroy()
+                local box = Instance.new("TextBox")
+                box.Position = UDim2.new(0.45, 0, 0.5, 0)
+                box.AnchorPoint = Vector2.new(0, 0.5)
+                box.Size = UDim2.new(0.55, -12, 0, 18)
+                box.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+                box.TextColor3 = Color3.fromRGB(255, 255, 255)
+                box.Font = Enum.Font.Gotham
+                box.TextSize = 11
+                box.TextXAlignment = Enum.TextXAlignment.Left
+                box.ClearTextOnFocus = false
+                box.PlaceholderText = tostring(cfg.Placeholder or cfg.PlaceholderText or "Input")
+                box.Text = tostring(self.Value or "")
+                box.Parent = row
+                local bc = Instance.new("UICorner")
+                bc.CornerRadius = UDim.new(0, 4)
+                bc.Parent = box
+                self.TEXTBOX = box
+                local sig = box:GetPropertyChangedSignal("Text")
+                if sig and sig.Connect then
+                    sig:Connect(function()
+                        self.Value = box.Text
+                        __DIO_CallBacks(self, box.Text)
+                    end)
+                end
+                self.SetText = function(s2, t) box.Text = tostring(t or "") return s2 end
+                self.Set = self.SetText
+                self.SetPlaceholder = function(s2, t) box.PlaceholderText = tostring(t or "") return s2 end
+                self.CaptureFocus = function(s2) pcall(function() box:CaptureFocus() end) return s2 end
+                self.Clear = function(s2) box.Text = "" return s2 end
+            end)
+        elseif kind == "Toggle" or kind == "Button" then
+            paint()
+            pcall(function()
+                local btn = Instance.new("TextButton")
+                btn.BackgroundTransparency = 1
+                btn.Text = ""
+                btn.Size = UDim2.fromScale(1, 1)
+                btn.AutoButtonColor = false
+                btn.Parent = row
+                btn.MouseButton1Click:Connect(function()
+                    if kind == "Toggle" then
+                        self.Value = not (self.Value == true)
+                        paint()
+                    end
+                    __DIO_CallBacks(self, self.Value)
+                end)
+            end)
+            self.SetValue = function(s2, v)
+                self.Value = (v == true)
+                paint()
+                return s2
+            end
+            self.Set = self.SetValue
+        else
+            paint()
+        end
+
+        self.SetDesc = function(s2, t)
+            self.Description = tostring(t or "")
+            pcall(function() valueLabel.Text = self.Description end)
+            return s2
+        end
+        self.SetContent = self.SetDesc
+        self.SetTitle = function(s2, t)
+            self.Title = tostring(t or "")
+            pcall(function() titleLabel.Text = self.Title end)
+            return s2
+        end
+        self.SetVisible = function(s2, v) pcall(function() row.Visible = (v ~= false) end) return s2 end
+        self.Destroy = function() pcall(function() row:Destroy() end) end
+        return self
+    end
+
+    for __DIO_tname, __DIO_tab in pairs(Tabs) do
+        if type(__DIO_tab) == "table" then
+            -- 1) AddInput -> AddTextBox (redzlib / DIO library chi co TextBox)
+            if type(__DIO_tab.AddTextBox) == "function" then
+                local __DIO_realTb = __DIO_tab.AddTextBox
+                __DIO_tab.AddInput = function(self, a, b)
+                    local cfg, flag
+                    if type(a) == "table" then
+                        cfg = {}
+                        for k, v in pairs(a) do cfg[k] = v end
+                    else
+                        flag = tostring(a or "Input")   -- kieu AddInput("Ten", {...})
+                        cfg = {}
+                        if type(b) == "table" then
+                            for k, v in pairs(b) do cfg[k] = v end
+                        end
+                    end
+                    -- thu vien lay nhan hien thi theo thu tu [1] / Name / Title -> giu Title
+                    if cfg.Title ~= nil then
+                        cfg.Name = nil
+                    else
+                        cfg.Name = flag or cfg.Name or "Input"
+                    end
+                    if type(cfg.Flag) ~= "string" and flag ~= nil then cfg.Flag = flag end
+                    -- thu vien nay khong ho tro 2 khoa sau (Orion/Fluent only)
+                    cfg.Numeric = nil
+                    cfg.Finished = nil
+                    cfg.Description = cfg.Description or ""
+                    local ok, res = pcall(__DIO_realTb, self, cfg)
+                    if ok then return res end
+                    warn("[DIO] AddTextBox loi: " .. tostring(res))
+                    return __DIO_FallbackRow(self, "TextBox", cfg)
+                end
+            else
+                __DIO_tab.AddInput = function(self, a, b)
+                    local cfg = (type(a) == "table") and a or (type(b) == "table") and b or {}
+                    if type(a) ~= "table" and type(b) == "table" then
+                        local t2 = {}
+                        for k, v in pairs(b) do t2[k] = v end
+                        t2.Name = tostring(a or "Input")
+                        cfg = t2
+                    end
+                    return __DIO_FallbackRow(self, "TextBox", cfg)
+                end
+            end
+
+            -- 2) AddParagraph: chap ca (title, content) lan {Title=..., Content=...}
+            if type(__DIO_tab.AddParagraph) == "function" then
+                local __DIO_realPara = __DIO_tab.AddParagraph
+                __DIO_tab.AddParagraph = function(self, a, b)
+                    if type(a) == "table" then
+                        return __DIO_realPara(self,
+                            tostring(a.Title or a.Name or "Info"),
+                            tostring(a.Content or a.Description or a.Text or ""))
+                    end
+                    return __DIO_realPara(self, a, b)
+                end
+            else
+                __DIO_tab.AddParagraph = function(self, a, b)
+                    local cfg = (type(a) == "table") and a
+                        or { Title = tostring(a or ""), Content = tostring(b or "") }
+                    return __DIO_FallbackRow(self, "Paragraph", {
+                        Title = cfg.Title or cfg.Name,
+                        Name = cfg.Name or cfg.Title,
+                        Content = cfg.Content or cfg.Description,
+                        Description = cfg.Description or cfg.Content,
+                    })
+                end
+            end
+
+            -- 3) AddSection: thu vien khong co -> dung Paragraph lam tieu de
+            if type(__DIO_tab.AddSection) ~= "function" then
+                __DIO_tab.AddSection = function(self, a)
+                    local title = (type(a) == "table") and tostring(a.Title or a.Name or "") or tostring(a or "")
+                    if type(self.AddParagraph) == "function" then
+                        local ok, res = pcall(self.AddParagraph, self, { Title = title, Content = "" })
+                        if ok then return res end
+                    end
+                    return __DIO_FallbackRow(self, "Paragraph", { Title = title, Content = "" })
+                end
+            end
+        end
+    end
+end
+-- ==== [ADDINPUT-FIX] end ====
 __DIO_T = setmetatable({
     ["FIX LAG "] = "FIX LAG ",
     ["Select Weapon"] = "Select Weapon",
@@ -17815,23 +18096,19 @@ __DIO_WH_Send = function(event, detail, isFruit)
         end
     end)
 end
-Tabs.Webhook:AddInput("WebhookUrl", {
+Tabs.Webhook:AddTextBox({
     Title = __DIO_T["Input Url Webhook"],
     Default = _G.WebhookUrl,
     Placeholder = "https://discord.com/api/webhooks/...",
-    Numeric = false,
-    Finished = true,
     Callback = function(Value)
         _G.WebhookUrl = Value or ""
         SetSetting("UI/Webhook/Input Url Webhook", _G.WebhookUrl)
     end
 })
-Tabs.Webhook:AddInput("WebhookPing", {
+Tabs.Webhook:AddTextBox({
     Title = __DIO_T["Input Discord Ping (Everyone/ID)"],
     Default = _G.WebhookPing,
     Placeholder = "Discord user ID (empty = @everyone)",
-    Numeric = false,
-    Finished = true,
     Callback = function(Value)
         _G.WebhookPing = Value or ""
         SetSetting("UI/Webhook/Input Discord Ping", _G.WebhookPing)
@@ -17990,6 +18267,8 @@ else
         __DIO_SafeStart("fluent-fallback")
         return
     end
+    -- [KEY-FIX] luu key qua Callback (khong dua vao .Value cua element)
+    local __DIO_KeyEntry = ""
     local Window = Fluent:CreateWindow({
         Title = "DIO Hub Get Key",
         SubTitle = "By DIO",
@@ -18043,19 +18322,23 @@ else
             })
         end
     })
-    local KeyInput = Tabs.GetKey:AddInput("KeyInput", {
+    -- [KEY-FIX] Fluent dung AddInput({Options}) (khong co ten o ngoac don nhu Orion);
+    -- goi sai kieu do thi KeyInput = nil -> nut "Check Key" crash o KeyInput.Value.
+    local KeyInput = Tabs.GetKey:AddInput({
         Title = "Enter Key",
         Default = "",
         Placeholder = "Paste your key here...",
         Numeric = false,
         Finished = false,
-        Callback = function(Value) end
+        Callback = function(Value)
+            __DIO_KeyEntry = tostring(Value or "")
+        end
     })
     Tabs.GetKey:AddButton({
         Title = "Check Key",
         Description = "Verifies your key.",
         Callback = function()
-            local enteredKey = KeyInput.Value
+            local enteredKey = (KeyInput and KeyInput.Value) or __DIO_KeyEntry
             if _SEC_VerifyKey(enteredKey) then
                 Fluent:Notify({
                     Title = "Success",
