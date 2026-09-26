@@ -64,7 +64,6 @@ local function _DIO_CleanJSON(str)
     return str
 end
 
-
 local function _DIO_NormKey(s)
     if type(s) ~= "string" then return "" end
     local t = s
@@ -80,20 +79,17 @@ local function _DIO_NormKey(s)
     return t
 end
 
-
 local function _DIO_KeyEq(a, b)
     local x, y = _DIO_NormKey(a), _DIO_NormKey(b)
     if #x == 0 or #y == 0 then return false end
     return x:lower() == y:lower()
 end
 
-
 local function _DIO_Bust(url)
     if type(url) ~= "string" or #url == 0 then return url end
     local sep = url:find("?", 1, true) and "&" or "?"
     return url .. sep .. "t=" .. tostring(os.time()) .. "&r=" .. tostring(math.random(100000, 999999))
 end
-
 
 local function _DIO_HttpGet(url)
     local out = nil
@@ -763,7 +759,9 @@ __DIO_UISetOn = function(name, key, on)
 end
 __DIO_FarmFlagNames = {
     "StartFarm", "SailBoat_Hydra", "WardenBoss", "AutoFactory", "HighestMirage", "HCM", "PGB", "Leviathan1", "UPGDrago",
-    "Complete_Trials", "TpDrago_Prehis", "BuyDrago", "BuyMelee_BuyBlackLeg", "BuyMelee_BuyElectro", "BuyMelee_BuyFishmanKarate", "BuyMelee_BuyDragonClaw", "AutoFireFlowers",
+    "Complete_Trials", "TpDrago_Prehis", "BuyDrago", "BuyMelee_BuyBlackLeg", "BuyMelee_BuyElectro", "BuyMelee_BuyFishmanKarate", "BuyMelee_BuyDragonClaw",
+    "BuyMelee_BuySuperhuman", "BuyMelee_BuyDeathStep", "BuyMelee_BuySharkmanKarate", "BuyMelee_BuyElectricClaw",
+    "BuyMelee_BuyDragonTalon", "BuyMelee_BuyGodhuman", "BuyMelee_BuySanguineArt", "AutoFireFlowers",
     "DT_Uzoth", "AutoBerry", "Prefully", "Prehis_Find", "Prehis_Skills", "Prehis_DB", "Prehis_DE", "FarmBlazeEM",
     "Dojoo", "CollectPresent", "AutoPhoenixF", "AutoFarmChest", "AutoHytHallow", "LongsWord",
     "BlackSpikey", "AutoHolyTorch", "TrainDrago", "AutoSaber", "FarmMastery_Dev", "CitizenQuest", "AutoEctoplasm", "KeysRen",
@@ -1094,10 +1092,39 @@ __DIO_IsFarmFlag = function(name)
     for _, n in ipairs(__DIO_FarmFlagAll()) do if n == name then return true end end
     return false
 end
+__DIO_SeaEventFlagCheck = {
+    Shark = "CheckShark", TerrorShark = "CheckTerrorShark", Piranha = "CheckPiranha",
+    MobCrew = "CheckFishCrew", HCM = "CheckHauntedCrew", SeaBeast1 = "CheckSeaBeast",
+    FishBoat = "CheckEnemiesBoat", PGB = "CheckPirateGrandBrigade", Leviathan1 = "CheckLeviathan",
+}
+__DIO_SeaMobAlive = function(flag)
+    local __fnName = __DIO_SeaEventFlagCheck[flag]
+    if not __fnName then return true end
+    local __fn = rawget(_G, __fnName)
+    if type(__fn) ~= "function" then return true end
+    local __ok, __res = pcall(__fn)
+    return (__ok and __res == true)
+end
 __DIO_FarmFlagOnSet = function()
     local out, any = {}, false
     for _, n in ipairs(__DIO_FarmFlagAll()) do
         if __DIO_FlagGet(n) == true then out[n] = true any = true end
+    end
+    -- FIX Sea Event: flag sea-event chi duoc coi la "dang bat" khi mob tuong ung
+    -- THAT SU co trong map. Truoc day chi can chon dropdown la _G.Shark/_G.TerrorShark/...
+    -- = true -> highlight + shouldTween bat ngay trong trang thai cho, va ket maii
+    -- mai sau khi tat toggle.
+    if any then
+        local __onlySea, __seaLive = true, false
+        for __n in pairs(out) do
+            if not __DIO_SeaEventFlagCheck[__n] then __onlySea = false break end
+        end
+        if __onlySea then
+            for __n in pairs(out) do
+                if __DIO_SeaMobAlive(__n) then __seaLive = true break end
+            end
+            if not __seaLive then return {}, false end
+        end
     end
     if __DIO_BuyFlying == true then out["__DIO_BuyFlying"] = true any = true end
     return out, any
@@ -1240,6 +1267,46 @@ __DIO_Watchdog = function()
     pcall(__DIO_TweenDropPending)
     if __DIO_FlyBusy == true and __DIO_FlyBusyT ~= nil and (tick() - __DIO_FlyBusyT) > 360 then __DIO_FlyBusy = false end
     pcall(__DIO_TweenSync)
+    -- FIX bug "treo": shouldTween / highlight bi ket true maii (farm ~30p roi tat toggle).
+    -- Neu khong co feature nao bat, khong co _tp moi, va mover cua engine khong tien trien
+    -- -> ep huy toan bo tween + tat highlight.
+    pcall(function()
+        if __DIO_FlyBusy == true then return end
+        if type(__DIO_AnyFeatureOn) == "function" and __DIO_AnyFeatureOn() then
+            __DIO_StuckN = 0 __DIO_StuckD = nil return
+        end
+        if type(__DIO_MoveFresh) == "function" and __DIO_MoveFresh() then
+            __DIO_StuckN = 0 __DIO_StuckD = nil return
+        end
+        local eng = __DIO_TweenEngine or getgenv().__DIO_TweenEngine3nn
+        local m = eng and eng.Active
+        if m and not m.dead then
+            local __d = nil
+            pcall(function()
+                local __p = m.part
+                if __p and __p.Parent and m.goal then __d = (m.goal.Position - __p.Position).Magnitude end
+            end)
+            if __d then
+                if __DIO_StuckD ~= nil and __d >= (__DIO_StuckD - 1) then
+                    __DIO_StuckN = (__DIO_StuckN or 0) + 1
+                else
+                    __DIO_StuckN = 0
+                end
+                __DIO_StuckD = __d
+            end
+            if (__DIO_StuckN or 0) >= 8 then
+                __DIO_StuckN = 0 __DIO_StuckD = nil
+                pcall(function() if eng and eng.CancelAll then eng.CancelAll() end end)
+                if type(__DIO_TweenKill) == "function" then pcall(__DIO_TweenKill, false, true) end
+                return
+            end
+        else
+            __DIO_StuckN = 0 __DIO_StuckD = nil
+            if shouldTween == true and (tick() - (__DIO_LastTpT or 0)) > (__DIO_TWEEN_LEASE or 30) then
+                if type(__DIO_TweenKill) == "function" then pcall(__DIO_TweenKill, false, true) end
+            end
+        end
+    end)
 end
 __DIO_SafeLoop(function()
     while __DIO_wait(0.5) do pcall(__DIO_Watchdog) end
@@ -1628,12 +1695,6 @@ __DIO_UseMasteryNow = function(model)
   return (pct <= __DIO_MasteryPct()), kind
 end
 __DIO_EquipFarmWeapon = function(model)
-
-
-
-
-
-
   if _G.AutoAttackDungeon or _G.AutoRaid or _G.AutoMultiRaid or _G.AutoBuyChipAttackLaw then
     local w = _G.SelectWeaponRaid or "Melee"
     if _G.AutoAttackDungeon then w = _G.SelectWeaponDungeon or "Melee" end
@@ -2203,9 +2264,6 @@ BringEnemy = function(Mon)
     if not BringEnemyFarm then return end
     if not Mon or not Mon.Parent or not Mon:FindFirstChild("HumanoidRootPart") then return end
     if type(IsRaidMob) == "function" and IsRaidMob(Mon) then return end
-
-
-
     if _G.AutoAttackDungeon then return end
     do
         local __map = workspace:FindFirstChild("Map")
@@ -2522,7 +2580,7 @@ CheckFishCrew = function()
   local __en = __DIO_EnFolder()
   if not __en then return false end
   for _,v in pairs(__en:GetChildren()) do
-    if (v.Name == "Fish Crew Member" or v.Name == "Haunted Crew Member") and Attack.Alive(v) then
+    if v.Name == "Fish Crew Member" and Attack.Alive(v) then
       return true
 end;
   end;
@@ -2759,13 +2817,6 @@ __DIO_SafeLoop(function()
         end
     end
 end, "L1347B")
-
-
-
-
-
-
-
 
 __DIO_SnapTo = function(cf)
     if not cf then return end
@@ -3257,15 +3308,6 @@ __DIO_CanPivotBoat = function(hum)
     if not __DIO_BoatHasVehicleSeat(boat) then return true, boat end
     return false, boat
 end
-
-
-
-
-
-
-
-
-
 
 do
     local RunService = __SVC_RUN or game:GetService("RunService")
@@ -4389,7 +4431,10 @@ pcall(function()
     if type(__DIO_Banana_BindAliases) == "function" then __DIO_Banana_BindAliases() end
 end)
 __DIO_FarmFlagsOn = function()
-    return (_G.StartFarm or _G.SailBoat_Hydra or _G.WardenBoss or _G.AutoFactory or _G.HighestMirage or _G.HCM or _G.PGB or _G.Leviathan1 or _G.UPGDrago or _G.Complete_Trials or _G.TpDrago_Prehis or _G.BuyDrago or __DIO_BuyFlying or _G.BuyMelee_BuyBlackLeg or _G.BuyMelee_BuyElectro or _G.BuyMelee_BuyFishmanKarate or _G.BuyMelee_BuyDragonClaw or _G.AutoFireFlowers or _G.DT_Uzoth or _G.AutoBerry or _G.Prefully or _G.Prehis_Find or _G.Prehis_Skills or _G.Prehis_DB or _G.Prehis_DE or _G.FarmBlazeEM or _G.Dojoo or _G.CollectPresent or _G.AutoPhoenixF or _G.AutoFarmChest or _G.AutoHytHallow or _G.LongsWord or _G.BlackSpikey or _G.AutoHolyTorch or _G.TrainDrago  or _G.AutoSaber or _G.FarmMastery_Dev or _G.CitizenQuest or _G.AutoEctoplasm or _G.KeysRen or _G.Auto_Rainbow_Haki or _G.obsFarm or _G.AutoBigmom or _G.Doughv2 or _G.AuraBoss or _G.Raiding or _G.AutoRaid or _G.AutoMultiRaid or _G.AutoJoinDungeon or _G.AutoAttackDungeon or _G.AutoPickCardDungeon or _G.AutoBuyChipAttackLaw or _G.Auto_Cavender or _G.TpPly or _G.Bartilo_Quest or _G.Level or _G.FarmEliteHunt or _G.AutoZou or _G.AutoFarm_Bone or getgenv().AutoMaterial or _G.CraftVM or _G.FrozenTP or _G.ShotHL or _G.TPDoor or _G.AcientOne or _G.AutoFarmNear or _G.AutoRaidCastle or _G.DarkBladev3 or _G.AutoFarmRaid or _G.Auto_Cake_Prince or _G.Addealer or _G.TPNpc or _G.TwinHook or _G.FindMirage or _G.FrozenDimension or _G.FarmChestM or _G.Shark or _G.TerrorShark or _G.Piranha or _G.MobCrew or _G.SeaBeast1 or _G.FishBoat or _G.AutoPole or _G.AutoPoleV2 or _G.Auto_SuperHuman or _G.AutoDeathStep or _G.Auto_SharkMan_Karate or _G.Auto_Electric_Claw or _G.AutoDragonTalon or _G.Auto_Def_DarkCoat or _G.Auto_God_Human or _G.Auto_Tushita or _G.AutoMatSoul or _G.AutoKenVTWO or _G.AutoSerpentBow or _G.AutoFMon or _G.Auto_Soul_Guitar or _G.TPGEAR or _G.AutoSaw or _G.AutoTridentW2 or _G.AutoEvoRace or _G.AutoGetQuestBounty or _G.MarinesCoat or _G.TravelDres or _G.Defeating or _G.DummyMan or _G.Auto_Yama or _G.Auto_SwanGG or _G.SwanCoat or _G.AutoEcBoss or _G.Auto_Mink or _G.Auto_Human or _G.Auto_Skypiea or _G.Auto_Fish or _G.CDK_TS or _G.CDK_YM or _G.CDK or _G.AutoFarmGodChalice or _G.AutoFistDarkness or _G.AutoMiror or _G.Teleport or _G.AutoKilo or _G.AutoGetUsoap or _G.Praying or _G.TryLucky or _G.AutoColShad or _G.AutoUnHaki or _G.Auto_DonAcces or _G.AutoRipIngay or _G.DragoV3 or _G.DragoV1 or _G.SailBoats or _G.NextIs or _G.FarmGodChalice or _G.IceBossRen or _G.senth or _G.senth2 or _G.Lvthan or _G.beasthunter or _G.DangerLV or _G.Relic123 or _G.tweenKitsune or _G.Collect_Ember or _G.AutofindKitIs or _G.Snaguine or _G.TwFruits or _G.tweenKitShrine or _G.Tp_LgS or _G.Tp_MasterA or _G.tweenShrine or _G.FarmMastery_G or _G.FarmMastery_S or _G.FarmBoss or _G.AutoFarmAllBoss or _G.AutoFishSlap or _G.TweenBoatOwner or _G.FarmTyrant or _G.FarmPhaBinh or _G.AutoSpawnCP or _G.AutoBerryH or _G.AutoChestBP or _G.FarmEliteHop or _G.AutoAttackDoughKing or _G.AutoSummonDoughKing or _G.AutoHopDoughKing or _G.StartEvent or _G.AutoMysticIsland or _G.AutoPlayerHunter or _G.SafeMode or _G.AutoKillMob or _G.AutoStartPrehistoric or _G.AutoUnHaki or _G.AutoFarmIsland or _G.AutoFarmCandy or _G.AutoTP_Gift or _G.AutoTPGift or _G.AutoTPAndCollect or _G.MasterAutoLevel or _G.MasterAutoCandy or _G.FarmEliteH or _G.Safemode or _G.Greybeard or _G.ResetPH) and true or false
+    -- FIX: uy quyen cho __DIO_FarmFlagOnSet (da loc flag sea-event khi khong co mob that su)
+    local __out, __any = __DIO_FarmFlagOnSet()
+    if __any then return true end
+    return false
 end
 __DIO_HlOn = function()
     local __ch = plr.Character
@@ -5661,6 +5706,15 @@ do
                                 pcall(__DIO_UISetOn, __fk, key, true)
                                 pcall(__DIO_UIWant, __fk, key, true)
                             end
+                            -- FIX bug "treo": nho lai flag cua toggle nay.
+                            -- Neu flag da true tu TRUOC khi bat toggle (flag cu bi ket),
+                            -- __ownedFlags se trong -> lan tat toggle sau KHONG xoa duoc flag
+                            -- -> highlight + shouldTween mai mai o trang thai bat.
+                            if not __DIO_ToggleFlags then __DIO_ToggleFlags = {} end
+                            if not __DIO_ToggleFlags[key] then __DIO_ToggleFlags[key] = {} end
+                            for __fk in pairs(__ownedFlags or {}) do
+                                __DIO_ToggleFlags[key][__fk] = true
+                            end
                             local __newFlag = false
                             for __k in pairs(__ownedFlags or {}) do __newFlag = true break end
                             local __onNow = __DIO_TweenOnIfAnyFlag()
@@ -5676,8 +5730,13 @@ do
                             end
                         else
                             pcall(origCb, false)
-                            if __ownedFlags then
-                                for k in pairs(__ownedFlags) do
+                            local __clearFlags = {}
+                            for k in pairs(__ownedFlags or {}) do __clearFlags[k] = true end
+                            for k in pairs((__DIO_ToggleFlags and __DIO_ToggleFlags[key]) or {}) do
+                                __clearFlags[k] = true
+                            end
+                            if __ownedFlags or next(__clearFlags) ~= nil then
+                                for k in pairs(__clearFlags) do
                                     pcall(function() __DIO_UISetOn(k, key, false) end)
                                     pcall(function() __DIO_UIWant(k, key, false) end)
                                     pcall(function() __DIO_ReleaseAll(k) end)
@@ -6171,6 +6230,18 @@ Tabs.Main:AddDropdown({
         Window:SetUIScale(scales[Value])
     end
 })
+Tabs.Main:AddSection("Fast Attack Mob")
+_G.FastAttackMob = false
+Q = Tabs.Main:AddToggle({
+Name = __DIO_T["Fast Attack Mob"],
+Description = "Can Lag Mob Or Drop fps 2 Loop Fast attack",
+Default = false,
+Callback = function(Value)
+  -- FIX: toggle nay chi danh nhanh (khong tween), mac dinh TAT.
+  -- Khi BAT: loop fast attack tu chay (RegisterAttack/RegisterHit).
+  -- Khi TAT: chi con fast attack built-in cu -> khong con loop nao chay.
+  _G.FastAttackMob = (Value == true)
+end})
 Tabs.Main:AddSection("Farm")
 local __DIO_GhostData = {}
 local __DIO_GhostSkip = {}
@@ -6404,12 +6475,6 @@ __DIO_3nn_TyrantTree = function()
     return (__ok and __tree) or nil
 end
 
-
-
-
-
-
-
 _G.AutoQuest = (_G.AutoQuest == true)
 __DIO_3nn_QT_LastStart = 0
 __DIO_3nn_AutoQuest = function(mode)
@@ -6515,7 +6580,7 @@ StartFarmToggle = Tabs.Main:AddToggle({
 })
 
 Tabs.Main:AddToggle({
-    Name = __DIO_T["Auto Quest"],
+    Name = __DIO_T["Auto Quest |Level|Tyrant|Cake|Bone"],
     Description = "",
     Default = false,
     Callback = function(Value)
@@ -10149,34 +10214,102 @@ Name = __DIO_T["Auto Tushita Sword"],
 Description = "",
 Default = false,
 Callback = function(Value)
-  _G.Auto_Tushita = Value
+  _G.Auto_Tushita = (Value == true)
+  if Value then
+    -- FIX: bat toggle phai co ca 3 lop trang thai: _G. flag + shouldTween + highlight
+    shouldTween = true
+    if type(__DIO_TweenActivateImmediate) == "function" then pcall(__DIO_TweenActivateImmediate) end
+  else
+    StopTween(false)
+  end
 end})
+__DIO_TushitaTorchState = function()
+    -- port checkTorch() cua 3nn: tra ve (torch chua bat, QuestTorches co ton tai hay khong)
+    local __ok, __torch, __have = pcall(function()
+        local __map = workspace:FindFirstChild("Map")
+        local __turtle = __map and __map:FindFirstChild("Turtle")
+        local __qt = __turtle and __turtle:FindFirstChild("QuestTorches")
+        if not __qt then return nil, false end
+        local __idx = nil
+        for __i = 1, 5 do
+            local __t = __qt:FindFirstChild("Torch" .. __i)
+            local __pt = __t and __t:FindFirstChild("Particles")
+            local __main = __pt and __pt:FindFirstChild("Main")
+            if __main and not __main.Enabled then __idx = tostring(__i) break end
+        end
+        if not __idx then return nil, true end
+        for _, __s in ipairs(__qt:GetChildren()) do
+            if __s:IsA("MeshPart") and string.find(__s.Name, __idx) then
+                local __pt = __s:FindFirstChild("Particles")
+                local __main = __pt and __pt:FindFirstChild("Main")
+                if __main and not __main.Enabled then return __s, true end
+            end
+        end
+        return nil, true
+    end)
+    if __ok then return __torch, __have end
+    return nil, false
+end
+__DIO_TushitaLightTorches = function()
+    -- port logic 3nn: bat QuestTorches.Torch.Particles.Main.Enabled 5 lan
+    -- (InvokeServer("TushitaProgress","Torch",1..5))
+    local __did = false
+    for __i = 1, 5 do
+        if not _G.Auto_Tushita then break end
+        pcall(function() replicated.Remotes.CommF_:InvokeServer("TushitaProgress", "Torch", __i) end)
+        __did = true
+        __DIO_wait(0.4)
+    end
+    if __did then __DIO_wait(2) end
+    return __did
+end
 __DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.Auto_Tushita then
-        if workspace.Map.Turtle:FindFirstChild("TushitaGate") then
+        local __map = workspace:FindFirstChild("Map")
+        local __turtle = __map and __map:FindFirstChild("Turtle")
+        local __gate = __turtle and __turtle:FindFirstChild("TushitaGate")
+        if __gate then
+          -- cua Tushita chua mo
           if not GetBP("Holy Torch") then
+            shouldTween = true
             _tp(CFrame.new(5148.03613, 162.352493, 910.548218))
             __DIO_wait(0.7)
           else
             EquipWeapon("Holy Torch")
             __DIO_wait(1)
-            repeat __DIO_wait(0.25) _tp(CFrame.new(-10752, 417, -9366)) until not _G.Auto_Tushita or (CFrame.new(-10752, 417, -9366).Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10
-            __DIO_wait(.7)
-            repeat __DIO_wait(0.25) _tp(CFrame.new(-11672, 334, -9474)) until not _G.Auto_Tushita or (CFrame.new(-11672, 334, -9474).Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10
-            __DIO_wait(.7)
-            repeat __DIO_wait(0.25) _tp(CFrame.new(-12132, 521, -10655)) until not _G.Auto_Tushita or (CFrame.new(-12132, 521, -10655).Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10
-            __DIO_wait(.7)
-            repeat __DIO_wait(0.25) _tp(CFrame.new(-13336, 486, -6985)) until not _G.Auto_Tushita or (CFrame.new(-13336, 486, -6985).Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10
-            __DIO_wait(.7)
-            repeat __DIO_wait(0.25) _tp(CFrame.new(-13489, 332, -7925)) until not _G.Auto_Tushita or (CFrame.new(-13489, 332, -7925).Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10
+            local __torch, __have = __DIO_TushitaTorchState()
+            if __torch then
+              -- con torch chua bat -> chay logic 3nn (bat 5 lan)
+              shouldTween = true
+              __DIO_TushitaLightTorches()
+            elseif __have then
+              -- tat ca torch da bat -> dung cho cua mo
+              shouldTween = true
+              _tp(CFrame.new(-13489, 332, -7925))
+              __DIO_wait(1)
+            else
+              -- chua thay QuestTorches (chua stream) -> chay waypoint den khu vuc torch
+              shouldTween = true
+              repeat __DIO_wait(0.25) shouldTween = true _tp(CFrame.new(-10752, 417, -9366)) until not _G.Auto_Tushita or (CFrame.new(-10752, 417, -9366).Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10
+              __DIO_wait(.7)
+              repeat __DIO_wait(0.25) shouldTween = true _tp(CFrame.new(-11672, 334, -9474)) until not _G.Auto_Tushita or (CFrame.new(-11672, 334, -9474).Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10
+              __DIO_wait(.7)
+              repeat __DIO_wait(0.25) shouldTween = true _tp(CFrame.new(-12132, 521, -10655)) until not _G.Auto_Tushita or (CFrame.new(-12132, 521, -10655).Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10
+              __DIO_wait(.7)
+              repeat __DIO_wait(0.25) shouldTween = true _tp(CFrame.new(-13336, 486, -6985)) until not _G.Auto_Tushita or (CFrame.new(-13336, 486, -6985).Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10
+              __DIO_wait(.7)
+              repeat __DIO_wait(0.25) shouldTween = true _tp(CFrame.new(-13489, 332, -7925)) until not _G.Auto_Tushita or (CFrame.new(-13489, 332, -7925).Position - plr.Character.HumanoidRootPart.Position).Magnitude <= 10
+              __DIO_wait(.7)
+              if __DIO_TushitaTorchState() then __DIO_TushitaLightTorches() end
+            end
           end
         else
           local v = GetConnectionEnemies("Longma")
-          if v then repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Tushita) until v.Humanoid.Health <= 0 or not _G.Auto_Tushita or not v.Parent
+          if v then repeat __DIO_wait(Sec) Attack.Kill(v,_G.Auto_Tushita) until not v or not v.Parent or not v:FindFirstChildOfClass("Humanoid") or v.Humanoid.Health <= 0 or not _G.Auto_Tushita
           else
-          if replicated:FindFirstChild("Longma") then _tp(replicated:FindFirstChild("Longma").HumanoidRootPart.CFrame * CFrame.new(0,40,0)) end
+          if replicated:FindFirstChild("Longma") then shouldTween = true _tp(replicated:FindFirstChild("Longma").HumanoidRootPart.CFrame * CFrame.new(0,40,0)) end
           end
         end
       end
@@ -10188,26 +10321,63 @@ Name = __DIO_T["Auto Yama Sword"],
 Description = "",
 Default = false,
 Callback = function(Value)
-  _G.Auto_Yama = Value
-  if not Value then __DIO_ReleaseAll("Auto_Yama") StopTween(false) end
+  _G.Auto_Yama = (Value == true)
+  if Value then
+    -- FIX: bat toggle phai co ca 3 lop trang thai: _G. flag + shouldTween + highlight
+    shouldTween = true
+    if type(__DIO_TweenActivateImmediate) == "function" then pcall(__DIO_TweenActivateImmediate) end
+  else
+    __DIO_ReleaseAll("Auto_Yama")
+    StopTween(false)
+  end
 end})
 __DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
     pcall(function()
       if _G.Auto_Yama then
-	    if replicated.Remotes.CommF_:InvokeServer("EliteHunter", "Progress") < 30 then
-	      __DIO_BorrowFlag("Auto_Yama","FarmEliteHunt")
-	    elseif replicated.Remotes.CommF_:InvokeServer("EliteHunter", "Progress") > 30 then
-	      __DIO_ReleaseFlag("Auto_Yama","FarmEliteHunt")
-	      if (workspace.Map.Waterfall.SealedKatana.Handle.Position-plr.Character.HumanoidRootPart.Position).Magnitude >= 20 then
-            _tp(workspace.Map.Waterfall.SealedKatana.Handle.CFrame)
-            local zx = GetConnectionEnemies("Ghost")
-            if zx then
-              repeat __DIO_wait(0.25) Attack.Kill(zx,_G.Auto_Yama) until zx.Humanoid.Health <= 0 or not zx.Parent or not _G.Auto_Yama
-			  fireclickdetector(workspace.Map.Waterfall.SealedKatana.Handle.ClickDetector)
-            end
+        local __okPr, __prog = pcall(function() return replicated.Remotes.CommF_:InvokeServer("EliteHunter", "Progress") end)
+        __prog = __okPr and tonumber(__prog) or 0
+        if __prog < 30 then
+          -- GIU NGUYEN logic cu: EliteHunter < 30 -> farm elite
+          __DIO_BorrowFlag("Auto_Yama","FarmEliteHunt")
+        else
+          __DIO_ReleaseFlag("Auto_Yama","FarmEliteHunt")
+          -- FIX: dung FindFirstChild thay vi workspace.Map.Waterfall.SealedKatana....
+          -- (truoc do loi "attempt to index nil" khi Map/Waterfall chua load -> toggle chi bat highlight)
+          local __map = workspace:FindFirstChild("Map")
+          local __wf = __map and __map:FindFirstChild("Waterfall")
+          local __sk = __wf and __wf:FindFirstChild("SealedKatana")
+          if not __sk then
+            shouldTween = true
+            _tp(CFrame.new(5251.900390625, 17.18115234375, 453.6025390625))
+            return
           end
-	    end
+          local __skCF = nil
+          pcall(function()
+            if __sk.PrimaryPart then __skCF = __sk.PrimaryPart.CFrame end
+            if not __skCF then
+              local __h = __sk:FindFirstChild("Handle")
+              if __h and __h:IsA("BasePart") then __skCF = __h.CFrame end
+            end
+            if not __skCF then
+              local __wp = __sk.WorldPivot
+              if __wp and __wp.Position.Magnitude > 1 then __skCF = __wp end
+            end
+          end)
+          local __hrpY = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+          if not __skCF or not __hrpY then return end
+          local __cd = (__sk:FindFirstChild("Hitbox") and __sk.Hitbox:FindFirstChild("ClickDetector")) or __sk:FindFirstChild("ClickDetector", true)
+          if (__skCF.Position - __hrpY.Position).Magnitude > 50 then
+            shouldTween = true
+            _tp(__skCF)
+          elseif GetConnectionEnemies("Ghost") then
+            local zx = GetConnectionEnemies("Ghost")
+            repeat __DIO_wait(0.25) Attack.Kill(zx,_G.Auto_Yama) until not zx or not zx.Parent or not zx:FindFirstChildOfClass("Humanoid") or zx.Humanoid.Health <= 0 or not _G.Auto_Yama
+            if __cd then pcall(fireclickdetector, __cd) end
+          else
+            if __cd then pcall(fireclickdetector, __cd) end
+          end
+        end
       end
     end)
   end
@@ -10757,6 +10927,36 @@ __DIO_SafeLoop(function()
     end
   end
 end, "L7579")
+Tabs.Quests:AddSection("Dark Blade V3[Beta] Update Soon") 
+Q = Tabs.Quests:AddToggle({
+Name = __DIO_T["Auto Dark Blade V3"],
+Description = "",
+Default = false,
+Callback = function(Value)
+  _G.DarkBladev3 = Value
+  if not Value then __DIO_ReleaseAll("DarkBladev3") StopTween(false) end
+end})
+__DIO_SafeLoop(function()
+  while __DIO_wait(Sec) do
+    pcall(function()
+      if _G.DarkBladev3 and World2 then
+      if not GetBP("Dark Blade") then replicated.Remotes.CommF_:InvokeServer("LoadItem","Dark Blade") end
+        if GetBP("Fist of Darkness") > 1 then
+          if not workspace.Enemies:FindFirstChild("Darkbeard") then
+            _tp(CFrame.new(3677.08203125, 62.751937866211, -3144.8332519531))
+          elseif GetConnectionEnemies("Darkbeard") and GetBP("Fist of Darkness") >= 1 then
+            repeat __DIO_wait(0.25) _tp(CFrame.new(-5719.36376953125, 48.50590515136719, -782.9759521484375)) until not _G.DarkBladev3 or (Root.Position - CFrame.new(-5719.36376953125, 48.50590515136719, -782.9759521484375)).Magnitude <= 5
+            fireclickdetector(workspace.Map.GraveIsland.Mountain.Rocks.Button.ClickDetector)
+          end
+        else
+          __DIO_BorrowFlag("DarkBladev3","AutoFarmChest")
+        end
+      else
+        __DIO_ReleaseFlag("DarkBladev3","AutoFarmChest")
+      end
+    end)
+  end
+end, "L7981")
 Tabs.Quests:AddSection("Pole / God Enal's")
 Q = Tabs.Quests:AddToggle({
 Name = __DIO_T["Auto Pole V1"],
@@ -11041,7 +11241,13 @@ Name = __DIO_T["Auto Rengoku Sword"],
 Description = "",
 Default = false,
 Callback = function(Value)
-  _G.IceBossRen = Value
+  _G.IceBossRen = (Value == true)
+  if Value then
+    shouldTween = true
+    if type(__DIO_TweenActivateImmediate) == "function" then pcall(__DIO_TweenActivateImmediate) end
+  else
+    StopTween(false)
+  end
 end})
 __DIO_SafeLoop(function()
   while __DIO_wait(1) do
@@ -11060,7 +11266,13 @@ Name = __DIO_T["Auto Key Rengoku"],
 Description = "",
 Default = false,
 Callback = function(Value)
-  _G.KeysRen = Value
+  _G.KeysRen = (Value == true)
+  if Value then
+    shouldTween = true
+    if type(__DIO_TweenActivateImmediate) == "function" then pcall(__DIO_TweenActivateImmediate) end
+  else
+    StopTween(false)
+  end
 end})
 __DIO_SafeLoop(function()
   while __DIO_wait(1) do
@@ -11136,35 +11348,6 @@ __DIO_SafeLoop(function()
     end
   end
 end, "L7962")
-Q = Tabs.Quests:AddToggle({
-Name = __DIO_T["Auto Dark Blade V3"],
-Description = "",
-Default = false,
-Callback = function(Value)
-  _G.DarkBladev3 = Value
-  if not Value then __DIO_ReleaseAll("DarkBladev3") StopTween(false) end
-end})
-__DIO_SafeLoop(function()
-  while __DIO_wait(Sec) do
-    pcall(function()
-      if _G.DarkBladev3 and World2 then
-      if not GetBP("Dark Blade") then replicated.Remotes.CommF_:InvokeServer("LoadItem","Dark Blade") end
-        if GetBP("Fist of Darkness") > 1 then
-          if not workspace.Enemies:FindFirstChild("Darkbeard") then
-            _tp(CFrame.new(3677.08203125, 62.751937866211, -3144.8332519531))
-          elseif GetConnectionEnemies("Darkbeard") and GetBP("Fist of Darkness") >= 1 then
-            repeat __DIO_wait(0.25) _tp(CFrame.new(-5719.36376953125, 48.50590515136719, -782.9759521484375)) until not _G.DarkBladev3 or (Root.Position - CFrame.new(-5719.36376953125, 48.50590515136719, -782.9759521484375)).Magnitude <= 5
-            fireclickdetector(workspace.Map.GraveIsland.Mountain.Rocks.Button.ClickDetector)
-          end
-        else
-          __DIO_BorrowFlag("DarkBladev3","AutoFarmChest")
-        end
-      else
-        __DIO_ReleaseFlag("DarkBladev3","AutoFarmChest")
-      end
-    end)
-  end
-end, "L7981")
 Q = Tabs.Quests:AddToggle({
 Name = __DIO_T["Auto Midnight Blade"],
 Description = "",
@@ -11328,7 +11511,14 @@ Name = __DIO_T["Auto Twin Hooks"],
 Description = "",
 Default = false,
 Callback = function(Value)
-  _G.TwinHook = Value
+  -- FIX: truoc day toggle nay chi tao highlight, khong co shouldTween
+  _G.TwinHook = (Value == true)
+  if Value then
+    shouldTween = true
+    if type(__DIO_TweenActivateImmediate) == "function" then pcall(__DIO_TweenActivateImmediate) end
+  else
+    StopTween(false)
+  end
 end})
 __DIO_SafeLoop(function()
   while __DIO_wait(Sec) do
@@ -11968,6 +12158,118 @@ Callback = function(Value)
     if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
   end
 end})
+__DIO_BuyMeleeToggles.BuySuperhuman = Tabs.Shop:AddToggle({
+Name = __DIO_T["Buy  Superhuman"],
+Description = "",
+Default = false,
+Callback = function(Value)
+  _G.BuyMelee_BuySuperhuman = (Value == true)
+  if Value then
+    -- _G. flag + shouldTween + highlight (highlight tu bat qua __DIO_AnyFeatureOn)
+    shouldTween = true
+    __DIO_BuyKick()
+  else
+    StopTween(false)
+    __DIO_CurTarget = nil
+    if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+  end
+end})
+__DIO_BuyMeleeToggles.BuyDeathStep = Tabs.Shop:AddToggle({
+Name = __DIO_T["Buy  DeathStep"],
+Description = "",
+Default = false,
+Callback = function(Value)
+  _G.BuyMelee_BuyDeathStep = (Value == true)
+  if Value then
+    -- _G. flag + shouldTween + highlight (highlight tu bat qua __DIO_AnyFeatureOn)
+    shouldTween = true
+    __DIO_BuyKick()
+  else
+    StopTween(false)
+    __DIO_CurTarget = nil
+    if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+  end
+end})
+__DIO_BuyMeleeToggles.BuySharkmanKarate = Tabs.Shop:AddToggle({
+Name = __DIO_T["Buy  SharkmanKarate"],
+Description = "",
+Default = false,
+Callback = function(Value)
+  _G.BuyMelee_BuySharkmanKarate = (Value == true)
+  if Value then
+    -- _G. flag + shouldTween + highlight (highlight tu bat qua __DIO_AnyFeatureOn)
+    shouldTween = true
+    __DIO_BuyKick()
+  else
+    StopTween(false)
+    __DIO_CurTarget = nil
+    if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+  end
+end})
+__DIO_BuyMeleeToggles.BuyElectricClaw = Tabs.Shop:AddToggle({
+Name = __DIO_T["Buy  ElectricClaw"],
+Description = "",
+Default = false,
+Callback = function(Value)
+  _G.BuyMelee_BuyElectricClaw = (Value == true)
+  if Value then
+    -- _G. flag + shouldTween + highlight (highlight tu bat qua __DIO_AnyFeatureOn)
+    shouldTween = true
+    __DIO_BuyKick()
+  else
+    StopTween(false)
+    __DIO_CurTarget = nil
+    if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+  end
+end})
+__DIO_BuyMeleeToggles.BuyDragonTalon = Tabs.Shop:AddToggle({
+Name = __DIO_T["Buy  DragonTalon"],
+Description = "",
+Default = false,
+Callback = function(Value)
+  _G.BuyMelee_BuyDragonTalon = (Value == true)
+  if Value then
+    -- _G. flag + shouldTween + highlight (highlight tu bat qua __DIO_AnyFeatureOn)
+    shouldTween = true
+    __DIO_BuyKick()
+  else
+    StopTween(false)
+    __DIO_CurTarget = nil
+    if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+  end
+end})
+__DIO_BuyMeleeToggles.BuyGodhuman = Tabs.Shop:AddToggle({
+Name = __DIO_T["Buy  Godhuman"],
+Description = "",
+Default = false,
+Callback = function(Value)
+  _G.BuyMelee_BuyGodhuman = (Value == true)
+  if Value then
+    -- _G. flag + shouldTween + highlight (highlight tu bat qua __DIO_AnyFeatureOn)
+    shouldTween = true
+    __DIO_BuyKick()
+  else
+    StopTween(false)
+    __DIO_CurTarget = nil
+    if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+  end
+end})
+__DIO_BuyMeleeToggles.BuySanguineArt = Tabs.Shop:AddToggle({
+Name = __DIO_T["Buy  SanguineArt"],
+Description = "",
+Default = false,
+Callback = function(Value)
+  _G.BuyMelee_BuySanguineArt = (Value == true)
+  if Value then
+    -- _G. flag + shouldTween + highlight (highlight tu bat qua __DIO_AnyFeatureOn)
+    shouldTween = true
+    __DIO_BuyKick()
+  else
+    StopTween(false)
+    __DIO_CurTarget = nil
+    if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
+  end
+end})
 SuperHuman = Tabs.Shop:AddToggle({
 Name = __DIO_T["Auto Superhuman"],
 Description = "",
@@ -11986,26 +12288,26 @@ __DIO_SafeLoop(function()
         local M_Beli = (plr.Data and plr.Data.Beli and plr.Data.Beli.Value) or 0
         local M_Frag = (plr.Data and plr.Data.Fragments and plr.Data.Fragments.Value) or 0
         if not GetBP("Black Leg") then
-          if M_Beli >= 150000 and __DIO_FlyTo(__DIO_MeleeCF("BuyBlackLeg"), 15, __on) then replicated.Remotes.CommF_:InvokeServer("BuyBlackLeg") end
+          if M_Beli >= 150000 and __DIO_MeleeBuyGo("BuyBlackLeg", __on) then replicated.Remotes.CommF_:InvokeServer("BuyBlackLeg") end
           return
         elseif GetBP("Black Leg").Level.Value < 300 then __DIO_BorrowFlag("Auto_SuperHuman","Level") return
         else __DIO_ReleaseFlag("Auto_SuperHuman","Level") end
         if not GetBP("Electro") then
-          if M_Beli >= 500000 and __DIO_FlyTo(__DIO_MeleeCF("BuyElectro"), 15, __on) then replicated.Remotes.CommF_:InvokeServer("BuyElectro") end
+          if M_Beli >= 500000 and __DIO_MeleeBuyGo("BuyElectro", __on) then replicated.Remotes.CommF_:InvokeServer("BuyElectro") end
           return
         elseif GetBP("Electro").Level.Value < 300 then __DIO_BorrowFlag("Auto_SuperHuman","Level") return
         else __DIO_ReleaseFlag("Auto_SuperHuman","Level") end
         if not GetBP("Fishman Karate") then
-          if M_Beli >= 750000 and __DIO_FlyTo(__DIO_MeleeCF("BuyFishmanKarate"), 15, __on) then replicated.Remotes.CommF_:InvokeServer("BuyFishmanKarate") end
+          if M_Beli >= 750000 and __DIO_MeleeBuyGo("BuyFishmanKarate", __on) then replicated.Remotes.CommF_:InvokeServer("BuyFishmanKarate") end
           return
         elseif GetBP("Fishman Karate").Level.Value < 300 then __DIO_BorrowFlag("Auto_SuperHuman","Level") return
         else __DIO_ReleaseFlag("Auto_SuperHuman","Level") end
         if not GetBP("Dragon Claw") then
-          if M_Frag >= 1500 and __DIO_FlyTo(__DIO_MeleeCF("BlackbeardReward"), 15, __on) then replicated.Remotes.CommF_:InvokeServer("BlackbeardReward","DragonClaw","2") end
+          if M_Frag >= 1500 and __DIO_MeleeBuyGo("BlackbeardReward", __on) then replicated.Remotes.CommF_:InvokeServer("BlackbeardReward","DragonClaw","2") end
           return
         elseif GetBP("Dragon Claw").Level.Value < 300 then __DIO_BorrowFlag("Auto_SuperHuman","Level") return
         else __DIO_ReleaseFlag("Auto_SuperHuman","Level") end
-        if __DIO_FlyTo(__DIO_MeleeCF("BuySuperhuman"), 15, __on) then replicated.Remotes.CommF_:InvokeServer("BuySuperhuman") end
+        if __DIO_MeleeBuyGo("BuySuperhuman", __on) then replicated.Remotes.CommF_:InvokeServer("BuySuperhuman") end
       end)
     end
   end
@@ -12026,12 +12328,12 @@ __DIO_SafeLoop(function()
         if not plr:FindFirstChild("WeaponAssetCache") and tick() - __DIO_BootT0 < 15 then return end
         if GetBP("Death Step") then return end
         if not GetBP("Black Leg") then
-          if __DIO_FlyTo(__DIO_MeleeCF("BuyBlackLeg"), 15, __on) then replicated.Remotes.CommF_:InvokeServer("BuyBlackLeg") end
+          if __DIO_MeleeBuyGo("BuyBlackLeg", __on) then replicated.Remotes.CommF_:InvokeServer("BuyBlackLeg") end
           return
         end
         if GetBP("Black Leg").Level.Value >= 400 then
           if GetBP("Library Key") then
-            if __DIO_FlyTo(__DIO_MeleeCF("BuyDeathStep"), 15, __on) then replicated.Remotes.CommF_:InvokeServer("BuyDeathStep") end
+            if __DIO_MeleeBuyGo("BuyDeathStep", __on) then replicated.Remotes.CommF_:InvokeServer("BuyDeathStep") end
           else
             local v = GetConnectionEnemies("Awakened Ice Admiral")
             if v then
@@ -12066,7 +12368,7 @@ __DIO_SafeLoop(function()
         if not plr:FindFirstChild("WeaponAssetCache") and tick() - __DIO_BootT0 < 15 then return end
         if GetBP("Sharkman Karate") then return end
         if not GetBP("Fishman Karate") then
-          if __DIO_FlyTo(__DIO_MeleeCF("BuyFishmanKarate"), 15, __on) then replicated.Remotes.CommF_:InvokeServer("BuyFishmanKarate") end
+          if __DIO_MeleeBuyGo("BuyFishmanKarate", __on) then replicated.Remotes.CommF_:InvokeServer("BuyFishmanKarate") end
           return
         end
         if GetBP("Fishman Karate").Level.Value < 400 then
@@ -12075,7 +12377,7 @@ __DIO_SafeLoop(function()
         end
         __DIO_ReleaseFlag("Auto_SharkMan_Karate","Level")
         if GetBP("Water Key") then
-          if __DIO_FlyTo(__DIO_MeleeCF("BuySharkmanKarate"), 15, __on) then
+          if __DIO_MeleeBuyGo("BuySharkmanKarate", __on) then
             replicated.Remotes.CommF_:InvokeServer("BuySharkmanKarate")
           end
         else
@@ -12106,12 +12408,12 @@ __DIO_SafeLoop(function()
         if not plr:FindFirstChild("WeaponAssetCache") and tick() - __DIO_BootT0 < 15 then return end
         if GetBP("Electric Claw") then return end
         if not GetBP("Electro") then
-          if __DIO_FlyTo(__DIO_MeleeCF("BuyElectro"), 15, __on) then replicated.Remotes.CommF_:InvokeServer("BuyElectro") end
+          if __DIO_MeleeBuyGo("BuyElectro", __on) then replicated.Remotes.CommF_:InvokeServer("BuyElectro") end
           return
         end
         if GetBP("Electro").Level.Value >= 400 then
           if replicated.Remotes.CommF_:InvokeServer("BuyElectricClaw", "Start") == nil then __DIO_FlyTo(CFrame.new(-12548, 337, -7481), 10, __on) end
-          if __DIO_FlyTo(__DIO_MeleeCF("BuyElectricClaw"), 15, __on) then replicated.Remotes.CommF_:InvokeServer("BuyElectricClaw") end
+          if __DIO_MeleeBuyGo("BuyElectricClaw", __on) then replicated.Remotes.CommF_:InvokeServer("BuyElectricClaw") end
         else
           __DIO_BorrowFlag("Auto_Electric_Claw","AutoFarm_Bone")
           repeat __DIO_wait(0.25) until not _G.Auto_Electric_Claw or GetBP("Electric Claw") or not plr.Character
@@ -12137,11 +12439,11 @@ __DIO_SafeLoop(function()
         if not plr:FindFirstChild("WeaponAssetCache") and tick() - __DIO_BootT0 < 15 then return end
         if GetBP("Dragon Talon") then return end
         if not GetBP("Dragon Claw") then
-          if __DIO_FlyTo(__DIO_MeleeCF("BlackbeardReward"), 15, __on) then replicated.Remotes.CommF_:InvokeServer("BlackbeardReward","DragonClaw","2") end
+          if __DIO_MeleeBuyGo("BlackbeardReward", __on) then replicated.Remotes.CommF_:InvokeServer("BlackbeardReward","DragonClaw","2") end
           return
         end
         if GetBP("Dragon Claw").Level.Value >= 400 then
-          if __DIO_FlyTo(__DIO_MeleeCF("BuyDragonTalon"), 15, __on) then replicated.Remotes.CommF_:InvokeServer("Bones","Buy",1,1) replicated.Remotes.CommF_:InvokeServer("BuyDragonTalon") end
+          if __DIO_MeleeBuyGo("BuyDragonTalon", __on) then replicated.Remotes.CommF_:InvokeServer("Bones","Buy",1,1) replicated.Remotes.CommF_:InvokeServer("BuyDragonTalon") end
         else
           __DIO_BorrowFlag("AutoDragonTalon","AutoFarm_Bone")
           repeat __DIO_wait(0.25) until not _G.AutoDragonTalon or GetBP("Dragon Talon") or not plr.Character
@@ -12198,7 +12500,7 @@ __DIO_SafeLoop(function()
         elseif __need == 3 then
           return nil
         else
-          if __DIO_FlyTo(__DIO_MeleeCF("BuyGodhuman"), 15, __on) then replicated.Remotes.CommF_:InvokeServer("BuyGodhuman") end
+          if __DIO_MeleeBuyGo("BuyGodhuman", __on) then replicated.Remotes.CommF_:InvokeServer("BuyGodhuman") end
         end
       end
     end)
@@ -12252,7 +12554,7 @@ __DIO_SafeLoop(function()
             else replicated.Remotes.CommF_:InvokeServer("TravelDressrosa")
             end
           end
-        else if __DIO_FlyTo(__DIO_MeleeCF("BuySanguineArt"), 15, function() return not _G.Snaguine end) then replicated.Remotes.CommF_:InvokeServer("BuySanguineArt") end
+        else if __DIO_MeleeBuyGo("BuySanguineArt", function() return not _G.Snaguine end) then replicated.Remotes.CommF_:InvokeServer("BuySanguineArt") end
         end
       end)
     end
@@ -13849,6 +14151,32 @@ Q = Tabs.SeaEvent:AddDropdown({
             elseif __DIO_SeaSelPrev[__name] then
                 __DIO_SetFlag(__flag, "SeaEventDrop:" .. __name, false)
                 __DIO_SeaSelPrev[__name] = nil
+                -- FIX: wrapper AddDropdown tu dang ky owner "UI:<tab>/<name>" cho flag nay.
+                -- Neu khong xoa owner do, _G.<flag> bi ket true mai mai
+                -- -> highlight + shouldTween khong bao gio tat du da bo chon sea event.
+                -- owner do wrapper AddDropdown/AddToggle dang ky co 2 dang:
+                --   "UI:UI/<tab>/<name>"  (trong __DIO_FlagWant, qua __DIO_UIWant)
+                --   "UI/<tab>/<name>"     (trong __DIO_UIFlagOwner, qua __DIO_UISetOn)
+                local __isUIOwner = function(__s)
+                    if type(__s) ~= "string" then return false end
+                    local __p = string.sub(__s, 1, 3)
+                    return (__p == "UI:") or (__p == "UI/")
+                end
+                if type(__DIO_FlagWant) == "table" and type(__DIO_FlagWant[__flag]) == "table" then
+                    for __own in pairs(__DIO_FlagWant[__flag]) do
+                        if __isUIOwner(__own) then __DIO_FlagWant[__flag][__own] = nil end
+                    end
+                end
+                if type(__DIO_UIFlagOwner) == "table" and type(__DIO_UIFlagOwner[__flag]) == "table" then
+                    for __uik in pairs(__DIO_UIFlagOwner[__flag]) do
+                        if __isUIOwner(__uik) then pcall(__DIO_UISetOn, __flag, __uik, false) end
+                    end
+                end
+                if type(__DIO_FlagApply) == "function" then pcall(__DIO_FlagApply, __flag) end
+                if type(__DIO_AnyFeatureOn) == "function" and not __DIO_AnyFeatureOn()
+                   and type(StopTween) == "function" then
+                    pcall(StopTween, false)
+                end
             end
         end
     end
@@ -14040,6 +14368,8 @@ __DIO_SafeLoop(function()
   while __DIO_wait(1) do
     if _G.SailBoats then
       pcall(function()
+        -- FIX: dang danh mob sea event -> nho tween lai cho mob loop, tranh 2 tween danh nhau
+        if __DIO_SeaCombat() then return end
         local myBoat = __DIO_MyBoat()
         if not myBoat and not((_G.Shark and CheckShark()) or (_G.TerrorShark and CheckTerrorShark()) or (_G.MobCrew and CheckFishCrew()) or (_G.Piranha and CheckPiranha()))and not((_G.FishBoat and CheckEnemiesBoat()))and not((_G.SeaBeast1 and CheckSeaBeast()))and not(_G.PGB and CheckPirateGrandBrigade())and not(_G.HCM and CheckHauntedCrew())and not(_G.Leviathan1 and CheckLeviathan())then
           local buyBoatCFrame = CFrame.new(-16927.451, 9.086, 433.864)
@@ -14256,21 +14586,59 @@ __DIO_SeaSkillAtk = function()
         __DIO_wait(.1) Useskills("Gun","Z") Useskills("Gun","X")
     end
 end
+-- ============ SEA EVENT: chan 2 tween "danh nhau" ============
+-- tween boat (Auto Sea Event) va tween farm mob truoc day cung gan vao cung mot
+-- mover cua VehicleSeat -> moi lan goi _tp la ghi de moc tieu cua dau kia -> thuyen
+-- nhay qua nhay lai, chi danh duoc 1-2 hit.
+-- Fix: mob loop dang danh -> bao hieu "dang combat"; loop boat se khong tween nua,
+-- va mob duoc danh TU TREN THUYEN (tween thuyen den mob) thay vi nhay xuong thuyen.
+__DIO_SeaCombatT = 0
+__DIO_SeaCombatName = nil
+__DIO_SeaCombat = function()
+    return (tick() - (__DIO_SeaCombatT or 0)) < 3
+end
+__DIO_SeaAttackMob = function(mob, flag)
+    if not mob or not mob.Parent then return end
+    local __rp = mob:FindFirstChild("HumanoidRootPart")
+    local __hm = mob:FindFirstChildOfClass("Humanoid")
+    if not __rp or not __hm or __hm.Health <= 0 then return end
+    __DIO_SeaCombatT = tick()
+    __DIO_SeaCombatName = flag
+    local __ch = plr.Character
+    local __hum = __ch and __ch:FindFirstChildOfClass("Humanoid")
+    local __hrp = __ch and __ch:FindFirstChild("HumanoidRootPart")
+    if not __hum or not __hrp or __hum.Health <= 0 then return end
+    if __hum.Sit and __hum.SeatPart and __hum.SeatPart:IsA("BasePart") then
+        -- dang ngoi thuyen: tween THUYEN (seat) den mob, khong nhay xuong
+        pcall(manageTween, __hum.SeatPart, __rp.CFrame * CFrame.new(0, 40, 0), nil, "TweenBoat")
+        if (__hrp.Position - __rp.Position).Magnitude <= 350 then
+            AitSeaSkill_Custom = __rp.CFrame
+            MousePos = AitSeaSkill_Custom.Position
+            pcall(__DIO_SeaSkillAtk)
+            pcall(__DIO_3nn_M1, mob, 90)
+        end
+        return
+    end
+    if type(Attack) == "table" and type(Attack.KillSea) == "function" then
+        pcall(Attack.KillSea, mob, true)
+    end
+end
 __DIO_SafeLoop(function()
   while __DIO_wait(1) do
     pcall(function()
-      if _G.Shark then local a={"Shark"}if CheckShark()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) Attack.Kill(c,_G.Shark)until _G.Shark==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
-      if _G.TerrorShark then local a={"Terrorshark"}if CheckTerrorShark()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(0.1) Attack.KillSea(c,_G.TerrorShark)until _G.TerrorShark==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
-      if _G.Piranha then local a={"Piranha"}if CheckPiranha()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) Attack.Kill(c,_G.Piranha)until _G.Piranha==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
-      if _G.MobCrew then local a={"Fish Crew Member"}if CheckFishCrew()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) Attack.Kill(c,_G.MobCrew)until _G.MobCrew==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
-      if _G.HCM then local a={"Haunted Crew Member"}if CheckHauntedCrew()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) Attack.Kill(c,_G.HCM)until _G.HCM==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
-      if _G.SeaBeast1 then if workspace:FindFirstChild("SeaBeasts") and workspace.SeaBeasts:FindFirstChild("SeaBeast1")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)_tp(CFrame.new(b.HumanoidRootPart.Position.X,__DIO_WaterY()+200+((__DIO_SeaDodgeY and __DIO_SeaDodgeY()) or (tonumber(__DIO_BananaSeaDodge) or 0)),b.HumanoidRootPart.Position.Z))if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then AitSeaSkill_Custom=b.HumanoidRootPart.CFrame;MousePos=AitSeaSkill_Custom.Position;__DIO_SeaSkillAtk() end until _G.SeaBeast1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
-      if _G.Leviathan1 then if workspace:FindFirstChild("SeaBeasts") and workspace.SeaBeasts:FindFirstChild("Leviathan")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Leviathan Segment")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_wait(0.25)_tp(CFrame.new(b.HumanoidRootPart.Position.X,__DIO_WaterY()+200,b.HumanoidRootPart.Position.Z))if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then MousePos=b:FindFirstChild("Leviathan Segment").Position;__DIO_SeaSkillAtk() end until _G.Leviathan1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
+      if _G.Shark then local a={"Shark"}if CheckShark()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) __DIO_SeaAttackMob(c,_G.Shark)until _G.Shark==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
+      if _G.TerrorShark then local a={"Terrorshark"}if CheckTerrorShark()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(0.1) __DIO_SeaAttackMob(c,_G.TerrorShark)until _G.TerrorShark==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
+      if _G.Piranha then local a={"Piranha"}if CheckPiranha()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) __DIO_SeaAttackMob(c,_G.Piranha)until _G.Piranha==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
+      if _G.MobCrew then local a={"Fish Crew Member"}if CheckFishCrew()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) __DIO_SeaAttackMob(c,_G.MobCrew)until _G.MobCrew==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
+      if _G.HCM then local a={"Haunted Crew Member"}if CheckHauntedCrew()then for b,c in pairs(workspace.Enemies:GetChildren())do if table.find(a,c.Name)then if Attack.Alive(c)then repeat __DIO_wait(Sec) __DIO_SeaAttackMob(c,_G.HCM)until _G.HCM==false or not c.Parent or c.Humanoid.Health<=0 end end end end end
+      if _G.SeaBeast1 then if workspace:FindFirstChild("SeaBeasts") and workspace.SeaBeasts:FindFirstChild("SeaBeast1")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_SeaCombatT = tick() __DIO_SeaCombatName = "SeaBeast1" __DIO_wait(0.25)_tp(CFrame.new(b.HumanoidRootPart.Position.X,__DIO_WaterY()+200+((__DIO_SeaDodgeY and __DIO_SeaDodgeY()) or (tonumber(__DIO_BananaSeaDodge) or 0)),b.HumanoidRootPart.Position.Z))if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then AitSeaSkill_Custom=b.HumanoidRootPart.CFrame;MousePos=AitSeaSkill_Custom.Position;__DIO_SeaSkillAtk() end until _G.SeaBeast1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
+      if _G.Leviathan1 then if workspace:FindFirstChild("SeaBeasts") and workspace.SeaBeasts:FindFirstChild("Leviathan")then for a,b in pairs(workspace.SeaBeasts:GetChildren())do if b:FindFirstChild("HumanoidRootPart")and b:FindFirstChild("Leviathan Segment")and b:FindFirstChild("Health")and b.Health.Value>0 then repeat __DIO_SeaCombatT = tick() __DIO_SeaCombatName = "Leviathan1" __DIO_wait(0.25)_tp(CFrame.new(b.HumanoidRootPart.Position.X,__DIO_WaterY()+200,b.HumanoidRootPart.Position.Z))if plr:DistanceFromCharacter(b.HumanoidRootPart.CFrame.Position)<=500 then MousePos=b:FindFirstChild("Leviathan Segment").Position;__DIO_SeaSkillAtk() end until _G.Leviathan1==false or not b:FindFirstChild("HumanoidRootPart")or not b.Parent or b.Health.Value<=0 end end end end
       if _G.FishBoat then
         if CheckEnemiesBoat() then
             for a,b in pairs(workspace.Enemies:GetChildren()) do
                 if b:FindFirstChild("Health") and b.Health.Value > 0 and b:FindFirstChild("VehicleSeat") then
                 repeat
+                  __DIO_SeaCombatT = tick() __DIO_SeaCombatName = "FishBoat"
                   __DIO_wait(0.25)
                   if b.Name == "FishBoat" then _tp(b.Engine.CFrame * CFrame.new(0,-50,-25)) end
                   if plr:DistanceFromCharacter(b.Engine.CFrame.Position) <= 150 then
@@ -14288,6 +14656,7 @@ __DIO_SafeLoop(function()
             for a,b in pairs(workspace.Enemies:GetChildren()) do
                 if b:FindFirstChild("Health") and b.Health.Value > 0 and b:FindFirstChild("VehicleSeat") then
                 repeat
+                  __DIO_SeaCombatT = tick() __DIO_SeaCombatName = "PGB"
                   __DIO_wait(0.25)
                   if b.Name == "PirateBrigade" then _tp(b.Engine.CFrame * CFrame.new(0,-30,-10)) elseif b.Name == "PirateGrandBrigade" then _tp(b.Engine.CFrame * CFrame.new(0,-50,-50)) end
                   if plr:DistanceFromCharacter(b.Engine.CFrame.Position) <= 150 then
@@ -17453,6 +17822,79 @@ __DIO_MeleeCF = function(key)
     if not entry then return nil end
     if sea1 then return entry.sea1 elseif sea2 then return entry.sea2 else return entry.sea3 end
 end
+-- Ten NPC dung nhu file 3nn (Banana Cat Hub)
+__DIO_MeleeNPC = {
+    BuyBlackLeg = "Dark Step Teacher",
+    BuySuperhuman = "Martial Arts Master",
+    BuySharkmanKarate = "Sharkman Teacher",
+    DragonClaw = "Sabi",
+    BuyDragonTalon = "Uzoth",
+    BuyElectro = "Mad Scientist",
+    BuyFishmanKarate = "Water Kung-fu Teacher",
+    BuyDeathStep = "Phoeyu, the Reformed",
+    BuyGodhuman = "Ancient Monk",
+    BuyElectricClaw = "Previous Hero",
+    BuySanguineArt = "Shafi",
+    BlackbeardReward = "Sabi",
+}
+-- port DetectNpc() cua 3nn: tim NPC theo TEN (khong theo toa do cung)
+__DIO_DetectNpc = function(npcName)
+    if type(npcName) ~= "string" or npcName == "" then return nil end
+    local __okAll, __npc = pcall(function()
+        local __hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+        if not __hrp then return nil end
+        local __best, __bestD = nil, math.huge
+        local __folders = { workspace:FindFirstChild("NPCs"), __SVC_RS and __SVC_RS:FindFirstChild("NPCs") }
+        for __i = 1, 2 do
+            local __folder = __folders[__i]
+            if __folder then
+                for _, __l in ipairs(__folder:GetChildren()) do
+                    local __okA, __ready = pcall(function()
+                        return __l:GetAttribute("NPCLoaded") and __l:GetAttribute("NPCReady")
+                    end)
+                    if __okA and __ready and __l.Name == npcName and __l:FindFirstChild("HumanoidRootPart") then
+                        local __okD, __d = pcall(function()
+                            return (__hrp.Position - __l.HumanoidRootPart.Position).Magnitude
+                        end)
+                        if __okD and __d and __d < __bestD then __best, __bestD = __l, __d end
+                    end
+                end
+            end
+        end
+        if __best then return __best end
+        -- fallback: khong co attribute NPCLoaded/NPCReady van lay gan nhat
+        for __i = 1, 2 do
+            local __folder = __folders[__i]
+            if __folder then
+                for _, __l in ipairs(__folder:GetChildren()) do
+                    if __l.Name == npcName and __l:FindFirstChild("HumanoidRootPart") then
+                        local __okD, __d = pcall(function()
+                            return (__hrp.Position - __l.HumanoidRootPart.Position).Magnitude
+                        end)
+                        if __okD and __d and __d < __bestD then __best, __bestD = __l, __d end
+                    end
+                end
+            end
+        end
+        return __best
+    end)
+    if __okAll then return __npc end
+    return nil
+end
+-- FIX "Auto Buy Melee": logic cu tween theo toa do cung -> hay tween sai cho.
+-- Gio uu tien tim NPC theo TEN (DetectNpc), neu khong thay moi fallback ve toa do.
+__DIO_MeleeBuyGo = function(key, cancelFn)
+    local __npcName = __DIO_MeleeNPC[key]
+    local __npc = __npcName and __DIO_DetectNpc(__npcName)
+    if __npc and __npc:FindFirstChild("HumanoidRootPart") then
+        shouldTween = true
+        return __DIO_FlyTo(__npc.HumanoidRootPart.CFrame * CFrame.new(0, 4, 4), 10, cancelFn)
+    end
+    local __cf = __DIO_MeleeCF(key)
+    if not __cf then return false end
+    shouldTween = true
+    return __DIO_FlyTo(__cf, 15, cancelFn)
+end
 __DIO_FlyTo = function(targetCF, arriveDist, cancelFn)
     if not targetCF then return false end
     local __c = plr.Character
@@ -17516,9 +17958,13 @@ BuyMelee = function(npcNames, cancelFn, ...)
         return
     end
     local targetCF = nil
-    if sea1 then targetCF = entry.sea1 elseif sea2 then targetCF = entry.sea2 else targetCF = entry.sea3 end
+    -- FIX: uu tien tween den NPC that (tim theo ten), khong con tuyen theo toa do cung
+    local __npcBM = __DIO_DetectNpc(npcNames and npcNames[1])
+    if __npcBM and __npcBM:FindFirstChild("HumanoidRootPart") then
+        targetCF = __npcBM.HumanoidRootPart.CFrame * CFrame.new(0, 4, 4)
+    elseif sea1 then targetCF = entry.sea1 elseif sea2 then targetCF = entry.sea2 else targetCF = entry.sea3 end
     if not targetCF then
-        pcall(function() __DIO_TNotify("Buy Melee", "Khong co toa do cho sea hien tai: " .. tostring(key), 3) end)
+        pcall(function() __DIO_TNotify("Buy Melee", "Khong tim thay NPC " .. tostring(npcNames and npcNames[1]) .. " va khong co toa do cho sea hien tai: " .. tostring(key), 3) end)
         return
     end
     if __DIO_BuyBusy then return end
@@ -17585,10 +18031,17 @@ __DIO_SafeLoop(function()
     end
 end, "L14031")
 __DIO_BuyJobs = {
-    { flag = "BuyMelee_BuyBlackLeg",      key = "BuyBlackLeg",      owned = "Black Leg",      npc = {"Dark Step Teacher"},    beli = 150000, args = {"BuyBlackLeg"} },
-    { flag = "BuyMelee_BuyElectro",       key = "BuyElectro",       owned = "Electro",        npc = {"Mad Scientist"},        beli = 500000, args = {"BuyElectro"} },
-    { flag = "BuyMelee_BuyFishmanKarate", key = "BuyFishmanKarate", owned = "Fishman Karate", npc = {"Water Kung Fu Teacher"},beli = 750000, args = {"BuyFishmanKarate"} },
-    { flag = "BuyMelee_BuyDragonClaw",    key = "BuyDragonClaw",    owned = "Dragon Claw",    npc = {"Sabi"},                 frag = 1500,   args = {"BlackbeardReward","DragonClaw","2"} },
+    { flag = "BuyMelee_BuyBlackLeg",       key = "BuyBlackLeg",      owned = "Black Leg",       npc = {"Dark Step Teacher"},     beli = 150000, args = {"BuyBlackLeg"} },
+    { flag = "BuyMelee_BuyElectro",        key = "BuyElectro",       owned = "Electro",         npc = {"Mad Scientist"},         beli = 500000, args = {"BuyElectro"} },
+    { flag = "BuyMelee_BuyFishmanKarate",  key = "BuyFishmanKarate", owned = "Fishman Karate",  npc = {"Water Kung-fu Teacher"}, beli = 750000, args = {"BuyFishmanKarate"} },
+    { flag = "BuyMelee_BuyDragonClaw",     key = "BlackbeardReward", owned = "Dragon Claw",     npc = {"Sabi"},                  frag = 1500,   args = {"BlackbeardReward","DragonClaw","2"} },
+    { flag = "BuyMelee_BuySuperhuman",     key = "BuySuperhuman",    owned = "Superhuman",      npc = {"Martial Arts Master"},   beli = nil,    args = {"BuySuperhuman"} },
+    { flag = "BuyMelee_BuyDeathStep",      key = "BuyDeathStep",     owned = "Death Step",      npc = {"Phoeyu, the Reformed"},  beli = nil,    args = {"BuyDeathStep"} },
+    { flag = "BuyMelee_BuySharkmanKarate", key = "BuySharkmanKarate",owned = "Sharkman Karate", npc = {"Sharkman Teacher"},      beli = nil,    args = {"BuySharkmanKarate"} },
+    { flag = "BuyMelee_BuyElectricClaw",   key = "BuyElectricClaw",  owned = "Electric Claw",   npc = {"Previous Hero"},         beli = nil,    args = {"BuyElectricClaw"} },
+    { flag = "BuyMelee_BuyDragonTalon",    key = "BuyDragonTalon",   owned = "Dragon Talon",    npc = {"Uzoth"},                 frag = nil,    args = {"BuyDragonTalon"} },
+    { flag = "BuyMelee_BuyGodhuman",       key = "BuyGodhuman",      owned = "Godhuman",        npc = {"Ancient Monk"},          beli = nil,    args = {"BuyGodhuman"} },
+    { flag = "BuyMelee_BuySanguineArt",    key = "BuySanguineArt",   owned = "Sanguine Art",    npc = {"Shafi"},                 frag = nil,    args = {"BuySanguineArt"} },
 }
 __DIO_BuyJobT = {}
 __DIO_BUY_RETRY = 8
@@ -18858,6 +19311,69 @@ __DIO_3nn_M1 = function(target, range)
     end
 end
 
+-- ================= "Fast Attack Mob" =================
+-- Loop fast attack rieng (RegisterAttack + RegisterHit), rate 2e-15 (1 frame),
+-- tam sat thuong 75 studs, co the trung ca player khac.
+-- Mac dinh TAT; khi TAT thi loop dung hoan toan, chi con fast attack built-in.
+__DIO_FA_RANGE = 75
+__DIO_FA_MAXT = 6
+__DIO_SafeLoop(function()
+    while true do
+        if _G.FastAttackMob then
+            pcall(function()
+                local __ch = plr.Character
+                local __hrp = __ch and __ch:FindFirstChild("HumanoidRootPart")
+                local __hum = __ch and __ch:FindFirstChildOfClass("Humanoid")
+                if not __hrp or not __hum or __hum.Health <= 0 then return end
+                if not __FA_attackEvent or not __FA_hitEvent then
+                    local __mod = replicated:FindFirstChild("Modules")
+                    local __net = __mod and __mod:FindFirstChild("Net")
+                    if not __net then return end
+                    __FA_attackEvent = __net:FindFirstChild("RE/RegisterAttack")
+                    __FA_hitEvent = __net:FindFirstChild("RE/RegisterHit")
+                    if not __FA_attackEvent or not __FA_hitEvent then
+                        __FA_attackEvent, __FA_hitEvent = nil, nil
+                        return
+                    end
+                end
+                local __targets = {}
+                local __en = workspace:FindFirstChild("Enemies")
+                if __en then
+                    for _, __v in ipairs(__en:GetChildren()) do
+                        local __h = __v:FindFirstChild("Humanoid")
+                        local __r = __v:FindFirstChild("HumanoidRootPart")
+                        if __h and __r and __h.Health > 0
+                           and (__r.Position - __hrp.Position).Magnitude <= __DIO_FA_RANGE then
+                            if #__targets < __DIO_FA_MAXT then table.insert(__targets, { __v, __r }) end
+                        end
+                    end
+                end
+                if #__targets < __DIO_FA_MAXT then
+                    for _, __p in ipairs(__SVC_PLR:GetPlayers()) do
+                        if __p ~= plr and __p.Character then
+                            local __h = __p.Character:FindFirstChildOfClass("Humanoid")
+                            local __r = __p.Character:FindFirstChild("HumanoidRootPart")
+                            if __h and __r and __h.Health > 0
+                               and (__r.Position - __hrp.Position).Magnitude <= __DIO_FA_RANGE then
+                                local __can = true
+                                if _G.NoAimTeam and __p.Team and plr.Team and __p.Team == plr.Team then __can = false end
+                                if __can and #__targets < __DIO_FA_MAXT then table.insert(__targets, { __p.Character, __r }) end
+                            end
+                        end
+                    end
+                end
+                if #__targets > 0 then
+                    __FA_attackEvent:FireServer(0)
+                    __FA_hitEvent:FireServer(__targets[1][2], __targets)
+                end
+            end)
+            __DIO_wait(2e-15)
+        else
+            __DIO_wait(0.2)
+        end
+    end
+end, "FastAttackMob")
+
 getBeastHunter = function()
     local character = plr.Character
     if not character or not character:FindFirstChild("HumanoidRootPart") then return nil end
@@ -18876,7 +19392,7 @@ getBeastHunter = function()
 end
 getLeviathanHeart = function()
     for _, obj in pairs(workspace:GetDescendants()) do
-        if obj:IsA("Model") and string.find(obj.Name, "Leviathan Heart") then
+        if obj:IsA("Model") and string.find(obj.Name, "FrozenHeart") then
             local root = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
             if root then
                 return obj, root
@@ -18923,19 +19439,6 @@ Window:Notify({
    Image = "rbxassetid://105848560127717",
    Duration = 7
 })
-
-
-
-
-
-
-
-
-
-
-
-
-
 Tabs.Webhook:AddSection("Webhook")
 _G.WebhookUrl = GetSetting("UI/Webhook/Input Url Webhook", "") or ""
 _G.WebhookPing = GetSetting("UI/Webhook/Input Discord Ping", "") or ""
@@ -18945,11 +19448,11 @@ _G.WebhookFindPrehistoric = false
 _G.WebhookFindLeviathan = false
 _G.WebhookFindMirage = false
 __DIO_WH_Brand = {
-    Username = "Binini Hub",
+    Username = "DIO Hub",
     AvatarURL = "https://images-ext-1.discordapp.net/external/9LSZu__Uvs7I0N8MWag-JmwF2iT-pHCHSe2UdixGEXQ/%3Fsize%3D4096/https/cdn.discordapp.com/avatars/1262364141968949308/a_0c5fb64e2cbb35d029d73b44576c6a60.gif",
     BannerURL = "https://cdn.discordapp.com/attachments/1017024488665264218/1262729537578471504/banner_server.jpg",
     Title = "Banana Hub Notification",
-    FooterText = "Binini Hub",
+    FooterText = "DIO Hub",
     Color = 16776960,
 }
 __DIO_WH_SafeStr = function(s)
@@ -19166,24 +19669,6 @@ local function __DIO_SafeStart(where)
     end
     return ok, err
 end
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 local function __DIO_GuiHolders()
     local list = {}
@@ -19411,22 +19896,6 @@ if isKeyValid() then
     end)
     __DIO_SafeStart("main-entry")
 else
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     local Fluent
 
     pcall(function() getgenv().__DIO_KeyGuiBefore = __DIO_SnapGuis() end)
@@ -19691,7 +20160,6 @@ else
             Duration = 6
         })
     end)
-
 
     task.spawn(function()
         task.wait(0.6)
