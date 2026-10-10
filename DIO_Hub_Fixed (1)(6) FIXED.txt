@@ -3566,9 +3566,9 @@ do
                     pcall(function() part:Sit(hum) end)
                 end
             end
-            -- FIX Fly Boat / Teleport Y slider: do vat ly nuoc + weld cua seat hay triet tieu
-            -- duong truyen CFrame thong thuong khien thuyen dinh o mat nuoc (slider 150 van ~31).
-            -- Moi frame keo nguyen ca thuyen theo Y cua goal de slider Y co hieu luc that.
+            -- FIX Fly Boat / Teleport Y slider: duong truyen CFrame thong thuong bi vat ly nuoc triet tieu
+            -- khien thuyen dinh o mat nuoc. Moi frame keo nguyen ca thuyen theo Y cua goal (he truc the gioi,
+            -- khong dung he truc local cua pivot vi thuyen co the nghiang).
             if m.goal and m.boatModel then
                 local __dyY = m.goal.Position.Y - part.Position.Y
                 if math.abs(__dyY) > 0.75 then
@@ -3576,7 +3576,7 @@ do
                     pcall(function()
                         local __bm = m.boatModel
                         if not __bm.PrimaryPart then __bm.PrimaryPart = part end
-                        __bm:SetPrimaryPartCFrame(__bm:GetPivot() * CFrame.new(0, __liftY, 0))
+                        __bm:SetPrimaryPartCFrame(__bm:GetPivot() + Vector3.new(0, __liftY, 0))
                     end)
                 end
             end
@@ -12618,6 +12618,13 @@ __DIO_SafeLoop(function()
         end)
     end
 end, "L9079")
+-- FIX "chua gan gia tri": dinh nghia som __DIO_FindCruiseY truoc khi bat ky loop Find nao chay toi,
+-- de ham nay khong bao gio nil (loop co the chay truoc khi dong dinh nghia day du duoc load).
+if type(__DIO_FindCruiseY) ~= "function" then
+    __DIO_FindCruiseY = function()
+        return math.clamp(math.floor(tonumber(_G.FlyBoatY) or 150), 30, 500)
+    end
+end
 Tabs.Race:AddToggle({
 Name = __DIO_T["Auto Find Mirage Island"],
 Description = "",
@@ -12653,7 +12660,10 @@ __DIO_SafeLoop(function()
             if not __humR or not __hrpR or not __humR.Sit then break end
             if not _G.FindMirage then break end
             __DIO_NoClipShipNow()
-            _tp(CFrame.new(__dest.Position.X, __DIO_FindCruiseY(), __dest.Position.Z))
+            -- FIX: gan GIA TRI SLIDER Y moi vong va danh dau thoi gian de controller ep Y cho thuyen
+            __DIO_CruiseWantY = __DIO_FindCruiseY()
+            __DIO_CruiseWantT = tick()
+            _tp(CFrame.new(__dest.Position.X, __DIO_CruiseWantY, __dest.Position.Z))
             __found = __loc and __loc:FindFirstChild("Mirage Island", true)
             if not __found and __mapM and __mapM:FindFirstChild("MysticIsland") then
               __found = __mapM:FindFirstChild("MysticIsland")
@@ -13881,7 +13891,10 @@ __DIO_SafeLoop(function()
                     if __DIO_BoatAssist() ~= "sitting" then return end
                     local seaCFrame = CFrame.new(-10000000, 31, 37016.25)
                     __DIO_NoClipShipNow()
-                    _tp(CFrame.new(seaCFrame.Position.X, __DIO_FindCruiseY(), seaCFrame.Position.Z))
+                    -- FIX: gan GIA TRI SLIDER Y moi vong va danh dau thoi gian de controller ep Y cho thuyen
+                    __DIO_CruiseWantY = __DIO_FindCruiseY()
+                    __DIO_CruiseWantT = tick()
+                    _tp(CFrame.new(seaCFrame.Position.X, __DIO_CruiseWantY, seaCFrame.Position.Z))
                 else
                     local stoneHead =
                         prehistoricLoc:FindFirstChild("HeadTeleport", true)
@@ -14550,6 +14563,41 @@ __DIO_FindCruiseY = function()
     end
     return __DIO_FlyBoatY()
 end
+-- FIX theo yeu cau cua ban: slider Y phai THUC SU dat gia tri vao thuyen khi bay binh thuong (cruise Find),
+-- va khi ban keo slider thay doi -> gia tri dat vao thuyen cap nhat THEO NGAY LAP TUC.
+-- Cac loop Find gan __DIO_CruiseWantY moi 0.25s (o tren); controller nay doc gia tri do MOI FRAME
+-- va ep nguyen thuyen ve dung Y, khong can biet mover/tween cua engine con song hay khong.
+-- Chi hoat dong khi dang cruise (co feed moi < 1.5s): den dao/gate (nhanh found Y 31) hay
+-- Auto Sea Event (khong feed) thi no NGU -> thuyen van giu Y 31 dung nhu yeu cau truoc.
+__DIO_CruiseWantY = nil
+__DIO_CruiseWantT = 0
+pcall(function()
+    (__SVC_RUN or game:GetService("RunService")).Stepped:Connect(function(_, __dtFY)
+        pcall(function()
+            local __wantY = tonumber(__DIO_CruiseWantY)
+            if not __wantY then return end
+            if tick() - (__DIO_CruiseWantT or 0) > 1.5 then return end
+            if type(__DIO_SeaCombat) == "function" and __DIO_SeaCombat() then return end
+            local __chFY = plr and plr.Character
+            local __humFY = __chFY and __chFY:FindFirstChildOfClass("Humanoid")
+            if not __humFY or not __humFY.Sit then return end
+            local __seatFY = __humFY.SeatPart
+            local __boatFY = __seatFY and __seatFY:FindFirstAncestorOfClass("Model")
+            if not __boatFY or not __boatFY.Parent then return end
+            if type(__DIO_IsMyBoat) == "function" and not __DIO_IsMyBoat(__boatFY) then return end
+            local __dyFY = __wantY - __seatFY.Position.Y
+            if math.abs(__dyFY) < 0.5 then return end
+            local __maxFY = math.max(240 * (tonumber(__dtFY) or 0.0167), 2)
+            local __liftFY = math.clamp(__dyFY, -__maxFY, __maxFY)
+            if not __boatFY.PrimaryPart then __boatFY.PrimaryPart = __seatFY end
+            __boatFY:SetPrimaryPartCFrame(__boatFY:GetPivot() + Vector3.new(0, __liftFY, 0))
+            if not __seatFY.Anchored then
+                local __vFY = __seatFY.AssemblyLinearVelocity
+                __seatFY.AssemblyLinearVelocity = Vector3.new(__vFY.X, 0, __vFY.Z)
+            end
+        end)
+    end)
+end)
 __DIO_PlayerNames = function()
     local __out = {}
     for __i, __p in ipairs(__SVC_PLR:GetPlayers()) do
@@ -14847,7 +14895,10 @@ __DIO_SafeLoop(function()
             if not __humR or not __hrpR or not __humR.Sit then break end
             if not _G.AutofindKitIs then break end
             __DIO_NoClipShipNow()
-            _tp(CFrame.new(__dest.Position.X, __DIO_FindCruiseY(), __dest.Position.Z))
+            -- FIX: gan GIA TRI SLIDER Y moi vong va danh dau thoi gian de controller ep Y cho thuyen
+            __DIO_CruiseWantY = __DIO_FindCruiseY()
+            __DIO_CruiseWantT = tick()
+            _tp(CFrame.new(__dest.Position.X, __DIO_CruiseWantY, __dest.Position.Z))
             __found = __loc and __loc:FindFirstChild("Kitsune Island", true)
             -- FIX: khi dang quet bien ma dao spawn o Map.KitsuneIsland thi nhan luon (dung cho vong ngoai)
             if not __found then
@@ -15268,7 +15319,10 @@ __DIO_SafeLoop(function()
               if __DIO_LastTween then pcall(function() __DIO_LastTween:Cancel() end) __DIO_LastTween = nil end
               continue
             end
-            _tp(CFrame.new(__dest.Position.X, __DIO_FindCruiseY(), __dest.Position.Z))
+            -- FIX: gan GIA TRI SLIDER Y moi vong va danh dau thoi gian de controller ep Y cho thuyen
+            __DIO_CruiseWantY = __DIO_FindCruiseY()
+            __DIO_CruiseWantT = tick()
+            _tp(CFrame.new(__dest.Position.X, __DIO_CruiseWantY, __dest.Position.Z))
             __found = __loc and __loc:FindFirstChild("Frozen Dimension", true)
             if not __found and __mapF0 and __mapF0:FindFirstChild("LeviathanGate") then
               __found = __mapF0:FindFirstChild("LeviathanGate")
