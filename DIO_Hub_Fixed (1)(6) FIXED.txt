@@ -14565,7 +14565,9 @@ __DIO_FindCruiseY = function()
     if _G.TeleportYSlider and __DIO_SeaScanAny() then
         return math.clamp(math.floor(tonumber(_G.SeaTeleportY) or 150), 150, 600)
     end
-    if _G.TeleportYSlider and (tick() - (__DIO_SeaAnyHoldT or 0)) < 3 then
+    -- FIX bob: mob vao/ra scan theo dot -> muc tieu Y lat FlyBoat<->SeaEvent gay gat gu.
+    -- Cho-treu 12s sau lan thay mob cuoi: song mob ngan thi giu im Y cao, het han moi ha.
+    if _G.TeleportYSlider and (tick() - (__DIO_SeaAnyHoldT or 0)) < 12 then
         return math.clamp(math.floor(tonumber(_G.SeaTeleportY) or 150), 150, 600)
     end
     return __DIO_FlyBoatY()
@@ -14593,7 +14595,8 @@ __DIO_CruiseLiftNow = function()
     if type(__DIO_IsMyBoat) == "function" and not __DIO_IsMyBoat(__boatL) then return end
     local __dyL = __wantY - __seatL.Position.Y
     if math.abs(__dyL) < 0.75 then return end
-    local __maxL = math.max(240 * 0.25, 2)
+    -- FIX bob: cap 60/tick giat manh gay gat gu -> ha xuong 10/tick (40/s), chi ho tro controller/engine.
+    local __maxL = math.max(40 * 0.25, 2)
     local __liftL = math.clamp(__dyL, -__maxL, __maxL)
     pcall(function()
         if not __boatL.PrimaryPart then __boatL.PrimaryPart = __seatL end
