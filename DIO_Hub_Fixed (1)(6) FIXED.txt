@@ -3566,6 +3566,20 @@ do
                     pcall(function() part:Sit(hum) end)
                 end
             end
+            -- FIX Fly Boat / Teleport Y slider: do vat ly nuoc + weld cua seat hay triet tieu
+            -- duong truyen CFrame thong thuong khien thuyen dinh o mat nuoc (slider 150 van ~31).
+            -- Moi frame keo nguyen ca thuyen theo Y cua goal de slider Y co hieu luc that.
+            if m.goal and m.boatModel then
+                local __dyY = m.goal.Position.Y - part.Position.Y
+                if math.abs(__dyY) > 0.75 then
+                    local __liftY = math.clamp(__dyY, -math.max(m.speed * dt, 1.5), math.max(m.speed * dt, 1.5))
+                    pcall(function()
+                        local __bm = m.boatModel
+                        if not __bm.PrimaryPart then __bm.PrimaryPart = part end
+                        __bm:SetPrimaryPartCFrame(__bm:GetPivot() * CFrame.new(0, __liftY, 0))
+                    end)
+                end
+            end
         end
 
         if m.paused then return true end
@@ -12662,7 +12676,8 @@ __DIO_SafeLoop(function()
             __cfM = __srcM.CFrame
           end)
           if not __cfM then return end
-          local __goalM = __cfM * CFrame.new(0, 300, 0)
+          -- FIX theo yeu cau: thuyen giu im Y 31 (mat nuoc) khi den Mirage, khong bay len +300 nua
+          local __goalM = CFrame.new(__cfM.Position.X, 31, __cfM.Position.Z)
           -- FIX: da dung tren Mirage roi -> khong _tp lap lai moi giay (giu shouldTween/highlight nong mai)
           local __chM = plr.Character
           local __hrpM = __chM and __chM:FindFirstChild("HumanoidRootPart")
@@ -13874,10 +13889,9 @@ __DIO_SafeLoop(function()
                         or prehistoricLoc:FindFirstChild("Head", true)
                     if stoneHead then
                         local headCF = stoneHead.CFrame
-                        local safePos =
-                            headCF.Position
-                            - headCF.LookVector * 40
-                            + Vector3.new(0, 20, 0)
+                        -- FIX theo yeu cau: thuyen giu im Y 31 (mat nuoc), khong bay cao nua
+                        local __hpK = headCF.Position - headCF.LookVector * 40
+                        local safePos = Vector3.new(__hpK.X, 31, __hpK.Z)
                         if (safePos - hrp.Position).Magnitude > 30 then
                             _tp(CFrame.new(safePos))
                         end
@@ -13895,7 +13909,9 @@ __DIO_SafeLoop(function()
                         if islandPos then
                             local __dPH = islandPos - hrp.Position
                             local dir = (__dPH.Magnitude > 1) and __dPH.Unit or Vector3.new(0, 0, 1)
-                            local safePos = islandPos - dir * 250 + Vector3.new(0, 60, 0)
+                            -- FIX theo yeu cau: giu thuyen o Y 31 (mat nuoc), khong +60 nua
+                            local __ppK = islandPos - dir * 250
+                            local safePos = Vector3.new(__ppK.X, 31, __ppK.Z)
                             if (safePos - hrp.Position).Magnitude > 30 then
                                 _tp(CFrame.new(safePos))
                             end
@@ -14853,7 +14869,8 @@ __DIO_SafeLoop(function()
           if __foundCF then
             local __chK = plr.Character
             local __hrpK = __chK and __chK:FindFirstChild("HumanoidRootPart")
-            local __goalK = __foundCF * CFrame.new(0, 500, 0)
+            -- FIX theo yeu cau: thuyen giu im Y 31 (mat nuoc) khi den Kitsune, khong bay len +500 nua
+            local __goalK = CFrame.new(__foundCF.Position.X, 31, __foundCF.Position.Z)
             if not __hrpK or (__goalK.Position - __hrpK.Position).Magnitude > 250 then
               _tp(__goalK)
             end
@@ -15230,6 +15247,11 @@ __DIO_SafeLoop(function()
         local __wo = workspace:FindFirstChild("_WorldOrigin")
         local __loc = __wo and __wo:FindFirstChild("Locations")
         local __found = __loc and __loc:FindFirstChild("Frozen Dimension", true)
+        -- FIX: Frozen Dimension / Leviathan con nam o workspace.Map.LeviathanGate (code FrozenTP dung no).
+        -- Truoc day chi check Locations -> gate da hien ra ma thuyen van fly cruise mai.
+        local __mapF0 = workspace:FindFirstChild("Map")
+        local __gate0 = __mapF0 and __mapF0:FindFirstChild("LeviathanGate")
+        if not __found and __gate0 then __found = __gate0 end
         if not __found then
           if __DIO_BoatAssist() ~= "sitting" then return end
           local __dest = CFrame.new(-10000000, 31, 37016.25)
@@ -15248,6 +15270,9 @@ __DIO_SafeLoop(function()
             end
             _tp(CFrame.new(__dest.Position.X, __DIO_FindCruiseY(), __dest.Position.Z))
             __found = __loc and __loc:FindFirstChild("Frozen Dimension", true)
+            if not __found and __mapF0 and __mapF0:FindFirstChild("LeviathanGate") then
+              __found = __mapF0:FindFirstChild("LeviathanGate")
+            end
           until not _G.FrozenDimension or __found or (__dest.Position - __hrpR.Position).Magnitude <= 10 or not __humR.Sit
           pcall(function()
             local __chE = plr.Character
@@ -15257,10 +15282,20 @@ __DIO_SafeLoop(function()
         else
           local __mapF = workspace:FindFirstChild("Map")
           local __gate = __mapF and __mapF:FindFirstChild("LeviathanGate")
-          local __gCenter = __gate and __gate:FindFirstChild("Center")
-          local __cfF = __gCenter and __gCenter.CFrame or __found.CFrame
-          local __goalF = __cfF * CFrame.new(0, 300, 0)
-          -- FIX: da dung tren Frozen Dimension roi -> khong tween lap lai
+          local __srcF = __gate or __found
+          -- lay CFrame dung cho ca BasePart (Locations) lan Model (LeviathanGate)
+          local __cfF = nil
+          pcall(function()
+            local __gc = __srcF:FindFirstChild("Center")
+            if __gc and __gc:IsA("BasePart") then __cfF = __gc.CFrame return end
+            if type(__srcF.GetPivot) == "function" then __cfF = __srcF:GetPivot() return end
+            __cfF = __srcF.CFrame
+          end)
+          if not __cfF then return end
+          -- FIX theo yeu cau: khi da thay Frozen Dimension/LeviathanGate, thuyen giu im Y 31 (mat nuoc),
+          -- khong bay len gate+300 nua (truoc day thuyen treo giua troi nhu screenshot).
+          local __goalF = CFrame.new(__cfF.Position.X, 31, __cfF.Position.Z)
+          -- da dung gan gate roi -> khong tween lap lai
           local __chF = plr.Character
           local __hrpF = __chF and __chF:FindFirstChild("HumanoidRootPart")
           if not __hrpF or (__goalF.Position - __hrpF.Position).Magnitude > 250 then
