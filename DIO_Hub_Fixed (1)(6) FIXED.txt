@@ -12664,6 +12664,7 @@ __DIO_SafeLoop(function()
             __DIO_CruiseWantY = __DIO_FindCruiseY()
             __DIO_CruiseWantT = tick()
             _tp(CFrame.new(__dest.Position.X, __DIO_CruiseWantY, __dest.Position.Z))
+            __DIO_CruiseLiftNow()
             __found = __loc and __loc:FindFirstChild("Mirage Island", true)
             if not __found and __mapM and __mapM:FindFirstChild("MysticIsland") then
               __found = __mapM:FindFirstChild("MysticIsland")
@@ -13895,6 +13896,7 @@ __DIO_SafeLoop(function()
                     __DIO_CruiseWantY = __DIO_FindCruiseY()
                     __DIO_CruiseWantT = tick()
                     _tp(CFrame.new(seaCFrame.Position.X, __DIO_CruiseWantY, seaCFrame.Position.Z))
+                    __DIO_CruiseLiftNow()
                 else
                     local stoneHead =
                         prehistoricLoc:FindFirstChild("HeadTeleport", true)
@@ -14485,6 +14487,11 @@ __DIO_SafeLoop(function()
             local boatSeatCFrame = __seatV4.CFrame * CFrame.new(0, 1, 0)
             _tp(boatSeatCFrame)
           else
+            -- FIX Find-priority: Find Mirage/Prehistoric/Kitsune/Frozen dang BAT -> SailBoats NHUONG lai ghe,
+            -- de 3 control Y (Fly Boat / Teleport Y slider / Sea Event Y) ap dung cho Find.
+            -- (SailBoats giu Y 31 se danh nhau voi Find _tp WantY: goal nhay 31<->slider moi 0.25s
+            -- -> thuyen khong bao gio leo len dung Y. Tat Find xong SailBoats tu chay lai.)
+            if _G.FindMirage or _G.Prehis_Find or _G.AutofindKitIs or _G.FrozenDimension then return end
             if _G.DangerSc == "Lv 1" then CFrameSelectedZone = CFrame.new(-21998.375, 30.0006084, -682.309143)
             elseif _G.DangerSc == "Lv 2" then CFrameSelectedZone = CFrame.new(-26779.5215, 30.0005474, -822.858032)
             elseif _G.DangerSc == "Lv 3" then CFrameSelectedZone = CFrame.new(-31171.957, 30.0001011, -2256.93774)
@@ -14571,13 +14578,42 @@ end
 -- Auto Sea Event (khong feed) thi no NGU -> thuyen van giu Y 31 dung nhu yeu cau truoc.
 __DIO_CruiseWantY = nil
 __DIO_CruiseWantT = 0
+-- FIX Find-priority: lift Y truc tiep trong loop cruise (du phong cho controller Stepped):
+-- chi can dang ngoi + thuyen minh + co WantY hop le. Khong phu thuoc SeaCombat (combat that da roi ghe).
+__DIO_CruiseLiftNow = function()
+    local __wantY = tonumber(__DIO_CruiseWantY)
+    if not __wantY then return end
+    if tick() - (__DIO_CruiseWantT or 0) > 1.5 then return end
+    local __chL = plr and plr.Character
+    local __humL = __chL and __chL:FindFirstChildOfClass("Humanoid")
+    if not __humL or not __humL.Sit then return end
+    local __seatL = __humL.SeatPart
+    local __boatL = __seatL and __seatL:FindFirstAncestorOfClass("Model")
+    if not __boatL or not __boatL.Parent then return end
+    if type(__DIO_IsMyBoat) == "function" and not __DIO_IsMyBoat(__boatL) then return end
+    local __dyL = __wantY - __seatL.Position.Y
+    if math.abs(__dyL) < 0.75 then return end
+    local __maxL = math.max(240 * 0.25, 2)
+    local __liftL = math.clamp(__dyL, -__maxL, __maxL)
+    pcall(function()
+        if not __boatL.PrimaryPart then __boatL.PrimaryPart = __seatL end
+        __boatL:SetPrimaryPartCFrame(__boatL:GetPivot() + Vector3.new(0, __liftL, 0))
+    end)
+    pcall(function()
+        if not __seatL.Anchored then
+            local __vL = __seatL.AssemblyLinearVelocity
+            __seatL.AssemblyLinearVelocity = Vector3.new(__vL.X, 0, __vL.Z)
+        end
+    end)
+end
 pcall(function()
     (__SVC_RUN or game:GetService("RunService")).Stepped:Connect(function(_, __dtFY)
         pcall(function()
             local __wantY = tonumber(__DIO_CruiseWantY)
             if not __wantY then return end
             if tick() - (__DIO_CruiseWantT or 0) > 1.5 then return end
-            if type(__DIO_SeaCombat) == "function" and __DIO_SeaCombat() then return end
+            -- FIX Find-priority: KHONG block lift theo SeaCombat nua (combat that da roi ghe -> guard Sit
+            -- ben duoi tu tat lift; giu guard nay thi SeaCombat ket/dinh ky -> chet TOAN BO lift Y khi cruise).
             local __chFY = plr and plr.Character
             local __humFY = __chFY and __chFY:FindFirstChildOfClass("Humanoid")
             if not __humFY or not __humFY.Sit then return end
@@ -14899,6 +14935,7 @@ __DIO_SafeLoop(function()
             __DIO_CruiseWantY = __DIO_FindCruiseY()
             __DIO_CruiseWantT = tick()
             _tp(CFrame.new(__dest.Position.X, __DIO_CruiseWantY, __dest.Position.Z))
+            __DIO_CruiseLiftNow()
             __found = __loc and __loc:FindFirstChild("Kitsune Island", true)
             -- FIX: khi dang quet bien ma dao spawn o Map.KitsuneIsland thi nhan luon (dung cho vong ngoai)
             if not __found then
@@ -15323,6 +15360,7 @@ __DIO_SafeLoop(function()
             __DIO_CruiseWantY = __DIO_FindCruiseY()
             __DIO_CruiseWantT = tick()
             _tp(CFrame.new(__dest.Position.X, __DIO_CruiseWantY, __dest.Position.Z))
+            __DIO_CruiseLiftNow()
             __found = __loc and __loc:FindFirstChild("Frozen Dimension", true)
             if not __found and __mapF0 and __mapF0:FindFirstChild("LeviathanGate") then
               __found = __mapF0:FindFirstChild("LeviathanGate")
@@ -20247,6 +20285,21 @@ else
     end
     pcall(function()
         Fluent:Notify({
+            Title = "DIO Hub",
+            Content = "Nhap key (hoac bam 'Dan tu Clipboard + Check')",
+            Duration = 6
+        })
+    end)
+
+    task.spawn(function()
+        task.wait(0.6)
+        if __KEY_Started then return end
+        local envKey = tostring(getgenv().Key or "")
+        if #envKey > 5 and KeyAccept(envKey, "getgenv-auto") then return end
+        local k = KeyClipboard()
+        if k then KeyAccept(k, "clipboard-auto") end
+    end)
+end
             Title = "DIO Hub",
             Content = "Nhap key (hoac bam 'Dan tu Clipboard + Check')",
             Duration = 6
