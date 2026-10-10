@@ -3598,7 +3598,12 @@ do
         local delta = goal.Position - m.path
         local dist = delta.Magnitude
         if dist <= m.eps then
-            part.CFrame = CFrame.new(goal.Position) * rot
+            if m.boat and m.boatModel and m.boatModel.Parent then
+                -- FIX jerk: thuyen den dich NGUYEN CUM (rigid), khong giat le seat gay vo weld rung lac
+                pcall(function() m.boatModel:PivotTo(m.boatModel:GetPivot() + (goal.Position - pos)) end)
+            else
+                part.CFrame = CFrame.new(goal.Position) * rot
+            end
             if not part.Anchored then
                 part.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
                 part.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
@@ -3621,7 +3626,11 @@ do
         local dir = delta / dist
         local newPos = m.path + dir * step
         local look = goal.LookVector
-        if look.Magnitude < 0.01 or math.abs(look.Y) > 0.99 then
+        if m.boat and m.boatModel and m.boatModel.Parent then
+            -- FIX jerk: thuyen di NGUYEN CUM (rigid, khong keo lech seat/hull) + giu huong cu
+            -- (truoc day giat seat tung frame + van co Bac -> thuyen gat gu lien tuc khi cruise)
+            pcall(function() m.boatModel:PivotTo(m.boatModel:GetPivot() + (newPos - pos)) end)
+        elseif look.Magnitude < 0.01 or math.abs(look.Y) > 0.99 then
             part.CFrame = CFrame.new(newPos) * rot
         else
             part.CFrame = CFrame.new(newPos, newPos + look)
